@@ -1,0 +1,28 @@
+name: Python Testing
+
+on:
+    push:
+        branches:
+            - main
+            - dev
+    pull_request:
+        types: [opened, synchronize]
+
+jobs:
+    test:
+        runs-on: ubuntu-latest
+        strategy:
+            matrix:
+                python-version: [3.13]
+        steps:
+            - uses: actions/checkout@v5
+            - name: Set up Python 3.13
+              uses: actions/setup-python@v6
+              with:
+                  python-version: 3.13
+            - name: Install dependencies
+              run: |
+                  python -m pip install --upgrade pip
+                  pip install -e ".[dev]"
+            - name: Run tests
+              run: pytest
