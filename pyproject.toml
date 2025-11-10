@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "traffic_flow_models"
+version = "0.1.0"
+description = "Traffic flow models and simulator"
+readme = "README.md"
+requires-python = ">=3.13"
+authors = [
+  { name = "Julius Schlapbach", email = "juliussc@ethz.ch" }
+]
+
+# Runtime dependencies
+dependencies = [
+  "numpy==2.3.4",
+  "scipy==1.16.3",
+  "matplotlib==3.10.7",
+]
+
+# Development / testing dependencies
+[project.optional-dependencies]
+dev = [
+  "pytest==9.0.0",
+]
+
+[tool.setuptools]
+package-dir = { "" = "src" }
