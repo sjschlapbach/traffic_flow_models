@@ -3,4 +3,6 @@
 Empty package for consistency with the project layout.
 """
 
-__all__ = []
+from .alinea import AlineaController
+
+__all__ = ["AlineaController"]

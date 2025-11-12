@@ -1,9 +1,9 @@
-from traffic_flow_models import Offramp, Link
+from traffic_flow_models import Offramp, Cell
 
 
 class TestOfframp:
     def test_init_assigns_attributes(self):
-        mainline = Link(
+        mainline = Cell(
             length=2.0,
             lanes=3,
             lane_capacity=2000,
@@ -15,6 +15,7 @@ class TestOfframp:
             lane_capacity=1600,
             free_flow_speed=70,
             jam_density=130,
+            split_ratio=0.2,
         )
         mainline.offramp = offramp
         assert offramp.lanes == 2
@@ -23,8 +24,8 @@ class TestOfframp:
         assert offramp.jam_density == 130
         assert mainline.offramp is offramp
 
-    def test_network_link_assignment_via_constructor(self):
-        mainline = Link(
+    def test_network_cell_assignment_via_constructor(self):
+        mainline = Cell(
             length=1.0,
             lanes=1,
             lane_capacity=1500,
@@ -35,6 +36,7 @@ class TestOfframp:
                 lane_capacity=1400,
                 free_flow_speed=60,
                 jam_density=120,
+                split_ratio=0.3,
             ),
         )
 

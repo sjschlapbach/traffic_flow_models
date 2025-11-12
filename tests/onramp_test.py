@@ -1,9 +1,9 @@
-from traffic_flow_models import Onramp, Link
+from traffic_flow_models import Onramp, Cell
 
 
 class TestOnramp:
     def test_init_assigns_attributes(self):
-        mainline = Link(
+        mainline = Cell(
             length=2.0,
             lanes=3,
             lane_capacity=2000,
@@ -17,7 +17,7 @@ class TestOnramp:
             jam_density=160,
         )
 
-        # attach the ramp to the mainline link (link holds a single onramp)
+        # attach the ramp to the mainline cell (cell holds a single onramp)
         mainline.onramp = onramp
         assert onramp.lanes == 2
         assert onramp.lane_capacity == 1800
@@ -25,8 +25,8 @@ class TestOnramp:
         assert onramp.jam_density == 160
         assert mainline.onramp is onramp
 
-    def test_network_link_assignment_via_constructor(self):
-        mainline = Link(
+    def test_network_cell_assignment_via_constructor(self):
+        mainline = Cell(
             length=1.0,
             lanes=1,
             lane_capacity=1500,

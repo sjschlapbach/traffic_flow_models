@@ -2,7 +2,7 @@ from typing import List, Optional
 import matplotlib.pyplot as plt
 from matplotlib import patches
 
-from .link import Link
+from .cell import Cell
 from .onramp import Onramp
 from .offramp import Offramp
 
@@ -10,28 +10,28 @@ from .offramp import Offramp
 class Network:
     """A simple ordered mainline network container.
 
-    The Network class stores an ordered list of mainline `Link` instances
+    The Network class stores an ordered list of mainline `Cell` instances
     arranged from upstream (index 0) to downstream (last index). It
-    provides convenience methods to add links and attach or detach on-/off-
+    provides convenience methods to add cells and attach or detach on-/off-
     ramps. The Network does not perform simulation — it only manages the
-    topology and basic validation when linking objects together.
+    topology and basic validation when celling objects together.
 
     Attributes:
-        links: Ordered list of mainline `Link` objects (upstream ->
+        cells: Ordered list of mainline `Cell` objects (upstream ->
             downstream).
     """
 
     def __init__(self) -> None:
         """Initialize an empty Network.
 
-        The created network contains an empty `links` list. Links can be
-        added with `add_link` which takes physical parameters and optionally
+        The created network contains an empty `cells` list. Cells can be
+        added with `add_cell` which takes physical parameters and optionally
         attaches existing ramp objects.
         """
-        # ordered list of mainline links (upstream -> downstream)
-        self.links: List[Link] = []
+        # ordered list of mainline cells (upstream -> downstream)
+        self.cells: List[Cell] = []
 
-    def add_link(
+    def add_cell(
         self,
         length: float,
         lanes: int,
@@ -40,18 +40,18 @@ class Network:
         jam_density: float,
         onramp: Optional[Onramp] = None,
         offramp: Optional[Offramp] = None,
-    ) -> Link:
-        """Create a new mainline link and append it to the network.
+    ) -> Cell:
+        """Create a new mainline cell and append it to the network.
 
-        This method constructs a `Link` instance using the provided
+        This method constructs a `Cell` instance using the provided
         physical parameters and appends it to the end of the network. If a
-        previous link exists it will set the upstream/downstream references
-        so the two links are connected. Optional `Onramp`/`Offramp`
+        previous cell exists it will set the upstream/downstream references
+        so the two cells are connected. Optional `Onramp`/`Offramp`
         instances can be attached directly; their types are validated.
 
         Args:
-            length: Link length in kilometers.
-            lanes: Number of lanes on the link.
+            length: Cell length in kilometers.
+            lanes: Number of lanes on the cell.
             lane_capacity: Capacity per lane in vehicles per hour.
             free_flow_speed: Free-flow speed in km/h.
             jam_density: Jam density in vehicles per km per lane.
@@ -59,14 +59,14 @@ class Network:
             offramp: Optional existing `Offramp` instance to attach.
 
         Returns:
-            The newly created `Link` instance.
+            The newly created `Cell` instance.
 
         Raises:
             TypeError: If provided `onramp`/`offramp` are not of the expected
                 types.
         """
 
-        new_link = Link(
+        new_cell = Cell(
             length=length,
             lanes=lanes,
             lane_capacity=lane_capacity,
@@ -76,38 +76,38 @@ class Network:
 
         # chain from previous downstream reference: set downstream and upstream
         # pointers so both sides of the connection are known.
-        if len(self.links) > 0:
-            prev = self.links[-1]
-            prev.downstream_link = new_link
-            new_link.upstream_link = prev
-        self.links.append(new_link)
+        if len(self.cells) > 0:
+            prev = self.cells[-1]
+            prev.downstream_cell = new_cell
+            new_cell.upstream_cell = prev
+        self.cells.append(new_cell)
 
         # attach provided ramp objects directly (do not attempt to construct
         # ramps from dictionaries). Validate types for helpful errors.
         if onramp is not None:
             if not isinstance(onramp, Onramp):
                 raise TypeError("onramp must be an Onramp instance")
-            new_link.onramp = onramp
+            new_cell.onramp = onramp
 
         if offramp is not None:
             if not isinstance(offramp, Offramp):
                 raise TypeError("offramp must be an Offramp instance")
-            new_link.offramp = offramp
+            new_cell.offramp = offramp
 
-        return new_link
+        return new_cell
 
     def add_onramp(
         self,
-        link_index: int,
+        cell_index: int,
         lanes: int,
         lane_capacity: float,
         free_flow_speed: float,
         jam_density: float,
     ) -> Onramp:
-        """Attach a new `Onramp` to a link by index.
+        """Attach a new `Onramp` to a cell by index.
 
         Args:
-            link_index: Index of the link in `self.links` to attach the ramp
+            cell_index: Index of the cell in `self.cells` to attach the ramp
                 to.
             lanes: Number of lanes on the onramp.
             lane_capacity: Capacity per lane in vehicles per hour.
@@ -119,12 +119,12 @@ class Network:
             The created `Onramp` instance.
 
         Raises:
-            ValueError: If the target link already has an onramp attached.
+            ValueError: If the target cell already has an onramp attached.
         """
 
-        link = self.links[link_index]
-        if link.onramp is not None:
-            raise ValueError("Link already has an onramp attached")
+        cell = self.cells[cell_index]
+        if cell.onramp is not None:
+            raise ValueError("Cell already has an onramp attached")
 
         ramp = Onramp(
             lanes=lanes,
@@ -132,82 +132,85 @@ class Network:
             free_flow_speed=free_flow_speed,
             jam_density=jam_density,
         )
-        link.onramp = ramp
+        cell.onramp = ramp
         return ramp
 
     def add_offramp(
         self,
-        link_index: int,
+        cell_index: int,
         lanes: int,
         lane_capacity: float,
         free_flow_speed: float,
         jam_density: float,
+        split_ratio: float,
     ) -> Offramp:
-        """Attach a new `Offramp` to a link by index.
+        """Attach a new `Offramp` to a cell by index.
 
         Args:
-            link_index: Index of the link in `self.links` to attach the ramp
+            cell_index: Index of the cell in `self.cells` to attach the ramp
                 to.
             lanes: Number of lanes on the offramp.
             lane_capacity: Capacity per lane in vehicles per hour.
             free_flow_speed: Free-flow speed in km/h for the offramp.
             jam_density: Jam density in vehicles per km per lane for the
                 offramp.
+            split_ratio: Portion of mainline flow exiting onto the offramp.
 
         Returns:
             The created `Offramp` instance.
 
         Raises:
-            ValueError: If the target link already has an offramp attached.
+            ValueError: If the target cell already has an offramp attached.
         """
 
-        link = self.links[link_index]
-        if link.offramp is not None:
-            raise ValueError("Link already has an offramp attached")
+        cell = self.cells[cell_index]
+        if cell.offramp is not None:
+            raise ValueError("Cell already has an offramp attached")
         ramp = Offramp(
             lanes=lanes,
             lane_capacity=lane_capacity,
             free_flow_speed=free_flow_speed,
             jam_density=jam_density,
+            split_ratio=split_ratio,
         )
-        link.offramp = ramp
+        cell.offramp = ramp
         return ramp
 
-    def get_onramp(self, link_index: int) -> Optional[Onramp]:
-        """Return the `Onramp` attached to the link at `link_index`.
+    def get_onramp(self, cell_index: int) -> Optional[Onramp]:
+        """Return the `Onramp` attached to the cell at `cell_index`.
 
         Returns None if no onramp is attached.
         """
 
-        return self.links[link_index].onramp
+        return self.cells[cell_index].onramp
 
-    def get_offramp(self, link_index: int) -> Optional[Offramp]:
-        """Return the `Offramp` attached to the link at `link_index`.
+    def get_offramp(self, cell_index: int) -> Optional[Offramp]:
+        """Return the `Offramp` attached to the cell at `cell_index`.
 
         Returns None if no offramp is attached.
         """
 
-        return self.links[link_index].offramp
+        return self.cells[cell_index].offramp
 
-    def remove_onramp(self, link_index: int) -> None:
-        """Detach and remove the onramp from the link at `link_index`.
+    def remove_onramp(self, cell_index: int) -> None:
+        """Detach and remove the onramp from the cell at `cell_index`.
 
-        After calling this the link's `onramp` attribute will be set to
+        After calling this the cell's `onramp` attribute will be set to
         `None`.
         """
 
-        link = self.links[link_index]
-        link.onramp = None
+        cell = self.cells[cell_index]
+        cell.onramp = None
 
-    def remove_offramp(self, link_index: int) -> None:
-        """Detach and remove the offramp from the link at `link_index`.
+    def remove_offramp(self, cell_index: int) -> None:
+        """Detach and remove the offramp from the cell at `cell_index`.
 
-        After calling this the link's `offramp` attribute will be set to
+        After calling this the cell's `offramp` attribute will be set to
         `None`.
         """
 
-        link = self.links[link_index]
-        link.offramp = None
+        cell = self.cells[cell_index]
+        cell.offramp = None
 
     def plot(self, show: bool = True, save_path: Optional[str] = None):
         """Plot the network using Matplotlib primitives.
@@ -225,7 +228,7 @@ class Network:
 
         # basic layout parameters
         total_length = sum(
-            max(0.0, float(getattr(l, "length", 0.0))) for l in self.links
+            max(0.0, float(getattr(l, "length", 0.0))) for l in self.cells
         )
 
         # fall back to simple spacing when lengths are zero
@@ -235,13 +238,13 @@ class Network:
         x = 0.0
         drawn_right = x
 
-        # draw each link as a rectangle whose width equals its length
-        for i, link in enumerate(self.links):
-            width = link.length
-            height = link.lanes * lane_h
+        # draw each cell as a rectangle whose width equals its length
+        for i, cell in enumerate(self.cells):
+            width = cell.length
+            height = cell.lanes * lane_h
             lower = y_center - height / 2
 
-            # rectangle for the mainline link
+            # rectangle for the mainline cell
             rect = patches.Rectangle(
                 (x, lower),
                 width,
@@ -253,7 +256,7 @@ class Network:
             ax.add_patch(rect)
 
             # draw lane separators (visual cue for multiple lanes)
-            for ln in range(1, link.lanes):
+            for ln in range(1, cell.lanes):
                 sep_y = lower + ln * lane_h
                 ax.plot(
                     [x, x + width],
@@ -263,24 +266,24 @@ class Network:
                     zorder=3,
                 )
 
-            # link label
+            # cell label
             ax.text(
                 x + width / 2,
                 lower + height / 2,
-                f"Link {i+1} [{link.lanes} lane(s)]",
+                f"Cell {i+1} [{cell.lanes} lane(s)]",
                 ha="center",
                 va="center",
                 fontsize=8,
                 zorder=4,
             )
 
-            # draw downstream connector only when downstream_link points to the next link
+            # draw downstream connector only when downstream_cell points to the next cell
             next_idx = i + 1
             if (
-                next_idx < len(self.links)
-                and link.downstream_link is self.links[next_idx]
+                next_idx < len(self.cells)
+                and cell.downstream_cell is self.cells[next_idx]
             ):
-                # small arrow between this link and the next (flow left->right)
+                # small arrow between this cell and the next (flow left->right)
                 edge_off = min(width, spacing) * 0.05
                 start_x = x + width - edge_off
                 end_x = x + width + spacing - edge_off
@@ -291,8 +294,8 @@ class Network:
                     arrowprops=dict(arrowstyle="->", color="black"),
                 )
 
-            # draw onramp if present (attach near upstream side of link)
-            onramp = link.onramp
+            # draw onramp if present (attach near upstream side of cell)
+            onramp = cell.onramp
             if onramp is not None:
                 ramp_w = max(0.2, width * 0.5)
                 ramp_h = max(0.4 * lane_h, onramp.lanes * lane_h) + 0.05
@@ -326,8 +329,8 @@ class Network:
                     color="white",
                 )
 
-            # draw offramp if present (attach near downstream side of link)
-            offramp = link.offramp
+            # draw offramp if present (attach near downstream side of cell)
+            offramp = cell.offramp
             if offramp is not None:
                 ramp_w = max(0.2, width * 0.5)
                 ramp_h = max(0.4 * lane_h, offramp.lanes * lane_h) + 0.05
