@@ -232,7 +232,6 @@ class Network:
         spacing = max(total_length * 0.02, 0.05) if total_length > 0 else 0.2
         lane_h = 0.25  # height per lane in plot units
         y_center = 0.0
-
         x = 0.0
         drawn_right = x
 
@@ -293,10 +292,10 @@ class Network:
                 )
 
             # draw onramp if present (attach near upstream side of link)
-            onr = getattr(link, "onramp", None)
-            if onr is not None:
+            onramp = link.onramp
+            if onramp is not None:
                 ramp_w = max(0.2, width * 0.5)
-                ramp_h = max(0.4 * lane_h, onr.lanes * lane_h)
+                ramp_h = max(0.4 * lane_h, onramp.lanes * lane_h)
                 rx = x + width * 0.2 - ramp_w / 2
                 ry = lower + height + 0.2
                 rrect = patches.Rectangle(
@@ -320,7 +319,7 @@ class Network:
                 ax.text(
                     rx + ramp_w / 2,
                     ry + ramp_h / 2,
-                    f"Onramp [{onr.lanes} lane(s)]",
+                    f"Onramp [{onramp.lanes} lane(s)]",
                     ha="center",
                     va="center",
                     fontsize=7,
@@ -328,10 +327,10 @@ class Network:
                 )
 
             # draw offramp if present (attach near downstream side of link)
-            off = getattr(link, "offramp", None)
-            if off is not None:
+            offramp = link.offramp
+            if offramp is not None:
                 ramp_w = max(0.2, width * 0.5)
-                ramp_h = max(0.4 * lane_h, off.lanes * lane_h)
+                ramp_h = max(0.4 * lane_h, offramp.lanes * lane_h)
                 rx = x + width * 0.8 - ramp_w / 2
                 ry = lower - ramp_h - 0.2
                 rrect = patches.Rectangle(
@@ -355,7 +354,7 @@ class Network:
                 ax.text(
                     rx + ramp_w / 2,
                     ry + ramp_h / 2,
-                    f"Offramp [{off.lanes} lane(s)]",
+                    f"Offramp [{offramp.lanes} lane(s)]",
                     ha="center",
                     va="center",
                     fontsize=7,
