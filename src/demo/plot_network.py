@@ -13,7 +13,8 @@ from traffic_flow_models.network import Network
 
 def build_sample_network() -> Network:
     net = Network()
-    # add three mainline links with varying lanes
+
+    # add mainline links with varying lanes
     net.add_link(
         length=1.0, lanes=3, lane_capacity=2000, free_flow_speed=100, jam_density=150
     )
@@ -27,9 +28,10 @@ def build_sample_network() -> Network:
         length=1.5, lanes=4, lane_capacity=2000, free_flow_speed=110, jam_density=150
     )
 
-    # attach ramps
+    # attach on- and offramps to some links
     net.add_onramp(0, lanes=1, lane_capacity=1000, free_flow_speed=70, jam_density=150)
-    net.add_offramp(1, lanes=1, lane_capacity=1000, free_flow_speed=70, jam_density=150)
+    net.add_onramp(2, lanes=2, lane_capacity=1000, free_flow_speed=70, jam_density=150)
+    net.add_offramp(2, lanes=1, lane_capacity=1000, free_flow_speed=70, jam_density=150)
 
     return net
 
