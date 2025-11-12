@@ -4,7 +4,7 @@
 
 ## Setup
 
-Consider setting up a virtual environment for this project. The project was developed with Python 3.13 and pip 25.3. The following commands will create a virtual environment and install the required dependencies:
+Consider setting up a virtual environment for this project. The project was developed with Python 3.13 and pip v25.3. The following commands will create a virtual environment and install the required dependencies:
 
 ```bash
 python3 -m venv venv
@@ -18,7 +18,7 @@ When using an operating system that has Python pre-installed (e.g. macOS), you m
 brew install python@3.13
 python3.13 -m venv venv
 source venv/bin/activate
-pip install -e .
+pip install -e ".[dev]"
 ```
 
 In some cases, it might be necessary to set the `PYTHONPATH` environment variable to the root of this repository. This can be done by running the following command:
@@ -32,5 +32,5 @@ export PYTHONPATH=.
 After installing the pytest package, the test suite can be run with the following command:
 
 ```bash
-pytest src/test/
+pytest
 ```

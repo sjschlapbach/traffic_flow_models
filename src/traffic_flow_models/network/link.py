@@ -6,6 +6,26 @@ if TYPE_CHECKING:
 
 
 class Link:
+    """Represents a single highway mainline link.
+
+    A Link stores the physical parameters required for simple traffic
+    modelling (length, lanes, capacity, speeds, densities) and optional
+    references to neighboring links and a single onramp/offramp. The class
+    intentionally contains only data; network topology and validation are
+    handled by the `Network` container.
+
+    Attributes:
+        length: Link length in kilometers.
+        lanes: Number of lanes on the link.
+        lane_capacity: Capacity per lane in vehicles per hour.
+        free_flow_speed: Free-flow speed in km/h.
+        jam_density: Jam density in vehicles per km per lane.
+        downstream_link: Optional reference to the downstream Link.
+        upstream_link: Optional reference to the upstream Link.
+        onramp: Optional attached `Onramp` instance.
+        offramp: Optional attached `Offramp` instance.
+    """
+
     # type annotations for static tools: instances will have these attributes
     onramp: Optional["Onramp"]
     offramp: Optional["Offramp"]
@@ -25,6 +45,18 @@ class Link:
         onramp: Optional["Onramp"] = None,
         offramp: Optional["Offramp"] = None,
     ) -> None:
+        """Create a new Link with physical parameters.
+
+        Args:
+            length: Link length in kilometers.
+            lanes: Number of lanes on the link.
+            lane_capacity: Capacity per lane in vehicles per hour.
+            free_flow_speed: Free-flow speed in km/h.
+            jam_density: Jam density in vehicles per km per lane.
+            downstream_link: Optional downstream link reference.
+            onramp: Optional `Onramp` instance to attach to this link.
+            offramp: Optional `Offramp` instance to attach to this link.
+        """
         self.length: float = length  # in kilometers
         self.lanes: int = lanes  # number of lanes
         self.lane_capacity: float = lane_capacity  # in vehicles per hour per lane
