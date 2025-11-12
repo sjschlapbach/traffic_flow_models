@@ -189,4 +189,7 @@ def calculate_cell_flow(cell: Cell, density: float, downstream_density: float) -
     q_demand = cell.vf * density * cell.lanes
     q_supply = cell.w * (cell.rho_jam - downstream_density)
 
+    if cell.offramp is not None:
+        q_supply *= 1 + cell.offramp.split_ratio
+
     return min(cell.Qc, q_demand, q_supply)

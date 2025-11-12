@@ -261,11 +261,17 @@ class CTM:
                     dt=dt,
                 )
 
+            # if an offramp is present in the current cell, split the flow accordingly
+            current_cell = network.cells[i]
+            if current_cell.offramp is not None:
+                offramp_flow[i] = current_cell.offramp.split_ratio * flow[i]
+                flow[i] = (1 - current_cell.offramp.split_ratio) * flow[i]
+
             # compute the flow, density and speed updates for the current cell
             if i > 0:
                 density[i], speed[i] = self.cell_update(
-                    cell_lanes=network.cells[i].lanes,
-                    cell_length=network.cells[i].length,
+                    cell_lanes=current_cell.lanes,
+                    cell_length=current_cell.length,
                     density=previous_density[i],
                     upstream_flow=flow[i - 1],
                     cell_flow=flow[i],
@@ -275,8 +281,8 @@ class CTM:
                 )
             else:
                 density[i], speed[i] = self.cell_update(
-                    cell_lanes=network.cells[i].lanes,
-                    cell_length=network.cells[i].length,
+                    cell_lanes=current_cell.lanes,
+                    cell_length=current_cell.length,
                     density=previous_density[i],
                     upstream_flow=input_flow,
                     cell_flow=flow[i],
