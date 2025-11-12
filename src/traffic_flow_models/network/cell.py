@@ -64,9 +64,7 @@ class Cell:
         self.vf: float = free_flow_speed  # in kilometers per hour
         self.rho_jam: float = jam_density  # in vehicles per kilometer per lane
         self.rho_cr: float = self.Qc_lane / self.vf  # critical density
-        self.w: float = self.Qc_lane / (
-            self.rho_jam - self.rho_cr
-        )  # backwards wave speed
+        self.w: float = self.Qc / (self.rho_jam - self.rho_cr)  # backwards wave speed
 
         # downstream/upstream references set through the network / user
         self.downstream_cell: Optional[Cell] = downstream_cell
