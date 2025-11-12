@@ -2,7 +2,7 @@
 
 Usage: run this module as a script from the repository root:
 
-    python -m src.demo.plot_demo
+    python -m src.demo.plot_network
 
 """
 
