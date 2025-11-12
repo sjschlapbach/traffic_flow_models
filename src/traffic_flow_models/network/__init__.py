@@ -4,12 +4,14 @@ Use explicit relative imports so the package works when imported from the
 `src/` layout or after installation.
 """
 
-from .link import Link
+from .cell import Cell
 from .onramp import Onramp
+from .offramp import Offramp
 from .network import Network
 
 __all__ = [
-    "Link",
+    "Cell",
     "Onramp",
+    "Offramp",
     "Network",
 ]

@@ -5,23 +5,23 @@ if TYPE_CHECKING:
     from .offramp import Offramp  # pragma: no cover - typing only
 
 
-class Link:
-    """Represents a single highway mainline link.
+class Cell:
+    """Represents a single highway mainline cell.
 
-    A Link stores the physical parameters required for simple traffic
+    A Cell stores the physical parameters required for simple traffic
     modelling (length, lanes, capacity, speeds, densities) and optional
-    references to neighboring links and a single onramp/offramp. The class
+    references to neighboring cells and a single onramp/offramp. The class
     intentionally contains only data; network topology and validation are
     handled by the `Network` container.
 
     Attributes:
-        length: Link length in kilometers.
-        lanes: Number of lanes on the link.
+        length: Cell length in kilometers.
+        lanes: Number of lanes on the cell.
         lane_capacity: Capacity per lane in vehicles per hour.
         free_flow_speed: Free-flow speed in km/h.
         jam_density: Jam density in vehicles per km per lane.
-        downstream_link: Optional reference to the downstream Link.
-        upstream_link: Optional reference to the upstream Link.
+        downstream_cell: Optional reference to the downstream Cell.
+        upstream_cell: Optional reference to the upstream Cell.
         onramp: Optional attached `Onramp` instance.
         offramp: Optional attached `Offramp` instance.
     """
@@ -31,8 +31,8 @@ class Link:
     offramp: Optional["Offramp"]
 
     # simple downstream/upstream references
-    downstream_link: Optional["Link"]
-    upstream_link: Optional["Link"]
+    downstream_cell: Optional["Cell"]
+    upstream_cell: Optional["Cell"]
 
     def __init__(
         self,
@@ -41,33 +41,36 @@ class Link:
         lane_capacity: float,
         free_flow_speed: float,
         jam_density: float,
-        downstream_link: Optional["Link"] = None,
+        downstream_cell: Optional["Cell"] = None,
         onramp: Optional["Onramp"] = None,
         offramp: Optional["Offramp"] = None,
     ) -> None:
-        """Create a new Link with physical parameters.
+        """Create a new Cell with physical parameters.
 
         Args:
-            length: Link length in kilometers.
-            lanes: Number of lanes on the link.
+            length: Cell length in kilometers.
+            lanes: Number of lanes on the cell.
             lane_capacity: Capacity per lane in vehicles per hour.
             free_flow_speed: Free-flow speed in km/h.
             jam_density: Jam density in vehicles per km per lane.
-            downstream_link: Optional downstream link reference.
-            onramp: Optional `Onramp` instance to attach to this link.
-            offramp: Optional `Offramp` instance to attach to this link.
+            downstream_cell: Optional downstream cell reference.
+            onramp: Optional `Onramp` instance to attach to this cell.
+            offramp: Optional `Offramp` instance to attach to this cell.
         """
         self.length: float = length  # in kilometers
         self.lanes: int = lanes  # number of lanes
-        self.lane_capacity: float = lane_capacity  # in vehicles per hour per lane
-        self.free_flow_speed: float = free_flow_speed  # in kilometers per hour
-        self.jam_density: float = jam_density  # in vehicles per kilometer per lane
+        self.Qc_lane: float = lane_capacity  # in vehicles per hour per lane
+        self.Qc: float = lane_capacity * lanes  # total cell capacity
+        self.vf: float = free_flow_speed  # in kilometers per hour
+        self.rho_jam: float = jam_density  # in vehicles per kilometer per lane
+        self.rho_cr: float = self.Qc_lane / self.vf  # critical density
+        self.w: float = self.Qc / (self.rho_jam - self.rho_cr)  # backwards wave speed
 
         # downstream/upstream references set through the network / user
-        self.downstream_link: Optional[Link] = downstream_link
-        self.upstream_link: Optional[Link] = None
+        self.downstream_cell: Optional[Cell] = downstream_cell
+        self.upstream_cell: Optional[Cell] = None
 
-        # at most one ramp of each type may attach to a link (optional)
+        # at most one ramp of each type may attach to a cell (optional)
         # allow passing ramps via constructor for convenience
         self.onramp = onramp
         self.offramp = offramp
