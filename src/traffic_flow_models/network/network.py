@@ -1,4 +1,6 @@
 from typing import List, Optional
+import matplotlib.pyplot as plt
+from matplotlib import patches
 
 from .link import Link
 from .onramp import Onramp
@@ -206,3 +208,175 @@ class Network:
 
         link = self.links[link_index]
         link.offramp = None
+
+    def plot(self, show: bool = True, save_path: Optional[str] = None):
+        """Plot the network using Matplotlib primitives.
+
+        Args:
+            show: Whether to call matplotlib.pyplot.show() after drawing.
+            save_path: Optional path to save the produced figure.
+
+        Returns:
+            The Matplotlib Axes instance used for drawing.
+        """
+
+        # figure/axes setup
+        _, ax = plt.subplots(figsize=(10, 3))
+
+        # basic layout parameters
+        total_length = sum(
+            max(0.0, float(getattr(l, "length", 0.0))) for l in self.links
+        )
+
+        # fall back to simple spacing when lengths are zero
+        spacing = max(total_length * 0.02, 0.05) if total_length > 0 else 0.2
+        lane_h = 0.25  # height per lane in plot units
+        y_center = 0.0
+
+        x = 0.0
+        drawn_right = x
+
+        # draw each link as a rectangle whose width equals its length
+        for i, link in enumerate(self.links):
+            width = link.length
+            height = link.lanes * lane_h
+            lower = y_center - height / 2
+
+            # rectangle for the mainline link
+            rect = patches.Rectangle(
+                (x, lower),
+                width,
+                height,
+                linewidth=1,
+                edgecolor="black",
+                facecolor="lightgrey",
+            )
+            ax.add_patch(rect)
+
+            # draw lane separators (visual cue for multiple lanes)
+            for ln in range(1, link.lanes):
+                sep_y = lower + ln * lane_h
+                ax.plot(
+                    [x, x + width],
+                    [sep_y, sep_y],
+                    color="white",
+                    linewidth=0.8,
+                    zorder=3,
+                )
+
+            # link label
+            ax.text(
+                x + width / 2,
+                lower + height / 2,
+                f"Link {i+1} [{link.lanes} lane(s)]",
+                ha="center",
+                va="center",
+                fontsize=8,
+                zorder=4,
+            )
+
+            # draw downstream connector only when downstream_link points to the next link
+            next_idx = i + 1
+            if (
+                next_idx < len(self.links)
+                and link.downstream_link is self.links[next_idx]
+            ):
+                # small arrow between this link and the next (flow left->right)
+                edge_off = min(width, spacing) * 0.05
+                start_x = x + width - edge_off
+                end_x = x + width + spacing - edge_off
+                ax.annotate(
+                    "",
+                    xy=(end_x, y_center),
+                    xytext=(start_x, y_center),
+                    arrowprops=dict(arrowstyle="->", color="black"),
+                )
+
+            # draw onramp if present (attach near upstream side of link)
+            onr = getattr(link, "onramp", None)
+            if onr is not None:
+                ramp_w = max(0.2, width * 0.5)
+                ramp_h = max(0.4 * lane_h, onr.lanes * lane_h)
+                rx = x + width * 0.2 - ramp_w / 2
+                ry = lower + height + 0.2
+                rrect = patches.Rectangle(
+                    (rx, ry),
+                    ramp_w,
+                    ramp_h,
+                    linewidth=1,
+                    edgecolor="black",
+                    facecolor="green",
+                )
+                ax.add_patch(rrect)
+
+                # directional connector: arrow from ramp -> mainline (merge)
+                small = min(width, ramp_w) * 0.03
+                ax.annotate(
+                    "",
+                    xy=(x + width * 0.3 + 0.03, lower + height - small * 2),
+                    xytext=(rx + ramp_w / 2, ry + ramp_h / 2),
+                    arrowprops=dict(arrowstyle="->", color="green"),
+                )
+                ax.text(
+                    rx + ramp_w / 2,
+                    ry + ramp_h / 2,
+                    f"Onramp [{onr.lanes} lane(s)]",
+                    ha="center",
+                    va="center",
+                    fontsize=7,
+                    color="white",
+                )
+
+            # draw offramp if present (attach near downstream side of link)
+            off = getattr(link, "offramp", None)
+            if off is not None:
+                ramp_w = max(0.2, width * 0.5)
+                ramp_h = max(0.4 * lane_h, off.lanes * lane_h)
+                rx = x + width * 0.8 - ramp_w / 2
+                ry = lower - ramp_h - 0.2
+                rrect = patches.Rectangle(
+                    (rx, ry),
+                    ramp_w,
+                    ramp_h,
+                    linewidth=1,
+                    edgecolor="black",
+                    facecolor="red",
+                )
+                ax.add_patch(rrect)
+
+                # directional connector: arrow from mainline -> offramp (diverge)
+                small = min(width, ramp_w) * 0.03
+                ax.annotate(
+                    "",
+                    xy=(rx + ramp_w / 2, ry + ramp_h - small),
+                    xytext=(x + width * 0.7 + 0.03, lower + small * 0),
+                    arrowprops=dict(arrowstyle="->", color="red"),
+                )
+                ax.text(
+                    rx + ramp_w / 2,
+                    ry + ramp_h / 2,
+                    f"Offramp [{off.lanes} lane(s)]",
+                    ha="center",
+                    va="center",
+                    fontsize=7,
+                    color="white",
+                )
+
+            drawn_right = x + width
+            x += width + spacing
+
+        # finalize axes
+        ax.set_aspect("auto")
+        ax.set_xlim(-spacing, drawn_right + spacing)
+        ax.set_ylim(-1.0, 1.0)
+        ax.set_axis_off()
+        ax.set_title("Traffic Network")
+        plt.tight_layout()
+
+        if save_path is not None:
+            plt.savefig(save_path, dpi=200, bbox_inches="tight")
+
+        if show:
+            plt.show()
+
+        return ax
