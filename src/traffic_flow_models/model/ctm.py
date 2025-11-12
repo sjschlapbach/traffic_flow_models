@@ -81,7 +81,7 @@ class CTM:
 
         # update the speed only based on the computed flow and density (first
         # order model -> no explicit speed model updates)
-        speed = cell_flow / (cell_lanes * density)
+        speed = cell_flow / (cell_lanes * density) if cell_flow > 0 else 0.0
 
         return next_density, speed
 
@@ -179,22 +179,21 @@ class CTM:
         # if a ramp controller is defined and an onramp is present in the
         # first cell, compute the regulated onramp flow
         if network.cells[0].onramp is not None:
-            if controller is not None:
-                onramp_flow[0] = calculate_regulated_onramp_flow(
-                    cell=network.cells[0],
-                    current_cell=0,
-                    density=previous_density,
-                    previous_onramp_flow=previous_onramp_flow[0],
-                    onramp_demand=onramp_demand[0],
-                    onramp_queue=onramp_queue[0],
-                    controller=controller,
-                    dt=dt,
-                )
+            onramp_flow[0] = calculate_regulated_onramp_flow(
+                cell=network.cells[0],
+                current_cell=0,
+                density=previous_density,
+                previous_onramp_flow=previous_onramp_flow[0],
+                onramp_demand=onramp_demand[0],
+                onramp_queue=onramp_queue[0],
+                controller=controller,
+                dt=dt,
+            )
 
             # to ensure that the flows in the CTM model remains physically feasible
             # in cells with an onramp, we need to cap them at the maximum capacity
             # -> in case of violations, both flows are reduced proportionally
-            onramp_flow[0], input_flow = cap_cell_flows(
+            input_flow, onramp_flow[0] = cap_cell_flows(
                 cell=network.cells[0],
                 density=previous_density[0],
                 current_flow=input_flow,
@@ -236,19 +235,18 @@ class CTM:
             # in cells with an onramp, we need to cap them at the maximum capacity
             # -> in case of violations, both flows are reduced proportionally
             if i < num_cells - 1 and network.cells[i + 1].onramp is not None:
-                if controller is not None:
-                    onramp_flow[i + 1] = calculate_regulated_onramp_flow(
-                        cell=network.cells[i + 1],
-                        current_cell=i,
-                        density=previous_density,
-                        previous_onramp_flow=previous_onramp_flow[i + 1],
-                        onramp_demand=onramp_demand[i + 1],
-                        onramp_queue=onramp_queue[i + 1],
-                        controller=controller,
-                        dt=dt,
-                    )
+                onramp_flow[i + 1] = calculate_regulated_onramp_flow(
+                    cell=network.cells[i + 1],
+                    current_cell=i,
+                    density=previous_density,
+                    previous_onramp_flow=previous_onramp_flow[i + 1],
+                    onramp_demand=onramp_demand[i + 1],
+                    onramp_queue=onramp_queue[i + 1],
+                    controller=controller,
+                    dt=dt,
+                )
 
-                onramp_flow[i + 1], flow[i] = cap_cell_flows(
+                flow[i], onramp_flow[i + 1] = cap_cell_flows(
                     cell=network.cells[i + 1],
                     density=previous_density[i + 1],
                     current_flow=flow[i],
