@@ -17,9 +17,9 @@ class TestNetwork:
         assert isinstance(l, Cell)
         assert l.length == 2.0
         assert l.lanes == 3
-        assert l.lane_capacity == 2000
-        assert l.free_flow_speed == 100
-        assert l.jam_density == 150
+        assert l.Qc_lane == 2000
+        assert l.vf == 100
+        assert l.rho_jam == 150
 
         # no chaining for a single cell
         assert l.upstream_cell is None

@@ -19,9 +19,9 @@ class TestOfframp:
         )
         mainline.offramp = offramp
         assert offramp.lanes == 2
-        assert offramp.lane_capacity == 1600
-        assert offramp.free_flow_speed == 70
-        assert offramp.jam_density == 130
+        assert offramp.Qc_lane == 1600
+        assert offramp.vf == 70
+        assert offramp.rho_jam == 130
         assert mainline.offramp is offramp
 
     def test_network_cell_assignment_via_constructor(self):
@@ -42,6 +42,6 @@ class TestOfframp:
 
         assert mainline.offramp is not None
         assert mainline.offramp.lanes == 1
-        assert mainline.offramp.lane_capacity == 1400
-        assert mainline.offramp.free_flow_speed == 60
-        assert mainline.offramp.jam_density == 120
+        assert mainline.offramp.Qc_lane == 1400
+        assert mainline.offramp.vf == 60
+        assert mainline.offramp.rho_jam == 120
