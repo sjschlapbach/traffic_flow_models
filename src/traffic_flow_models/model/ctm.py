@@ -255,7 +255,7 @@ class CTM:
 
                 # update the queue length on the onramp
                 next_onramp_queue[i + 1] = update_queue(
-                    queue_length=next_onramp_queue[i + 1],
+                    queue_length=onramp_queue[i + 1],
                     demand=onramp_demand[i + 1],
                     flow=onramp_flow[i + 1],
                     dt=dt,
