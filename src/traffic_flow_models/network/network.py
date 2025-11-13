@@ -407,6 +407,30 @@ class Network:
         NDArray[np.float64],
         NDArray[np.float64],
     ]:
+        """Run a time-based simulation of the network using the provided model.
+
+        The method advances the provided `model` (typically a `CTM` instance)
+        over the time interval specified by `duration` using time steps of
+        length `dt`. It collects time series for densities, flows and speeds
+        as well as input/onramp flows and queues.
+
+        Args:
+            duration: Total simulation duration (hours).
+            dt: Time step for the simulation (hours).
+            model: A model instance implementing a `step` method compatible
+                with the network (e.g. `CTM`).
+            mainline_demand: Callable that returns mainline demand (veh/h)
+                given the current time (hours).
+            onramp_demand: Callable that returns onramp demands array
+                given the current time (hours) and number of cells.
+            plot_results: If True, plot comprehensive simulation results after
+                the run.
+
+        Returns:
+            Tuple with time series arrays: `(density, flow, speed,
+            input_flow, input_queue, onramp_flow, onramp_queue)`.
+        """
+
         # define a time array for the simulation (5000 seconds in 10 second intervals)
         time_array: NDArray[np.float64] = np.arange(
             0, duration + dt, dt, dtype=np.float64
@@ -475,6 +499,35 @@ class Network:
         onramp_flow: NDArray[np.float64],
         onramp_queue: NDArray[np.float64],
     ) -> None:
+        """Plot comprehensive simulation results for the network.
+
+        Produces multiple figures showing density, flow, speed, input and
+        onramp demands/flows/queues and 3D surface visualizations. The
+        provided arrays must match the network's number of cells and the
+        supplied `time` vector.
+
+        Args:
+            time: 1-D array of time points (hours).
+            flow: 2-D array of flows per cell and time (veh/h), shape
+                `(num_cells, time_steps)`.
+            density: 2-D array of densities per cell and time
+                (veh/km/lane), shape `(num_cells, time_steps)`.
+            speed: 2-D array of speeds per cell and time (km/h), shape
+                `(num_cells, time_steps)`.
+            mainline_demand_func: Callable that returns mainline demand
+                given time (hours).
+            input_flow: 1-D array of input flows over time (veh/h).
+            input_queue: 1-D array of input queue lengths over time (veh).
+            onramp_demand_func: Callable that returns onramp demand array
+                given time (hours) and number of cells.
+            onramp_flow: 2-D array of onramp flows per cell and time (veh/h).
+            onramp_queue: 2-D array of onramp queue lengths per cell and time
+                (veh).
+
+        Returns:
+            None. Shows Matplotlib figures when called.
+        """
+
         num_cells = len(self.cells)
         time_seconds = time * 3600
 
