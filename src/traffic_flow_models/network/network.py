@@ -1,10 +1,17 @@
-from typing import List, Optional
+from typing import Callable, List, Optional, Tuple, TYPE_CHECKING
 import matplotlib.pyplot as plt
 from matplotlib import patches
+import numpy as np
+from numpy.typing import NDArray
+import math
+
 
 from .cell import Cell
 from .onramp import Onramp
 from .offramp import Offramp
+
+if TYPE_CHECKING:
+    from traffic_flow_models.model.ctm import CTM
 
 
 class Network:
@@ -22,7 +29,7 @@ class Network:
     """
 
     def __init__(self) -> None:
-        """Initialize an empty Network.
+        """Initialize an empty self.
 
         The created network contains an empty `cells` list. Cells can be
         added with `add_cell` which takes physical parameters and optionally
@@ -41,10 +48,10 @@ class Network:
         onramp: Optional[Onramp] = None,
         offramp: Optional[Offramp] = None,
     ) -> Cell:
-        """Create a new mainline cell and append it to the network.
+        """Create a new mainline cell and append it to the self.
 
         This method constructs a `Cell` instance using the provided
-        physical parameters and appends it to the end of the network. If a
+        physical parameters and appends it to the end of the self. If a
         previous cell exists it will set the upstream/downstream references
         so the two cells are connected. Optional `Onramp`/`Offramp`
         instances can be attached directly; their types are validated.
@@ -382,3 +389,341 @@ class Network:
             plt.show()
 
         return ax
+
+    def simulate(
+        self,
+        duration: float,
+        dt: float,
+        model: "CTM",
+        mainline_demand: Callable[[float], float],
+        onramp_demand: Callable[[float, int], NDArray[np.float64]],
+        plot_results: bool = False,
+    ) -> Tuple[
+        NDArray[np.float64],
+        NDArray[np.float64],
+        NDArray[np.float64],
+        NDArray[np.float64],
+        NDArray[np.float64],
+        NDArray[np.float64],
+        NDArray[np.float64],
+    ]:
+        # define a time array for the simulation (5000 seconds in 10 second intervals)
+        time_array: NDArray[np.float64] = np.arange(
+            0, duration + dt, dt, dtype=np.float64
+        )
+
+        # initialize all quantities that should be tracked during the simulation
+        num_cells = len(self.cells)
+        density = np.zeros((num_cells, len(time_array)))  # rho_i (veh/km/lane)
+        flow = np.zeros((num_cells, len(time_array)))  # q_i (veh/h)
+        speed = np.zeros((num_cells, len(time_array)))  # v_i (km/h)
+
+        input_flow = np.zeros(len(time_array))  # q_0 (veh/h)
+        input_queue = np.zeros(len(time_array))  # number of vehicles
+
+        onramp_flow = np.zeros((num_cells, len(time_array)))  # r_i (veh/h)
+        onramp_queue = np.zeros((num_cells, len(time_array)))  # number of vehicles
+
+        # run the simulation
+        for t in range(len(time_array) - 1):
+            (
+                flow[:, t + 1],
+                density[:, t + 1],
+                speed[:, t + 1],
+                input_flow[t + 1],
+                input_queue[t + 1],
+                onramp_flow[:, t + 1],
+                onramp_queue[:, t + 1],
+            ) = model.step(
+                network=self,
+                previous_density=density[:, t],
+                mainline_demand=mainline_demand(time_array[t]),
+                input_queue=input_queue[t],
+                onramp_demand=onramp_demand(time_array[t], num_cells),
+                onramp_queue=onramp_queue[:, t],
+                previous_onramp_flow=onramp_flow[:, t],
+                dt=dt,
+            )
+
+        # plot comprehensive simulation results
+        if plot_results:
+            self.plot_simulation_results(
+                time=time_array,
+                flow=flow,
+                density=density,
+                speed=speed,
+                mainline_demand_func=mainline_demand,
+                input_flow=input_flow,
+                input_queue=input_queue,
+                onramp_demand_func=onramp_demand,
+                onramp_flow=onramp_flow,
+                onramp_queue=onramp_queue,
+            )
+
+        return density, flow, speed, input_flow, input_queue, onramp_flow, onramp_queue
+
+    def plot_simulation_results(
+        self,
+        time: NDArray[np.float64],
+        flow: NDArray[np.float64],
+        density: NDArray[np.float64],
+        speed: NDArray[np.float64],
+        mainline_demand_func: Callable[[float], float],
+        input_flow: NDArray[np.float64],
+        input_queue: NDArray[np.float64],
+        onramp_demand_func: Callable[[float, int], NDArray[np.float64]],
+        onramp_flow: NDArray[np.float64],
+        onramp_queue: NDArray[np.float64],
+    ) -> None:
+        num_cells = len(self.cells)
+        time_seconds = time * 3600
+
+        # calculate actual simulation duration
+        actual_duration_seconds = time[-1] * 3600
+
+        # prepare the demand arrays for the onramps and the mainline
+        input_demand = np.array([mainline_demand_func(t) for t in time])
+        onramp_demand = np.array([onramp_demand_func(t, num_cells) for t in time]).T
+
+        # calculate max values for proper y-axis scaling
+        max_density = np.max(density) * 1.1  # 10% margin
+        max_speed = np.max(speed) * 1.1  # 10% margin
+        max_input_demand = (
+            np.max(input_demand) * 1.1 if np.max(input_demand) > 0 else 2500
+        )
+        max_input_flow = np.max(input_flow) * 1.1 if np.max(input_flow) > 0 else 2500
+        max_input_queue = np.max(input_queue) * 1.1 if np.max(input_queue) > 0 else 100
+        max_onramp_demand = (
+            np.max(onramp_demand) * 1.1 if np.max(onramp_demand) > 0 else 5000
+        )
+        max_onramp_flow = np.max(onramp_flow) * 1.1 if np.max(onramp_flow) > 0 else 2500
+        max_onramp_queue = (
+            np.max(onramp_queue) * 1.1 if np.max(onramp_queue) > 0 else 100
+        )
+
+        # Figure 1: Vehicle Density (dynamic grid based on number of cells)
+        ncols = 3
+        nrows = math.ceil(num_cells / ncols)
+        fig1, axes1 = plt.subplots(nrows, ncols, figsize=(4 * ncols, 3 * nrows))
+        fig1.suptitle("Vehicle Density", fontsize=14, fontweight="bold")
+        axes1 = np.array(axes1).flatten()
+
+        for i in range(num_cells):
+            rho_jam = self.cells[i].rho_jam
+            axes1[i].plot(time_seconds, density[i, :], linewidth=1.5)
+            axes1[i].axhline(rho_jam, color="red", linestyle="--", linewidth=1)
+            axes1[i].set_ylim([0, max(rho_jam * 1.1, max_density)])
+            axes1[i].set_xlim([0, actual_duration_seconds])
+            axes1[i].set_xlabel("time (s)")
+            axes1[i].set_ylabel("density (veh/km/lane)")
+            axes1[i].grid(True)
+            axes1[i].set_title(f"Cell {i + 1}")
+
+        # hide any unused axes
+        for ax in axes1[num_cells:]:
+            ax.set_visible(False)
+
+        plt.tight_layout()
+
+        # Figure 2: Vehicle Flow (dynamic grid)
+        fig2, axes2 = plt.subplots(nrows, ncols, figsize=(4 * ncols, 3 * nrows))
+        fig2.suptitle("Vehicle Flow", fontsize=14, fontweight="bold")
+        axes2 = np.array(axes2).flatten()
+
+        for i in range(num_cells):
+            Qc = self.cells[i].Qc
+            axes2[i].plot(time_seconds[:-1], flow[i, :-1], linewidth=1.5)
+            axes2[i].axhline(Qc, color="red", linestyle="--", linewidth=1)
+            axes2[i].set_ylim([0, max(Qc * 1.05, np.max(flow[i, :-1]) * 1.05)])
+            axes2[i].set_xlim([0, actual_duration_seconds])
+            axes2[i].set_xlabel("time (s)")
+            axes2[i].set_ylabel("flow (veh/h)")
+            axes2[i].grid(True)
+            axes2[i].set_title(f"Cell {i + 1}")
+
+        for ax in axes2[num_cells:]:
+            ax.set_visible(False)
+
+        plt.tight_layout()
+
+        # Figure 3: Vehicle Speed (dynamic grid)
+        fig3, axes3 = plt.subplots(nrows, ncols, figsize=(4 * ncols, 3 * nrows))
+        fig3.suptitle("Vehicle Speed", fontsize=14, fontweight="bold")
+        axes3 = np.array(axes3).flatten()
+
+        for i in range(num_cells):
+            vf_cell = self.cells[i].vf
+            axes3[i].plot(time_seconds[:-1], speed[i, :-1], linewidth=1.5)
+            axes3[i].axhline(vf_cell, color="red", linestyle="--", linewidth=1)
+            axes3[i].set_ylim([0, max(vf_cell * 1.05, max_speed)])
+            axes3[i].set_xlim([0, actual_duration_seconds])
+            axes3[i].set_xlabel("time (s)")
+            axes3[i].set_ylabel("speed (km/h)")
+            axes3[i].grid(True)
+            axes3[i].set_title(f"Cell {i + 1}")
+
+        for ax in axes3[num_cells:]:
+            ax.set_visible(False)
+
+        plt.tight_layout()
+
+        # Figure 4: Input and Onramp Flows & Queues (combined demand+flow)
+        # determine which cells have onramps
+        onramp_cells = [
+            i
+            for i, c in enumerate(self.cells)
+            if getattr(c, "onramp", None) is not None
+        ]
+        # rows: 1 for input, plus one per onramp
+        rows = 1 + max(1, len(onramp_cells))
+        ncols_4 = 2  # combined demand+flow, and queue
+        fig4, axes4 = plt.subplots(rows, ncols_4, figsize=(6 * ncols_4, 3 * rows))
+        fig4.suptitle("Input and Onramp Flows & Queues", fontsize=14, fontweight="bold")
+
+        # normalize axes4 indexing to 2D
+        axes4 = np.array(axes4).reshape(rows, ncols_4)
+        axes4[0, 0].plot(
+            time_seconds[:-1], input_demand[:-1], linewidth=1.5, label="Input Demand"
+        )
+        axes4[0, 0].plot(
+            time_seconds[:-1], input_flow[:-1], linewidth=1.5, label="Input Flow"
+        )
+        axes4[0, 0].grid(True)
+        axes4[0, 0].set_xlim([0, actual_duration_seconds])
+        axes4[0, 0].set_ylim([0, max(max_input_demand, max_input_flow)])
+        axes4[0, 0].set_xlabel("time (s)")
+        axes4[0, 0].set_ylabel("veh/h")
+        axes4[0, 0].set_title("Input Demand & Flow")
+        axes4[0, 0].legend(fontsize="small", ncol=2, frameon=False)
+
+        axes4[0, 1].plot(
+            time_seconds[:-1], input_queue[:-1], linewidth=1.5, color="tab:gray"
+        )
+        axes4[0, 1].grid(True)
+        axes4[0, 1].set_xlim([0, actual_duration_seconds])
+        axes4[0, 1].set_ylim([0, max_input_queue])
+        axes4[0, 1].set_xlabel("time (s)")
+        axes4[0, 1].set_ylabel("Queue (veh)")
+        axes4[0, 1].set_title("Input Queue")
+
+        # for each onramp cell, plot combined demand+flow and queue in its own row
+        for row_idx, cell_idx in enumerate(onramp_cells, start=1):
+            # demand and flow combined
+            max_d = (
+                np.max(onramp_demand[cell_idx, :]) * 1.1
+                if np.max(onramp_demand[cell_idx, :]) > 0
+                else max_onramp_demand
+            )
+            max_f = (
+                np.max(onramp_flow[cell_idx, :]) * 1.1
+                if np.max(onramp_flow[cell_idx, :]) > 0
+                else max_onramp_flow
+            )
+            combined_max = max(max_d, max_f)
+
+            axes4[row_idx, 0].plot(
+                time_seconds[:-1],
+                onramp_demand[cell_idx, :-1],
+                linewidth=1.5,
+                label="Demand",
+            )
+            axes4[row_idx, 0].plot(
+                time_seconds[:-1],
+                onramp_flow[cell_idx, :-1],
+                linewidth=1.5,
+                label="Flow",
+            )
+            axes4[row_idx, 0].grid(True)
+            axes4[row_idx, 0].set_xlim([0, actual_duration_seconds])
+            axes4[row_idx, 0].set_ylim([0, combined_max])
+            axes4[row_idx, 0].set_xlabel("time (s)")
+            axes4[row_idx, 0].set_ylabel("veh/h")
+            axes4[row_idx, 0].set_title(f"Onramp Demand & Flow (Cell {cell_idx + 1})")
+            axes4[row_idx, 0].legend(fontsize="small", ncol=2, frameon=False)
+
+            # onramp queue
+            max_q = (
+                np.max(onramp_queue[cell_idx, :]) * 1.1
+                if np.max(onramp_queue[cell_idx, :]) > 0
+                else max_onramp_queue
+            )
+            axes4[row_idx, 1].plot(
+                time_seconds[:-1],
+                onramp_queue[cell_idx, :-1],
+                linewidth=1.5,
+                color="tab:gray",
+            )
+            axes4[row_idx, 1].grid(True)
+            axes4[row_idx, 1].set_xlim([0, actual_duration_seconds])
+            axes4[row_idx, 1].set_ylim([0, max_q])
+            axes4[row_idx, 1].set_xlabel("time (s)")
+            axes4[row_idx, 1].set_ylabel("Queue (veh)")
+            axes4[row_idx, 1].set_title(f"Onramp Queue (Cell {cell_idx + 1})")
+
+        plt.tight_layout()
+
+        # Figure 5: 3D Surface Plots
+        fig5 = plt.figure(figsize=(18, 6))
+        fig5.suptitle("3D Visualization", fontsize=14, fontweight="bold")
+
+        # create meshgrid for 3D plots
+        X_full, Y_full = np.meshgrid(time_seconds, np.arange(1, num_cells + 1))
+        X_truncated, Y_truncated = np.meshgrid(
+            time_seconds[:-1], np.arange(1, num_cells + 1)
+        )
+
+        # 3D density plot
+        max_rho_jam = max([cell.rho_jam for cell in self.cells])
+        ax1 = fig5.add_subplot(1, 3, 1, projection="3d")
+        ax1.plot_surface(
+            X_full, Y_full, density, cmap="viridis", edgecolor="none", alpha=0.9
+        )
+        ax1.view_init(elev=30, azim=-37.5)
+        ax1.set_xlabel("time (s)", rotation=30)
+        ax1.set_ylabel("Cell", rotation=-37.5)
+        ax1.set_zlabel("density (veh/km/lane)")
+        ax1.set_xlim([0, actual_duration_seconds])
+        ax1.set_ylim([1, num_cells])
+        ax1.set_zlim([0, max(max_rho_jam * 1.1, max_density)])
+
+        # 3D flow plot
+        ax2 = fig5.add_subplot(1, 3, 2, projection="3d")
+        ax2.plot_surface(
+            X_truncated,
+            Y_truncated,
+            flow[:, :-1],
+            cmap="viridis",
+            edgecolor="none",
+            alpha=0.9,
+        )
+        ax2.view_init(elev=30, azim=-37.5)
+        ax2.set_xlabel("time (s)", rotation=30)
+        ax2.set_ylabel("Cell", rotation=-37.5)
+        ax2.set_zlabel("flow (veh/h)")
+        ax2.set_xlim([0, actual_duration_seconds])
+        ax2.set_ylim([1, num_cells])
+        max_capacity = max([cell.Qc for cell in self.cells])
+        ax2.set_zlim([0, max_capacity])
+
+        # 3D speed plot
+        max_vf = max([cell.vf for cell in self.cells])
+        ax3 = fig5.add_subplot(1, 3, 3, projection="3d")
+        ax3.plot_surface(
+            X_truncated,
+            Y_truncated,
+            speed[:, :-1],
+            cmap="viridis",
+            edgecolor="none",
+            alpha=0.9,
+        )
+        ax3.view_init(elev=30, azim=-37.5)
+        ax3.set_xlabel("time (s)", rotation=30)
+        ax3.set_ylabel("Cell", rotation=-37.5)
+        ax3.set_zlabel("speed (km/h)")
+        ax3.set_xlim([0, actual_duration_seconds])
+        ax3.set_ylim([1, num_cells])
+        ax3.set_zlim([0, max(max_vf * 1.1, max_speed)])
+        plt.tight_layout()
+
+        # show plots
+        plt.show()

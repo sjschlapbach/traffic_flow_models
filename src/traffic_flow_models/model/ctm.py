@@ -3,7 +3,6 @@ import numpy as np
 from numpy.typing import NDArray
 
 from traffic_flow_models.network.network import Network
-from traffic_flow_models.controller.alinea import AlineaController
 from .helpers import (
     calculate_segment_input_flow,
     calculate_regulated_onramp_flow,
@@ -292,8 +291,6 @@ class CTM:
                     dt=dt,
                 )
 
-        # TODO: think about the possibility of simply tracking these values as states in the network?
-        # ! -> in this case, we would still need to track them separately during simulation for illustration
         # return all updated quantities for the network
         return (
             flow,
