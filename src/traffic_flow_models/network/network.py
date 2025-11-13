@@ -29,7 +29,7 @@ class Network:
     """
 
     def __init__(self) -> None:
-        """Initialize an empty self.
+        """Initialize an empty network.
 
         The created network contains an empty `cells` list. Cells can be
         added with `add_cell` which takes physical parameters and optionally
@@ -48,10 +48,10 @@ class Network:
         onramp: Optional[Onramp] = None,
         offramp: Optional[Offramp] = None,
     ) -> Cell:
-        """Create a new mainline cell and append it to the self.
+        """Create a new mainline cell and append it to the network.
 
         This method constructs a `Cell` instance using the provided
-        physical parameters and appends it to the end of the self. If a
+        physical parameters and appends it to the end of the network. If a
         previous cell exists it will set the upstream/downstream references
         so the two cells are connected. Optional `Onramp`/`Offramp`
         instances can be attached directly; their types are validated.
