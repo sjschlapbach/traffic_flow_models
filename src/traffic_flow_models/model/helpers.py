@@ -8,7 +8,7 @@ from traffic_flow_models.controller.alinea import AlineaController
 
 def calculate_segment_input_flow(
     first_cell: Cell, density: float, input_demand: float, input_queue: int, dt: float
-) -> Tuple[float, int]:
+) -> Tuple[float, float]:
     """
     Calculate the input flow and updated virtual input queue for a highway segment.
 
@@ -33,7 +33,7 @@ def calculate_segment_input_flow(
     return input_flow, updated_input_queue
 
 
-def update_queue(queue_length: int, demand: float, flow: float, dt: float) -> int:
+def update_queue(queue_length: int, demand: float, flow: float, dt: float) -> float:
     """
     Update the queue length based on demand and flow.
 
@@ -47,7 +47,7 @@ def update_queue(queue_length: int, demand: float, flow: float, dt: float) -> in
         Updated queue length (vehicles).
     """
     new_queue = queue_length + dt * (demand - flow)
-    return int(np.round(new_queue))
+    return new_queue
 
 
 def __calculate_onramp_flow(

@@ -92,18 +92,17 @@ class CTM:
         mainline_demand: float,
         input_queue: int,
         onramp_demand: NDArray[np.float64],
-        onramp_queue: NDArray[np.int32],
+        onramp_queue: NDArray[np.float64],
         previous_onramp_flow: NDArray[np.float64],
         dt: float,
-        controller: AlineaController | None = None,
     ) -> Tuple[
         NDArray[np.float64],
         NDArray[np.float64],
         NDArray[np.float64],
         float,
-        int,
+        float,
         NDArray[np.float64],
-        NDArray[np.int32],
+        NDArray[np.float64],
     ]:
         """Advance the CTM model by a single time step for the whole network.
 
@@ -163,7 +162,7 @@ class CTM:
         speed = np.zeros(num_cells)
         density = np.zeros(num_cells)
         onramp_flow = np.zeros(num_cells)
-        next_onramp_queue = np.zeros(num_cells, dtype=np.int32)
+        next_onramp_queue = np.zeros(num_cells)
         offramp_flow = np.zeros(num_cells)
 
         # compute the input flow and queue simulating congestion at
@@ -186,7 +185,7 @@ class CTM:
                 previous_onramp_flow=previous_onramp_flow[0],
                 onramp_demand=onramp_demand[0],
                 onramp_queue=onramp_queue[0],
-                controller=controller,
+                controller=network.cells[0].onramp.controller,
                 dt=dt,
             )
 
@@ -242,7 +241,9 @@ class CTM:
                     previous_onramp_flow=previous_onramp_flow[i + 1],
                     onramp_demand=onramp_demand[i + 1],
                     onramp_queue=onramp_queue[i + 1],
-                    controller=controller,
+                    controller=network.cells[
+                        i + 1
+                    ].onramp.controller,  # pyright: ignore[reportOptionalMemberAccess]
                     dt=dt,
                 )
 

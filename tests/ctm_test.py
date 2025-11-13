@@ -42,7 +42,7 @@ class TestCTM:
         mainline_demand = 500.0
         input_queue = 0
         onramp_demand = np.array([0.0], dtype=np.float64)
-        onramp_queue = np.array([0], dtype=np.int32)
+        onramp_queue = np.array([0], dtype=np.float64)
         previous_onramp_flow = np.array([0.0], dtype=np.float64)
         dt = 0.25
 
@@ -56,7 +56,6 @@ class TestCTM:
                 onramp_queue=onramp_queue,
                 previous_onramp_flow=previous_onramp_flow,
                 dt=dt,
-                controller=None,
             )
         )
 

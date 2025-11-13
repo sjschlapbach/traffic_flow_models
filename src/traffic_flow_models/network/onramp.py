@@ -1,3 +1,6 @@
+from traffic_flow_models.controller.alinea import AlineaController
+
+
 class Onramp:
     """A simple container for on-ramp physical parameters.
 
@@ -14,6 +17,7 @@ class Onramp:
         lane_capacity: float,
         free_flow_speed: float,
         jam_density: float,
+        controller: AlineaController | None = None,
     ) -> None:
         """Initialize the Onramp parameters.
 
@@ -32,3 +36,4 @@ class Onramp:
         self.w: float = self.Qc_lane / (
             self.rho_jam - self.rho_cr
         )  # backwards wave speed
+        self.controller = controller  # optional ramp metering controller
