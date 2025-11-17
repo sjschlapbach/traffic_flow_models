@@ -491,6 +491,7 @@ class Network:
                 onramp_demand_func=onramp_demand,
                 onramp_flow=onramp_flow,
                 onramp_queue=onramp_queue,
+                offramp_flow=offramp_flow,
             )
 
         return density, flow, speed, input_flow, input_queue, onramp_flow, onramp_queue
@@ -508,6 +509,7 @@ class Network:
         onramp_demand_func: Callable[[float, int], NDArray[np.float64]],
         onramp_flow: NDArray[np.float64],
         onramp_queue: NDArray[np.float64],
+        offramp_flow: NDArray[np.float64],
     ) -> None:
         """Plot comprehensive simulation results for the network.
 
@@ -595,14 +597,93 @@ class Network:
 
         for i in range(num_cells):
             Qc = self.cells[i].Qc
-            axes2[i].plot(time_seconds[:-1], flow[i, :-1], linewidth=1.5)
+            # mainline outflow
+            axes2[i].plot(
+                time_seconds[:-1], flow[i, :-1], linewidth=1.5, label="Cell outflow"
+            )
             axes2[i].axhline(Qc, color="red", linestyle="--", linewidth=1)
-            axes2[i].set_ylim([0, max(Qc * 1.05, np.max(flow[i, :-1]) * 1.05)])
+
+            has_offramp = getattr(self.cells[i], "offramp", None) is not None
+            has_onramp = getattr(self.cells[i], "onramp", None) is not None
+            max_off = 0
+            max_on = 0
+            max_input = 0
+
+            # if an offramp exists for this cell, plot its outflow and the total outflow
+            if has_offramp:
+                axes2[i].plot(
+                    time_seconds[:-1],
+                    offramp_flow[i, :-1],
+                    linewidth=1.2,
+                    color="tab:orange",
+                    label="Offramp outflow",
+                )
+
+                total_outflow = flow[i, :-1] + offramp_flow[i, :-1]
+                axes2[i].plot(
+                    time_seconds[:-1],
+                    total_outflow,
+                    linestyle="--",
+                    linewidth=1.0,
+                    color="gray",
+                    label="Total outflow",
+                )
+                max_off = (
+                    np.max(offramp_flow[i, :-1]) * 1.05
+                    if np.max(offramp_flow[i, :-1]) > 0
+                    else 0
+                )
+
+            # if an onramp exists for this cell, plot its flow on the same axes
+            if has_onramp:
+                axes2[i].plot(
+                    time_seconds[:-1],
+                    onramp_flow[i, :-1],
+                    linewidth=1.2,
+                    color="green",
+                    label="Onramp inflow",
+                )
+                max_on = (
+                    np.max(onramp_flow[i, :-1]) * 1.05
+                    if np.max(onramp_flow[i, :-1]) > 0
+                    else 0
+                )
+
+            # for the first cell, plot the input flow
+            if i == 0:
+                axes2[i].plot(
+                    time_seconds[:-1],
+                    input_flow[:-1],
+                    linewidth=1.2,
+                    color="green",
+                    label="Input flow",
+                )
+                max_input = (
+                    np.max(input_flow[:-1]) * 1.05 if np.max(input_flow[:-1]) > 0 else 0
+                )
+
+            # determine y-limit including possible offramp values
+            axes2[i].set_ylim(
+                [
+                    0,
+                    max(
+                        Qc * 1.05,
+                        np.max(flow[i, :-1]) * 1.05,
+                        max_off,
+                        max_on,
+                        max_input,
+                    ),
+                ]
+            )
             axes2[i].set_xlim([0, actual_duration_seconds])
             axes2[i].set_xlabel("time (s)")
             axes2[i].set_ylabel("flow (veh/h)")
             axes2[i].grid(True)
             axes2[i].set_title(f"Cell {i + 1}")
+
+            # compact legend if any extra inflows/outflows were plotted
+            if has_offramp or has_onramp or i == 0:
+                axes2[i].legend(fontsize="small", frameon=False, loc="upper right")
 
         for ax in axes2[num_cells:]:
             ax.set_visible(False)
@@ -638,7 +719,7 @@ class Network:
             if getattr(c, "onramp", None) is not None
         ]
         # rows: 1 for input, plus one per onramp
-        rows = 1 + max(1, len(onramp_cells))
+        rows = 1 + len(onramp_cells)
         ncols_4 = 2  # combined demand+flow, and queue
         fig4, axes4 = plt.subplots(rows, ncols_4, figsize=(6 * ncols_4, 3 * rows))
         fig4.suptitle("Input and Onramp Flows & Queues", fontsize=14, fontweight="bold")
