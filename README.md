@@ -1,5 +1,7 @@
 # Macroscopic Traffic Flow Models
 
+[![Python Testing](https://github.com/sjschlapbach/traffic_flow_models/actions/workflows/python_testing.yml/badge.svg)](https://github.com/sjschlapbach/traffic_flow_models/actions/workflows/python_testing.yml)
+
 A Python library for simulating and analyzing macroscopic traffic flow on highway networks. This package implements two widely-used traffic flow models—**Cell Transmission Model (CTM)** and **METANET**—along with network infrastructure components, ramp metering controllers (ALINEA), and visualization tools.
 
 ## Features
