@@ -11,9 +11,26 @@ from .helpers import (
 
 
 # TODO: add tests for the METANET model
-# TODO: add docstrings to all methods
 class METANET:
     def __init__(self, tau, nu, kappa, delta, phi, alpha):
+        """Create a METANET model instance with given parameters.
+
+        The METANET model is a second-order macroscopic traffic model that
+        includes dynamics for both density and speed. This constructor stores
+        the model parameters used in the speed update and flow computations.
+
+        Args:
+            tau: Relaxation time scale for speed dynamics (time units).
+            nu: Anticipation coefficient controlling sensitivity to downstream
+                density gradients.
+            kappa: Small positive constant added to densities to avoid
+                division-by-zero in speed/flow formulas.
+            delta: Weighting coefficient for onramp influence on speed.
+            phi: Coefficient for additional deceleration due to upcoming
+                 lane drops.
+            alpha: Shape parameter used in the stationary velocity function.
+        """
+
         self.tau = tau
         self.nu = nu
         self.kappa = kappa
@@ -22,12 +39,58 @@ class METANET:
         self.alpha = alpha
 
     def critical_density(self, cell: Cell) -> float:
+        """Return the critical density for a given cell.
+
+        The METANET implementation uses an adjusted definition of the
+        critical density that depends on the model parameter ``alpha`` and the
+        cell's free-flow speed. The returned value has units of vehicles per
+        length per lane.
+
+        Args:
+            cell: The `Cell` instance for which to compute the critical
+                density.
+
+        Returns:
+            The critical density (vehicles per length per lane).
+        """
+
         return cell.Qc_lane / (cell.vf * np.exp(-1 / self.alpha))
 
     def backward_wave_speed(self, cell: Cell) -> float:
+        """Return the backward (congestion) wave speed for a given cell.
+
+        The backward wave speed is computed from the cell capacity and the
+        difference between jam density and critical density. This value is
+        typically used to compute how congestion propagates upstream.
+
+        Args:
+            cell: The `Cell` instance for which to compute the backward wave
+                speed.
+
+        Returns:
+            The backward wave speed (length per time).
+        """
+
         return cell.Qc / (cell.rho_jam - self.critical_density(cell=cell))
 
     def stationary_velocity(self, cell: Cell, density: float) -> float:
+        """Compute the stationary (equilibrium) velocity for a cell.
+
+        The stationary velocity is the speed that the traffic on the cell would
+        adopt in the absence of dynamics, given the current density. METANET
+        uses an exponential functional form parameterized by ``alpha`` and the
+        cell's free-flow speed (fundamental diagram).
+
+        Args:
+            cell: The `Cell` instance providing the free-flow speed and
+                critical density information.
+            density: The density at which to evaluate the stationary
+                velocity (vehicles per length per lane).
+
+        Returns:
+            The stationary velocity (length per time unit).
+        """
+
         return cell.vf * np.exp(
             -1 / self.alpha * (density / self.critical_density(cell=cell)) ** self.alpha
         )
@@ -45,6 +108,48 @@ class METANET:
         previous_speed,
         dt,
     ) -> Tuple[float, float, float]:
+        """Compute density, speed and flow updates for a single METANET cell.
+
+        Implements the METANET discrete-time update for a homogeneous cell.
+        The method updates the density using conservation of vehicles and
+        updates the speed using the METANET second-order dynamics which
+        include relaxation towards a stationary velocity, convection from
+        upstream speed differences, anticipation of downstream density
+        gradients, and onramp-induced effects. An extra deceleration term is
+        added when a lane drop is present in the subsequent downstream cell.
+
+        Note: Off-ramps in this implementation split the outflow but do not
+        directly modify the density update term, matching common METANET
+        formulations.
+
+        Args:
+            cell: The `Cell` instance describing geometry and lane-drop info.
+            upstream_flow: Flow entering the cell from upstream (vehicles per
+                time unit).
+            previous_flow: Flow leaving the cell at the previous time step
+                (vehicles per time unit).
+            onramp_flow: Flow entering from an onramp attached to the cell
+                (vehicles per time unit).
+            offramp_flow: Flow leaving via an offramp attached to the cell
+                (vehicles per time unit).
+            previous_density: Density at the previous time step
+                (vehicles per length per lane).
+            downstream_density: Density in the downstream cell used for
+                anticipation terms (vehicles per length per lane).
+            upstream_speed: Speed in the upstream cell used for convective
+                coupling (length per time).
+            previous_speed: Speed at the previous time step in this cell
+                (length per time).
+            dt: Time step length (same time units as flows).
+
+        Returns:
+            A tuple ``(density, speed, flow)`` where:
+            - density: Updated density after one time step (vehicles per
+              length per lane).
+            - speed: Updated speed after one time step (length per time).
+            - flow: Updated flow leaving the cell (vehicles per time).
+        """
+
         # compute the new density based on the flows at the previous timestep
         # Note: off-ramps are modeled as splitting the outflow and do not
         # directly reduce the density update term (matches MATLAB METANET).
@@ -110,6 +215,59 @@ class METANET:
         NDArray[np.float64],
         NDArray[np.float64],
     ]:
+        """Advance the METANET model by a single time step for the whole network.
+
+        This method computes the mainline cell flows, onramp flows and the
+        resulting next-step densities and speeds for every cell in the provided
+        `network` using the METANET discretization implemented in
+        :meth:`cell_update`.
+
+        Args:
+            network: The `Network` object describing the cells, their
+                fundamental diagram parameters and ramp connectivity.
+            density: 1-D array of current densities for each cell
+                (vehicles per length per lane), shape `(num_cells,)`.
+            speed: 1-D array of current speeds for each cell (length per time),
+                shape `(num_cells,)`.
+            flow: 1-D array of current outflows for each cell (vehicles per
+                time), shape `(num_cells,)`.
+            mainline_demand: Demand (flow) entering the first cell of the
+                segment (vehicles per time unit).
+            input_queue: Integer queue length at the segment input (vehicles).
+            onramp_demand: 1-D array with onramp demands for each cell
+                (vehicles per time unit), shape `(num_cells,)`.
+            onramp_queue: 1-D integer array with current onramp queue lengths
+                for each cell (vehicles), shape `(num_cells,)`.
+            onramp_flow: 1-D array with the previous time-step onramp flows for
+                each cell (vehicles per time unit), shape `(num_cells,)`.
+            dt: Time step length (same time units as flows).
+
+        Returns:
+            A tuple with the following values:
+            - flow: ndarray, mainline outflow from each cell (vehicles per
+              time unit), shape `(num_cells,)`.
+            - density: ndarray, densities after advancing one time step
+              (vehicles per length per lane), shape `(num_cells,)`.
+            - speed: ndarray, speeds after advancing one time step (length
+              per time unit), shape `(num_cells,)`.
+            - input_flow: float, flow that actually entered the first cell
+              during this step (vehicles per time unit).
+            - next_input_queue: float, updated queue length at the segment
+              input (vehicles) after this time step.
+            - onramp_flow: ndarray, onramp flows applied to each cell
+              (vehicles per time unit), shape `(num_cells,)`.
+            - offramp_flow: ndarray, offramp flows applied to each cell
+              (vehicles per time unit), shape `(num_cells,)`.
+            - next_onramp_queue: ndarray, updated onramp queue lengths for
+              each cell (vehicles), shape `(num_cells,)`.
+
+        Notes:
+            - Units must be consistent across `density`, `flow` and `dt`.
+            - The function enforces physical capacity constraints by relying
+              on regulated onramp flows (via controllers) and using
+              look-ahead checks for downstream onramps.
+        """
+
         # initialize model quantities for current iteration
         num_cells = len(network.cells)
         next_flow = np.zeros(num_cells)
