@@ -26,6 +26,7 @@ pip install -e ".[dev]"
 ```
 
 On macOS, you may need to install Python 3.13 explicitly:
+
 ```bash
 brew install python@3.13
 python3.13 -m venv venv
@@ -64,6 +65,7 @@ pytest
 ## Development
 
 Contributions are welcome! Please ensure that:
+
 1. All tests pass (`pytest`)
 2. Code is formatted with [Black](https://github.com/psf/black)
 3. New features include appropriate tests
@@ -76,7 +78,7 @@ Contributions are welcome! Please ensure that:
 from traffic_flow_models import Network, Onramp
 
 network = Network()
-network.add_cell(length=0.5, lanes=3, lane_capacity=2000, 
+network.add_cell(length=0.5, lanes=3, lane_capacity=2000,
                  free_flow_speed=100, jam_density=180)
 network.add_cell(length=0.5, lanes=3, lane_capacity=2000,
                  free_flow_speed=100, jam_density=180,
@@ -122,10 +124,12 @@ onramp = Onramp(lanes=1, lane_capacity=2000, free_flow_speed=100,
 
 ## License
 
-This project was developed by Julius Schlapbach (juliussc@ethz.ch).
+TBD
+
+<!-- TODO: add license here before open-sourcing -->
 
 ## References
 
 - **CTM**: Daganzo, C. F. (1994). The cell transmission model: A dynamic representation of highway traffic consistent with the hydrodynamic theory. Transportation Research Part B, 28(4), 269-287.
-- **METANET**: Papageorgiou, M., Blosseville, J. M., & Hadj-Salem, H. (1990). Modelling and real-time control of traffic flow on the southern part of Boulevard Périphérique in Paris. Transportation Research Part A, 24(5), 345-359.
+- **METANET**: Messmer, A., & Papageorgiou, M. (1990). METANET: A macroscopic simulation program for motorway networks. Traffic Engineering & Control.
 - **ALINEA**: Papageorgiou, M., Hadj-Salem, H., & Blosseville, J. M. (1991). ALINEA: A local feedback control law for on-ramp metering. Transportation Research Record, 1320, 58-64.
