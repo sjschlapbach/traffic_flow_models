@@ -10,7 +10,6 @@ from .helpers import (
 )
 
 
-# TODO: add tests for the METANET model
 class METANET:
     def __init__(self, tau, nu, kappa, delta, phi, alpha):
         """Create a METANET model instance with given parameters.
