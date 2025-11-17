@@ -32,7 +32,6 @@ class CTM:
         """Create a CTM model instance."""
         return
 
-    # TODO: extend tests to include this function
     def critical_density(self, cell: Cell) -> float:
         """Return the critical density for a given cell.
 
@@ -44,7 +43,6 @@ class CTM:
         """
         return cell.Qc_lane / cell.vf
 
-    # TODO: extend tests to include this function
     def backward_wave_speed(self, cell: Cell) -> float:
         """Return the backward wave speed for a given cell.
 

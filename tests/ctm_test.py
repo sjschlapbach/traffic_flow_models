@@ -84,3 +84,28 @@ class TestCTM:
 
         assert np.isclose(density[0], next_density_direct)
         assert np.isclose(speed[0], speed_direct)
+
+    def test_critical_density_and_backward_wave(self):
+        # create a simple network and CTM instance
+        net = Network()
+        # choose parameters that allow easy manual verification
+        net.add_cell(
+            length=1.0,
+            lanes=1,
+            lane_capacity=2000,
+            free_flow_speed=100,
+            jam_density=150,
+        )
+
+        model = CTM()
+        cell = net.cells[0]
+
+        # expected critical density: Qc_lane / vf
+        expected_rho_cr = cell.Qc_lane / cell.vf
+        computed_rho_cr = model.critical_density(cell=cell)
+        assert np.isclose(computed_rho_cr, expected_rho_cr)
+
+        # expected backward wave speed: Qc / (rho_jam - rho_cr)
+        expected_w = cell.Qc / (cell.rho_jam - expected_rho_cr)
+        computed_w = model.backward_wave_speed(cell=cell)
+        assert np.isclose(computed_w, expected_w)
