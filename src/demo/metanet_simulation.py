@@ -8,6 +8,9 @@ from demo.scenarios import (
     onramp_demand_c,
     setup_network_ab,
     setup_network_c,
+    mainline_demand_d,
+    onramp_demand_d,
+    setup_network_d,
 )
 
 
@@ -41,6 +44,10 @@ if __name__ == "__main__":
         mainline_demand = mainline_demand_c
         onramp_demand = onramp_demand_c
         setup_network = setup_network_c
+    elif scenario == "D":
+        mainline_demand = mainline_demand_d
+        onramp_demand = onramp_demand_d
+        setup_network = setup_network_d
     else:
         raise ValueError(f"Scenario {scenario} is not defined.")
 
@@ -50,6 +57,7 @@ if __name__ == "__main__":
         alinea_gain=alinea_gain,
         alinea_setpoint=alinea_setpoint,
     )
+    network.plot()
 
     # run a simulation of the network using the CTM model
     metanet = METANET(tau=tau, nu=nu, kappa=kappa, delta=delta, phi=phi, alpha=alpha)
