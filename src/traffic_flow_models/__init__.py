@@ -10,11 +10,12 @@ from .network.onramp import Onramp
 from .network.offramp import Offramp
 from .network.network import Network
 
-# TODO: re-export model components
+# re-export model components
 from .model.ctm import CTM
+from .model.metanet import METANET
 
 # re-export controller components
 from .controller.alinea import AlineaController
 
 
-__all__ = ["Cell", "Onramp", "Offramp", "Network", "CTM", "AlineaController"]
+__all__ = ["Cell", "Onramp", "Offramp", "Network", "CTM", "METANET", "AlineaController"]

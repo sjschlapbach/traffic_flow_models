@@ -46,15 +46,17 @@ class TestCTM:
         previous_onramp_flow = np.array([0.0], dtype=np.float64)
         dt = 0.25
 
-        flow, density, speed, input_flow, _, onramp_flow, next_onramp_queue = (
+        flow, density, speed, input_flow, _, onramp_flow, _, next_onramp_queue = (
             model.step(
                 network=net,
-                previous_density=previous_density,
+                density=previous_density,
+                speed=np.array([0.0], dtype=np.float64),  # ignored for CTM
+                flow=np.array([0.0], dtype=np.float64),  # ignored for CTM
                 mainline_demand=mainline_demand,
                 input_queue=input_queue,
                 onramp_demand=onramp_demand,
                 onramp_queue=onramp_queue,
-                previous_onramp_flow=previous_onramp_flow,
+                onramp_flow=previous_onramp_flow,
                 dt=dt,
             )
         )

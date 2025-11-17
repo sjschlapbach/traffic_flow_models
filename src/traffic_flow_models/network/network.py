@@ -1,4 +1,4 @@
-from typing import Callable, List, Optional, Tuple, TYPE_CHECKING
+from typing import Callable, List, Optional, Tuple, TYPE_CHECKING, Union
 import matplotlib.pyplot as plt
 from matplotlib import patches
 import numpy as np
@@ -11,7 +11,7 @@ from .onramp import Onramp
 from .offramp import Offramp
 
 if TYPE_CHECKING:
-    from traffic_flow_models.model.ctm import CTM
+    from traffic_flow_models import CTM, METANET
 
 
 class Network:
@@ -73,6 +73,14 @@ class Network:
                 types.
         """
 
+        # check if the network already contains an upstream cell and if there is a lane drop
+        lane_drop = 0
+        if len(self.cells) > 0:
+            upstream_cell = self.cells[-1]
+            lane_drop = upstream_cell.lanes - lanes
+            if lane_drop > 0:
+                upstream_cell.upcoming_lane_drop = lane_drop
+
         new_cell = Cell(
             length=length,
             lanes=lanes,
@@ -81,12 +89,7 @@ class Network:
             jam_density=jam_density,
         )
 
-        # chain from previous downstream reference: set downstream and upstream
-        # pointers so both sides of the connection are known.
-        if len(self.cells) > 0:
-            prev = self.cells[-1]
-            prev.downstream_cell = new_cell
-            new_cell.upstream_cell = prev
+        # append the new cell and update parameters dependent on relative coupling
         self.cells.append(new_cell)
 
         # attach provided ramp objects directly (do not attempt to construct
@@ -286,10 +289,7 @@ class Network:
 
             # draw downstream connector only when downstream_cell points to the next cell
             next_idx = i + 1
-            if (
-                next_idx < len(self.cells)
-                and cell.downstream_cell is self.cells[next_idx]
-            ):
+            if next_idx < len(self.cells):
                 # small arrow between this cell and the next (flow left->right)
                 edge_off = min(width, spacing) * 0.05
                 start_x = x + width - edge_off
@@ -394,7 +394,7 @@ class Network:
         self,
         duration: float,
         dt: float,
-        model: "CTM",
+        model: Union["CTM", "METANET"],
         mainline_demand: Callable[[float], float],
         onramp_demand: Callable[[float, int], NDArray[np.float64]],
         plot_results: bool = False,
@@ -440,13 +440,18 @@ class Network:
         num_cells = len(self.cells)
         density = np.zeros((num_cells, len(time_array)))  # rho_i (veh/km/lane)
         flow = np.zeros((num_cells, len(time_array)))  # q_i (veh/h)
-        speed = np.zeros((num_cells, len(time_array)))  # v_i (km/h)
+        speed = np.zeros((num_cells, len(time_array)), dtype=np.float64)  # v_i (km/h)
+        speed[:, 0] = np.array(
+            [cell.vf for cell in self.cells], dtype=np.float64
+        )  # initialize first cell in free flow (especially important for METANET)
 
         input_flow = np.zeros(len(time_array))  # q_0 (veh/h)
         input_queue = np.zeros(len(time_array))  # number of vehicles
 
         onramp_flow = np.zeros((num_cells, len(time_array)))  # r_i (veh/h)
         onramp_queue = np.zeros((num_cells, len(time_array)))  # number of vehicles
+
+        offramp_flow = np.zeros((num_cells, len(time_array)))  # s_i (veh/h)
 
         # run the simulation
         for t in range(len(time_array) - 1):
@@ -457,15 +462,18 @@ class Network:
                 input_flow[t + 1],
                 input_queue[t + 1],
                 onramp_flow[:, t + 1],
+                offramp_flow[:, t + 1],
                 onramp_queue[:, t + 1],
             ) = model.step(
                 network=self,
-                previous_density=density[:, t],
+                density=density[:, t],
+                speed=speed[:, t],
+                flow=flow[:, t],
                 mainline_demand=mainline_demand(time_array[t]),
                 input_queue=input_queue[t],
                 onramp_demand=onramp_demand(time_array[t], num_cells),
                 onramp_queue=onramp_queue[:, t],
-                previous_onramp_flow=onramp_flow[:, t],
+                onramp_flow=onramp_flow[:, t],
                 dt=dt,
             )
 
@@ -486,6 +494,7 @@ class Network:
 
         return density, flow, speed, input_flow, input_queue, onramp_flow, onramp_queue
 
+    # TODO: add offramp flows to the plotting functions if they are defined in the network
     def plot_simulation_results(
         self,
         time: NDArray[np.float64],
