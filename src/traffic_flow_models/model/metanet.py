@@ -1,5 +1,4 @@
 from typing import Tuple
-from networkx import config
 import numpy as np
 from numpy.typing import NDArray
 
