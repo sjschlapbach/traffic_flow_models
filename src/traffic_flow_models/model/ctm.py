@@ -2,7 +2,7 @@ from typing import Tuple
 import numpy as np
 from numpy.typing import NDArray
 
-from traffic_flow_models.network.network import Network
+from traffic_flow_models.network.network import Network, Cell
 from .helpers import (
     calculate_segment_input_flow,
     calculate_regulated_onramp_flow,
@@ -31,6 +31,29 @@ class CTM:
     def __init__(self) -> None:
         """Create a CTM model instance."""
         return
+
+    def critical_density(self, cell: Cell) -> float:
+        """Return the critical density for a given cell.
+
+        Args:
+            cell: The `Cell` instance for which to compute the critical density.
+
+        Returns:
+            The critical density (vehicles per kilometer per lane).
+        """
+        return cell.Qc_lane / cell.vf
+
+    def backward_wave_speed(self, cell: Cell) -> float:
+        """Return the backward wave speed for a given cell.
+
+        Args:
+            cell: The `Cell` instance for which to compute the backward wave speed.
+
+        Returns:
+            The backward wave speed computed based on the critical density.
+        """
+        rho_cr = self.critical_density(cell=cell)
+        return cell.Qc / (cell.rho_jam - rho_cr)
 
     def cell_update(
         self,
@@ -87,12 +110,18 @@ class CTM:
     def step(
         self,
         network: Network,
-        previous_density: NDArray[np.float64],
+        density: NDArray[np.float64],
+        speed: NDArray[
+            np.float64
+        ],  # unused - required for input argument consistency across models
+        flow: NDArray[
+            np.float64
+        ],  # unused - required for input argument consistency across models
         mainline_demand: float,
         input_queue: int,
         onramp_demand: NDArray[np.float64],
         onramp_queue: NDArray[np.float64],
-        previous_onramp_flow: NDArray[np.float64],
+        onramp_flow: NDArray[np.float64],
         dt: float,
     ) -> Tuple[
         NDArray[np.float64],
@@ -100,6 +129,7 @@ class CTM:
         NDArray[np.float64],
         float,
         float,
+        NDArray[np.float64],
         NDArray[np.float64],
         NDArray[np.float64],
     ]:
@@ -143,6 +173,8 @@ class CTM:
               input (vehicles) after this time step.
             - onramp_flow: ndarray, onramp flows applied to each cell
               (vehicles per time unit), shape `(num_cells,)`.
+            - offramp_flow: ndarray, offramp flows applied to each cell
+              (vehicles per time unit), shape `(num_cells,)`.
             - next_onramp_queue: ndarray, updated onramp queue lengths for
               each cell (vehicles), shape `(num_cells,)`.
 
@@ -157,18 +189,19 @@ class CTM:
 
         # initialize model quantities for current iteration
         num_cells = len(network.cells)
-        flow = np.zeros(num_cells)
-        speed = np.zeros(num_cells)
-        density = np.zeros(num_cells)
-        onramp_flow = np.zeros(num_cells)
+        next_flow = np.zeros(num_cells)
+        next_speed = np.zeros(num_cells)
+        next_density = np.zeros(num_cells)
+        next_onramp_flow = np.zeros(num_cells)
         next_onramp_queue = np.zeros(num_cells)
-        offramp_flow = np.zeros(num_cells)
+        next_offramp_flow = np.zeros(num_cells)
 
         # compute the input flow and queue simulating congestion at
         # the beginning of the currently considered highway segment
-        input_flow, next_input_queue = calculate_segment_input_flow(
+        next_input_flow, next_input_queue = calculate_segment_input_flow(
             first_cell=network.cells[0],
-            density=previous_density[0],
+            backward_wave_speed=self.backward_wave_speed(cell=network.cells[0]),
+            density=density[0],
             input_demand=mainline_demand,
             input_queue=input_queue,
             dt=dt,
@@ -177,11 +210,12 @@ class CTM:
         # if a ramp controller is defined and an onramp is present in the
         # first cell, compute the regulated onramp flow
         if network.cells[0].onramp is not None:
-            onramp_flow[0] = calculate_regulated_onramp_flow(
+            next_onramp_flow[0] = calculate_regulated_onramp_flow(
                 cell=network.cells[0],
-                current_cell=0,
-                density=previous_density,
-                previous_onramp_flow=previous_onramp_flow[0],
+                cell_ix=0,
+                backward_wave_speed=self.backward_wave_speed(cell=network.cells[0]),
+                density=density,
+                previous_onramp_flow=onramp_flow[0],
                 onramp_demand=onramp_demand[0],
                 onramp_queue=onramp_queue[0],
                 controller=network.cells[0].onramp.controller,
@@ -191,24 +225,28 @@ class CTM:
             # to ensure that the flows in the CTM model remains physically feasible
             # in cells with an onramp, we need to cap them at the maximum capacity
             # -> in case of violations, both flows are reduced proportionally
-            input_flow, onramp_flow[0] = cap_cell_flows(
+            next_input_flow, next_onramp_flow[0] = cap_cell_flows(
                 cell=network.cells[0],
-                density=previous_density[0],
-                current_flow=input_flow,
-                onramp_flow=onramp_flow[0],
+                backward_wave_speed=self.backward_wave_speed(cell=network.cells[0]),
+                density=density[0],
+                current_flow=next_input_flow,
+                onramp_flow=next_onramp_flow[0],
             )
 
             # update the queue length on the onramp
             next_onramp_queue[0] = update_queue(
                 queue_length=onramp_queue[0],
                 demand=onramp_demand[0],
-                flow=onramp_flow[0],
+                flow=next_onramp_flow[0],
                 dt=dt,
             )
 
             # update the queue length at the input of the segment
             next_input_queue = update_queue(
-                queue_length=input_queue, demand=mainline_demand, flow=input_flow, dt=dt
+                queue_length=input_queue,
+                demand=mainline_demand,
+                flow=next_input_flow,
+                dt=dt,
             )
 
         # iterate over all intermediate cells and update the onramp and
@@ -216,16 +254,18 @@ class CTM:
         for i in range(num_cells):
             # compute the cell flow based on the downstream density
             if i == num_cells - 1:
-                flow[i] = calculate_cell_flow(
+                next_flow[i] = calculate_cell_flow(
                     cell=network.cells[i],
-                    density=previous_density[i],
-                    downstream_density=network.cells[i].rho_cr,
+                    backward_wave_speed=self.backward_wave_speed(cell=network.cells[i]),
+                    density=density[i],
+                    downstream_density=self.critical_density(cell=network.cells[i]),
                 )
             else:
-                flow[i] = calculate_cell_flow(
+                next_flow[i] = calculate_cell_flow(
                     cell=network.cells[i],
-                    density=previous_density[i],
-                    downstream_density=previous_density[i + 1],
+                    backward_wave_speed=self.backward_wave_speed(cell=network.cells[i]),
+                    density=density[i],
+                    downstream_density=density[i + 1],
                 )
 
             # LOOKAHEAD: verify that the computed flow can be sustained
@@ -233,11 +273,14 @@ class CTM:
             # in cells with an onramp, we need to cap them at the maximum capacity
             # -> in case of violations, both flows are reduced proportionally
             if i < num_cells - 1 and network.cells[i + 1].onramp is not None:
-                onramp_flow[i + 1] = calculate_regulated_onramp_flow(
+                next_onramp_flow[i + 1] = calculate_regulated_onramp_flow(
                     cell=network.cells[i + 1],
-                    current_cell=i,
-                    density=previous_density,
-                    previous_onramp_flow=previous_onramp_flow[i + 1],
+                    cell_ix=i + 1,
+                    backward_wave_speed=self.backward_wave_speed(
+                        cell=network.cells[i + 1]
+                    ),
+                    density=density,
+                    previous_onramp_flow=onramp_flow[i + 1],
                     onramp_demand=onramp_demand[i + 1],
                     onramp_queue=onramp_queue[i + 1],
                     controller=network.cells[
@@ -246,58 +289,62 @@ class CTM:
                     dt=dt,
                 )
 
-                flow[i], onramp_flow[i + 1] = cap_cell_flows(
+                next_flow[i], next_onramp_flow[i + 1] = cap_cell_flows(
                     cell=network.cells[i + 1],
-                    density=previous_density[i + 1],
-                    current_flow=flow[i],
-                    onramp_flow=onramp_flow[i + 1],
+                    backward_wave_speed=self.backward_wave_speed(
+                        cell=network.cells[i + 1]
+                    ),
+                    density=density[i + 1],
+                    current_flow=next_flow[i],
+                    onramp_flow=next_onramp_flow[i + 1],
                 )
 
                 # update the queue length on the onramp
                 next_onramp_queue[i + 1] = update_queue(
                     queue_length=onramp_queue[i + 1],
                     demand=onramp_demand[i + 1],
-                    flow=onramp_flow[i + 1],
+                    flow=next_onramp_flow[i + 1],
                     dt=dt,
                 )
 
             # if an offramp is present in the current cell, split the flow accordingly
             current_cell = network.cells[i]
             if current_cell.offramp is not None:
-                offramp_flow[i] = current_cell.offramp.split_ratio * flow[i]
-                flow[i] = (1 - current_cell.offramp.split_ratio) * flow[i]
+                next_offramp_flow[i] = current_cell.offramp.split_ratio * next_flow[i]
+                next_flow[i] = (1 - current_cell.offramp.split_ratio) * next_flow[i]
 
             # compute the flow, density and speed updates for the current cell
             if i > 0:
-                density[i], speed[i] = self.cell_update(
+                next_density[i], next_speed[i] = self.cell_update(
                     cell_lanes=current_cell.lanes,
                     cell_length=current_cell.length,
-                    density=previous_density[i],
-                    upstream_flow=flow[i - 1],
-                    cell_flow=flow[i],
+                    density=density[i],
+                    upstream_flow=next_flow[i - 1],
+                    cell_flow=next_flow[i],
                     onramp_flow=onramp_flow[i],
-                    offramp_flow=offramp_flow[i],
+                    offramp_flow=next_offramp_flow[i],
                     dt=dt,
                 )
             else:
-                density[i], speed[i] = self.cell_update(
+                next_density[i], next_speed[i] = self.cell_update(
                     cell_lanes=current_cell.lanes,
                     cell_length=current_cell.length,
-                    density=previous_density[i],
-                    upstream_flow=input_flow,
-                    cell_flow=flow[i],
+                    density=density[i],
+                    upstream_flow=next_input_flow,
+                    cell_flow=next_flow[i],
                     onramp_flow=onramp_flow[i],
-                    offramp_flow=offramp_flow[i],
+                    offramp_flow=next_offramp_flow[i],
                     dt=dt,
                 )
 
         # return all updated quantities for the network
         return (
-            flow,
-            density,
-            speed,
-            input_flow,
+            next_flow,
+            next_density,
+            next_speed,
+            next_input_flow,
             next_input_queue,
-            onramp_flow,
+            next_onramp_flow,
+            next_offramp_flow,
             next_onramp_queue,
         )

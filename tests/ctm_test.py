@@ -46,15 +46,17 @@ class TestCTM:
         previous_onramp_flow = np.array([0.0], dtype=np.float64)
         dt = 0.25
 
-        flow, density, speed, input_flow, _, onramp_flow, next_onramp_queue = (
+        flow, density, speed, input_flow, _, onramp_flow, _, next_onramp_queue = (
             model.step(
                 network=net,
-                previous_density=previous_density,
+                density=previous_density,
+                speed=np.array([0.0], dtype=np.float64),  # ignored for CTM
+                flow=np.array([0.0], dtype=np.float64),  # ignored for CTM
                 mainline_demand=mainline_demand,
                 input_queue=input_queue,
                 onramp_demand=onramp_demand,
                 onramp_queue=onramp_queue,
-                previous_onramp_flow=previous_onramp_flow,
+                onramp_flow=previous_onramp_flow,
                 dt=dt,
             )
         )
@@ -82,3 +84,28 @@ class TestCTM:
 
         assert np.isclose(density[0], next_density_direct)
         assert np.isclose(speed[0], speed_direct)
+
+    def test_critical_density_and_backward_wave(self):
+        # create a simple network and CTM instance
+        net = Network()
+        # choose parameters that allow easy manual verification
+        net.add_cell(
+            length=1.0,
+            lanes=1,
+            lane_capacity=2000,
+            free_flow_speed=100,
+            jam_density=150,
+        )
+
+        model = CTM()
+        cell = net.cells[0]
+
+        # expected critical density: Qc_lane / vf
+        expected_rho_cr = cell.Qc_lane / cell.vf
+        computed_rho_cr = model.critical_density(cell=cell)
+        assert np.isclose(computed_rho_cr, expected_rho_cr)
+
+        # expected backward wave speed: Qc / (rho_jam - rho_cr)
+        expected_w = cell.Qc / (cell.rho_jam - expected_rho_cr)
+        computed_w = model.backward_wave_speed(cell=cell)
+        assert np.isclose(computed_w, expected_w)

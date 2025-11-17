@@ -7,13 +7,19 @@ from traffic_flow_models.controller.alinea import AlineaController
 
 
 def calculate_segment_input_flow(
-    first_cell: Cell, density: float, input_demand: float, input_queue: int, dt: float
+    first_cell: Cell,
+    backward_wave_speed: float,
+    density: float,
+    input_demand: float,
+    input_queue: int,
+    dt: float,
 ) -> Tuple[float, float]:
     """
     Calculate the input flow and updated virtual input queue for a highway segment.
 
     Args:
         first_cell: The first cell of the highway segment.
+        backward_wave_speed: The backward wave speed of the first cell.
         density: Current density in the first cell (vehicles per length unit).
         input_demand: Demand for vehicles entering the segment (vehicles per time unit).
         input_queue: Current virtual input queue length (vehicles).
@@ -25,7 +31,7 @@ def calculate_segment_input_flow(
         new queue length after accounting for the flow.
     """
     qin_demand = input_demand + input_queue / dt
-    qin_supply = first_cell.w * (first_cell.rho_jam - density)
+    qin_supply = backward_wave_speed * (first_cell.rho_jam - density)
     input_flow = min(first_cell.Qc, qin_demand, qin_supply)
     updated_input_queue = update_queue(
         queue_length=input_queue, demand=input_demand, flow=input_flow, dt=dt
@@ -52,6 +58,7 @@ def update_queue(queue_length: int, demand: float, flow: float, dt: float) -> fl
 
 def __calculate_onramp_flow(
     cell: Cell,
+    backward_wave_speed: float,
     density: float,
     onramp_demand: float,
     onramp_queue: int,
@@ -63,6 +70,7 @@ def __calculate_onramp_flow(
 
     Args:
         cell: The Cell instance to which the onramp is attached.
+        backward_wave_speed: The backward wave speed of the cell.
         density: Current density in the cell (vehicles per length unit).
         onramp_demand: Demand for vehicles from the onramp (vehicles per time unit).
         onramp_queue: Current onramp queue length (vehicles).
@@ -79,7 +87,7 @@ def __calculate_onramp_flow(
         raise ValueError("Cell does not have an onramp attached.")
 
     r_demand = onramp_demand + onramp_queue / dt
-    r_supply = cell.w * (cell.rho_jam - density)
+    r_supply = backward_wave_speed * (cell.rho_jam - density)
 
     onramp_flow = min(cell.onramp.Qc, r_demand, r_supply, r_controlled)
     return onramp_flow
@@ -87,7 +95,8 @@ def __calculate_onramp_flow(
 
 def calculate_regulated_onramp_flow(
     cell: Cell,
-    current_cell: int,
+    cell_ix: int,
+    backward_wave_speed: float,
     density: NDArray[np.float64],
     previous_onramp_flow: float,
     onramp_demand: float,
@@ -101,7 +110,8 @@ def calculate_regulated_onramp_flow(
 
     Args:
         cell: The Cell instance to which the onramp is attached.
-        current_cell: Index of the current cell in the network.
+        cell_ix: Index of the current cell in the network.
+        backward_wave_speed: The backward wave speed of the cell.
         density: Current densities in the network (vehicles per length unit).
         previous_onramp_flow: Previous onramp flow (vehicles per time unit).
         onramp_demand: Demand for vehicles from the onramp (vehicles per time unit).
@@ -122,7 +132,8 @@ def calculate_regulated_onramp_flow(
         )
         regulated_onramp_flow = __calculate_onramp_flow(
             cell=cell,
-            density=density[current_cell + 1],
+            backward_wave_speed=backward_wave_speed,
+            density=density[cell_ix],
             onramp_demand=onramp_demand,
             onramp_queue=onramp_queue,
             r_controlled=r_alinea,
@@ -133,7 +144,8 @@ def calculate_regulated_onramp_flow(
 
     bounded_onramp_flow = __calculate_onramp_flow(
         cell=cell,
-        density=density[current_cell + 1],
+        backward_wave_speed=backward_wave_speed,
+        density=density[cell_ix],
         onramp_demand=onramp_demand,
         onramp_queue=onramp_queue,
         r_controlled=np.inf,
@@ -144,7 +156,11 @@ def calculate_regulated_onramp_flow(
 
 
 def cap_cell_flows(
-    cell: Cell, density: float, current_flow: float, onramp_flow: float
+    cell: Cell,
+    backward_wave_speed: float,
+    density: float,
+    current_flow: float,
+    onramp_flow: float,
 ) -> Tuple[np.float64, np.float64]:
     """
     Verify that the cell desired cell flow and the onramp flow combined do
@@ -153,6 +169,7 @@ def cap_cell_flows(
 
     Args:
         cell: The Cell instance being evaluated.
+        backward_wave_speed: The backward wave speed of the cell.
         density: Current density in the cell (vehicles per length unit).
         current_flow: Desired flow in the cell (vehicles per time unit).
         onramp_flow: Desired onramp flow into the cell (vehicles per time unit).
@@ -162,7 +179,7 @@ def cap_cell_flows(
         scaled down if necessary to not exceed the cell capacity.
     """
 
-    supply_threshold = min(cell.w * (cell.rho_jam - density), cell.Qc)
+    supply_threshold = min(backward_wave_speed * (cell.rho_jam - density), cell.Qc)
     total_flow = current_flow + onramp_flow
 
     if total_flow > supply_threshold:
@@ -174,12 +191,15 @@ def cap_cell_flows(
     return np.float64(current_flow), np.float64(onramp_flow)
 
 
-def calculate_cell_flow(cell: Cell, density: float, downstream_density: float) -> float:
+def calculate_cell_flow(
+    cell: Cell, backward_wave_speed: float, density: float, downstream_density: float
+) -> float:
     """
     Compute the flow for a cell based on its demand for flow and the downstream supply.
 
     Args:
         cell: The Cell instance for which to compute the flow.
+        backward_wave_speed: The backward wave speed of the cell.
         density: The density in the cell (vehicles per length unit).
         downstream_density: The density in the downstream cell (vehicles per length unit).
 
@@ -187,7 +207,7 @@ def calculate_cell_flow(cell: Cell, density: float, downstream_density: float) -
         The computed cell flow (vehicles per time unit).
     """
     q_demand = cell.vf * density * cell.lanes
-    q_supply = cell.w * (cell.rho_jam - downstream_density)
+    q_supply = backward_wave_speed * (cell.rho_jam - downstream_density)
 
     if cell.offramp is not None:
         q_supply *= 1 + cell.offramp.split_ratio

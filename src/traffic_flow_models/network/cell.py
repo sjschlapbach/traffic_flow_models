@@ -41,11 +41,15 @@ class Cell:
         lane_capacity: float,
         free_flow_speed: float,
         jam_density: float,
-        downstream_cell: Optional["Cell"] = None,
         onramp: Optional["Onramp"] = None,
         offramp: Optional["Offramp"] = None,
     ) -> None:
         """Create a new Cell with physical parameters.
+
+        Please note that the critical density and backward wave speed are
+        not stored in the cell explicitly, since their values depend on the
+        fundamental diagram shape used in the model. They are computed through
+        member functions of the corresponding model classes.
 
         Args:
             length: Cell length in kilometers.
@@ -63,12 +67,10 @@ class Cell:
         self.Qc: float = lane_capacity * lanes  # total cell capacity
         self.vf: float = free_flow_speed  # in kilometers per hour
         self.rho_jam: float = jam_density  # in vehicles per kilometer per lane
-        self.rho_cr: float = self.Qc_lane / self.vf  # critical density
-        self.w: float = self.Qc / (self.rho_jam - self.rho_cr)  # backwards wave speed
 
-        # downstream/upstream references set through the network / user
-        self.downstream_cell: Optional[Cell] = downstream_cell
-        self.upstream_cell: Optional[Cell] = None
+        # store if there is a lane drop coming up between this and the next downstream cell
+        # if set, the number of dropped lanes is stored
+        self.upcoming_lane_drop: int = 0
 
         # at most one ramp of each type may attach to a cell (optional)
         # allow passing ramps via constructor for convenience

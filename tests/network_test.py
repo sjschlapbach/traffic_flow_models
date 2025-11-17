@@ -22,8 +22,6 @@ class TestNetwork:
         assert l.rho_jam == 150
 
         # no chaining for a single cell
-        assert l.upstream_cell is None
-        assert l.downstream_cell is None
         assert net.cells[0] is l
 
     def test_add_cell_chaining_multiple(self):
@@ -44,16 +42,6 @@ class TestNetwork:
 
         # order preserved
         assert net.cells == [a, b, c]
-
-        # chaining pointers
-        assert a.downstream_cell is b
-        assert a.upstream_cell is None
-
-        assert b.upstream_cell is a
-        assert b.downstream_cell is c
-
-        assert c.upstream_cell is b
-        assert c.downstream_cell is None
 
     def test_add_cell_with_ramps_instances(self):
         net = Network()
@@ -211,13 +199,45 @@ class TestNetwork:
 
             assert len(net.cells) == n
 
-            for idx, cell in enumerate(net.cells):
-                if idx == 0:
-                    assert cell.upstream_cell is None
-                else:
-                    assert cell.upstream_cell is net.cells[idx - 1]
+    def test_lane_drops(self):
+        net = Network()
+        c1 = net.add_cell(
+            length=2.0,
+            lanes=5,
+            lane_capacity=2000,
+            free_flow_speed=100,
+            jam_density=150,
+        )
+        c2 = net.add_cell(
+            length=2.0,
+            lanes=2,
+            lane_capacity=2000,
+            free_flow_speed=100,
+            jam_density=150,
+        )
+        c3 = net.add_cell(
+            length=2.0,
+            lanes=2,
+            lane_capacity=2000,
+            free_flow_speed=100,
+            jam_density=150,
+        )
+        c4 = net.add_cell(
+            length=2.0,
+            lanes=3,
+            lane_capacity=2000,
+            free_flow_speed=100,
+            jam_density=150,
+        )
+        c4 = net.add_cell(
+            length=2.0,
+            lanes=5,
+            lane_capacity=2000,
+            free_flow_speed=100,
+            jam_density=150,
+        )
 
-                if idx == n - 1:
-                    assert cell.downstream_cell is None
-                else:
-                    assert cell.downstream_cell is net.cells[idx + 1]
+        assert c1.upcoming_lane_drop == 3  # 5 -> 2 lane drop
+        assert c2.upcoming_lane_drop == 0  # no lane drop
+        assert c3.upcoming_lane_drop == 0  # -> 1 lane increase
+        assert c4.upcoming_lane_drop == 0  # -> default: no lane drop
