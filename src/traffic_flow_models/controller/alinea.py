@@ -12,6 +12,13 @@ class AlineaController:
             setpoint: Desired downstream density setpoint (vehicles per length
                 per lane).
         """
+
+        if setpoint < 0.0:
+            raise ValueError("Setpoint density must be non-negative.")
+
+        if measurement_cell < 0:
+            raise ValueError("Measurement cell index must be non-negative.")
+
         self.gain: float = gain
         self.setpoint: float = setpoint
         self.measurement_cell: int = measurement_cell

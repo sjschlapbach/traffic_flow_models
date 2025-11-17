@@ -176,6 +176,7 @@ class Network:
         cell = self.cells[cell_index]
         if cell.offramp is not None:
             raise ValueError("Cell already has an offramp attached")
+
         ramp = Offramp(
             lanes=lanes,
             lane_capacity=lane_capacity,
@@ -287,7 +288,7 @@ class Network:
                 zorder=4,
             )
 
-            # draw downstream connector only when downstream_cell points to the next cell
+            # only draw a connected for a downstream cell if it exists
             next_idx = i + 1
             if next_idx < len(self.cells):
                 # small arrow between this cell and the next (flow left->right)
@@ -589,7 +590,7 @@ class Network:
 
         # Figure 2: Vehicle Flow (dynamic grid)
         fig2, axes2 = plt.subplots(nrows, ncols, figsize=(4 * ncols, 3 * nrows))
-        fig2.suptitle("Vehicle Flow", fontsize=14, fontweight="bold")
+        fig2.suptitle("Vehicle Cell Outflow", fontsize=14, fontweight="bold")
         axes2 = np.array(axes2).flatten()
 
         for i in range(num_cells):

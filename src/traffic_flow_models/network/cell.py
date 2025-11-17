@@ -20,8 +20,6 @@ class Cell:
         lane_capacity: Capacity per lane in vehicles per hour.
         free_flow_speed: Free-flow speed in km/h.
         jam_density: Jam density in vehicles per km per lane.
-        downstream_cell: Optional reference to the downstream Cell.
-        upstream_cell: Optional reference to the upstream Cell.
         onramp: Optional attached `Onramp` instance.
         offramp: Optional attached `Offramp` instance.
     """
@@ -29,10 +27,6 @@ class Cell:
     # type annotations for static tools: instances will have these attributes
     onramp: Optional["Onramp"]
     offramp: Optional["Offramp"]
-
-    # simple downstream/upstream references
-    downstream_cell: Optional["Cell"]
-    upstream_cell: Optional["Cell"]
 
     def __init__(
         self,
@@ -57,10 +51,25 @@ class Cell:
             lane_capacity: Capacity per lane in vehicles per hour.
             free_flow_speed: Free-flow speed in km/h.
             jam_density: Jam density in vehicles per km per lane.
-            downstream_cell: Optional downstream cell reference.
             onramp: Optional `Onramp` instance to attach to this cell.
             offramp: Optional `Offramp` instance to attach to this cell.
         """
+
+        if length <= 0:
+            raise ValueError("Cell length must be positive.")
+
+        if lanes <= 0:
+            raise ValueError("Number of lanes must be positive.")
+
+        if lane_capacity <= 0:
+            raise ValueError("Lane capacity must be positive.")
+
+        if free_flow_speed <= 0:
+            raise ValueError("Free-flow speed must be positive.")
+
+        if jam_density <= 0:
+            raise ValueError("Jam density must be positive.")
+
         self.length: float = length  # in kilometers
         self.lanes: int = lanes  # number of lanes
         self.Qc_lane: float = lane_capacity  # in vehicles per hour per lane
