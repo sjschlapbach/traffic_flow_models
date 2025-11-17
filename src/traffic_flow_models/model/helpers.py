@@ -126,33 +126,27 @@ def calculate_regulated_onramp_flow(
     if cell.onramp is None:
         raise ValueError("Cell does not have an onramp attached.")
 
+    # initialize the regulated onramp flow to be infinite (i.e. not controlled)
+    r_alinea = np.inf
+
+    # if a controller is defined, compute the regulated onramp flow
     if controller is not None:
         r_alinea = controller.compute_regulated_flow(
             measured_densities=density, previous_flow=previous_onramp_flow
         )
-        regulated_onramp_flow = __calculate_onramp_flow(
-            cell=cell,
-            backward_wave_speed=backward_wave_speed,
-            density=density[cell_ix],
-            onramp_demand=onramp_demand,
-            onramp_queue=onramp_queue,
-            r_controlled=r_alinea,
-            dt=dt,
-        )
 
-        return regulated_onramp_flow
-
-    bounded_onramp_flow = __calculate_onramp_flow(
+    # compute the final onramp flow considering demand, supply and control
+    regulated_onramp_flow = __calculate_onramp_flow(
         cell=cell,
         backward_wave_speed=backward_wave_speed,
         density=density[cell_ix],
         onramp_demand=onramp_demand,
         onramp_queue=onramp_queue,
-        r_controlled=np.inf,
+        r_controlled=r_alinea,
         dt=dt,
     )
 
-    return bounded_onramp_flow
+    return regulated_onramp_flow
 
 
 def cap_cell_flows(
