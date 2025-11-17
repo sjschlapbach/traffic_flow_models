@@ -20,7 +20,8 @@ class TestCTM:
 
         # compute expected next density directly
         expected_next = 20.0 + 0.25 * (100.0 + 10.0 - 5.0 - 80.0) / (0.5 * 2)
-        expected_speed = 80.0 / (2 * 20.0)
+        # speed should be computed from total outflow (mainline + offramp)
+        expected_speed = (80.0 + 5.0) / (2 * 20.0)
 
         assert np.isclose(next_density, expected_next)
         assert np.isclose(speed, expected_speed)

@@ -117,9 +117,10 @@ class METANET:
         gradients, and onramp-induced effects. An extra deceleration term is
         added when a lane drop is present in the subsequent downstream cell.
 
-        Note: Off-ramps in this implementation split the outflow but do not
-        directly modify the density update term, matching common METANET
-        formulations.
+        Note: Off-ramps in this implementation split the flow inside the cell
+        into a mainline outflow component (q) and an offramp flow component.
+        The computation of an offramp flow through the split ratio always needs
+        to be based on the total cell flow (not only the mainline cell outflow)
 
         Args:
             cell: The `Cell` instance describing geometry and lane-drop info.
@@ -321,13 +322,15 @@ class METANET:
         # iterate over all intermediate cells and update the onramp and
         # cell flows according to the physically possible values
         for i in range(num_cells):
-            # if an offramp is present in the current cell, split the flow accordingly
-            # offramps are assumed to be at the end of a cell, therefore only affecting
-            # the outflow of the cell (and not affecting the density or speed updates)
+            # if an offramp is present in the current cell, determine the
+            # offramp flow based on the total cell outflow at the previous
+            # time step and the split ratio. Note that this does not correspond
+            # to the previous offramp flow, since the mainline cell outflow is
+            # updated in between through the cell update function
             current_cell = network.cells[i]
             if current_cell.offramp is not None:
-                next_offramp_flow[i] = current_cell.offramp.split_ratio * flow[i]
-                flow[i] = (1 - current_cell.offramp.split_ratio) * flow[i]
+                total_prev = flow[i] / (1.0 - current_cell.offramp.split_ratio)
+                next_offramp_flow[i] = current_cell.offramp.split_ratio * total_prev
 
             if i == 0:
                 # in the first cell, we assume v_0 = v_1 to eliminate the

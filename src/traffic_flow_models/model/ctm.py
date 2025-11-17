@@ -103,7 +103,8 @@ class CTM:
 
         # update the speed only based on the computed flow and density (first
         # order model -> no explicit speed model updates)
-        speed = cell_flow / (cell_lanes * density) if cell_flow > 0 else 0.0
+        total_outflow = cell_flow + offramp_flow
+        speed = total_outflow / (cell_lanes * density) if density > 0 else 0.0
 
         return next_density, speed
 
