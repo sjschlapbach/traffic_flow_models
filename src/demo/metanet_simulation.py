@@ -71,3 +71,17 @@ if __name__ == "__main__":
             plot_results=True,
         )
     )
+
+    # compute performance metrics and illustrate them
+    VKT, VHT, avg_speed = network.compute_performance_metrics(
+        density=density,
+        flow=flow,
+        speed=speed,
+        input_queue=input_queue,
+        onramp_queues=onramp_queue,
+        dt=dt,
+        plotting=True,
+    )
+    print(f"Total VKT: {VKT:.2f} veh-km")
+    print(f"Total VHT: {VHT:.2f} veh-h")
+    print(f"Overall Average Speed: {avg_speed:.2f} km/h")
