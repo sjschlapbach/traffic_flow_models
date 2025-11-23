@@ -126,9 +126,7 @@ onramp = Onramp(lanes=1, lane_capacity=2000, free_flow_speed=100,
 
 ## License
 
-TBD
-
-<!-- TODO: add license here before open-sourcing -->
+This project is licensed under the GNU Affero General Public License version 3 (AGPL-3.0). See the `LICENSE` file in the repository for the full license text.
 
 ## References
 
