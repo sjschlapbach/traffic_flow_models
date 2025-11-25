@@ -10,6 +10,7 @@ class TestCTM:
         next_density, speed = model.cell_update(
             cell_lanes=2,
             cell_length=0.5,
+            cell_vf=100.0,
             density=20.0,
             upstream_flow=100.0,
             cell_flow=80.0,
@@ -75,6 +76,7 @@ class TestCTM:
         next_density_direct, speed_direct = model.cell_update(
             cell_lanes=net.cells[0].lanes,
             cell_length=net.cells[0].length,
+            cell_vf=net.cells[0].vf,
             density=previous_density[0],
             upstream_flow=input_flow,
             cell_flow=flow[0],
