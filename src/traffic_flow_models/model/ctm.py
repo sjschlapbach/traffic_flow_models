@@ -59,6 +59,7 @@ class CTM:
         self,
         cell_lanes: int,
         cell_length: float,
+        cell_vf: float,
         density: float,
         upstream_flow: float,
         cell_flow: float,
@@ -101,10 +102,11 @@ class CTM:
             upstream_flow + onramp_flow - offramp_flow - cell_flow
         ) / (cell_length * cell_lanes)
 
-        # update the speed only based on the computed flow and density (first
-        # order model -> no explicit speed model updates)
+        # update the speed only based on the computed flow and density
+        # (first order model -> no explicit speed model updates)
+        # for cells without vehicles assume free-flow conditions
         total_outflow = cell_flow + offramp_flow
-        speed = total_outflow / (cell_lanes * density) if density > 0 else 0.0
+        speed = total_outflow / (cell_lanes * density) if density > 0 else cell_vf
 
         return next_density, speed
 
@@ -321,6 +323,7 @@ class CTM:
                 next_density[i], next_speed[i] = self.cell_update(
                     cell_lanes=current_cell.lanes,
                     cell_length=current_cell.length,
+                    cell_vf=current_cell.vf,
                     density=density[i],
                     upstream_flow=next_flow[i - 1],
                     cell_flow=next_flow[i],
@@ -332,6 +335,7 @@ class CTM:
                 next_density[i], next_speed[i] = self.cell_update(
                     cell_lanes=current_cell.lanes,
                     cell_length=current_cell.length,
+                    cell_vf=current_cell.vf,
                     density=density[i],
                     upstream_flow=next_input_flow,
                     cell_flow=next_flow[i],
