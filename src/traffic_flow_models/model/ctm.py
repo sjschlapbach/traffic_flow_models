@@ -264,7 +264,9 @@ class CTM:
             else:
                 next_flow[i] = calculate_cell_flow(
                     cell=network.cells[i],
-                    backward_wave_speed=self.backward_wave_speed(cell=network.cells[i]),
+                    backward_wave_speed=self.backward_wave_speed(
+                        cell=network.cells[i + 1]
+                    ),
                     density=density[i],
                     downstream_density=density[i + 1],
                 )
