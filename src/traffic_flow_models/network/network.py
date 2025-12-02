@@ -473,9 +473,11 @@ class Network:
                 flow=flow[:, t],
                 mainline_demand=mainline_demand(time_array[t]),
                 input_queue=input_queue[t],
+                input_flow=input_flow[t],
                 onramp_demand=onramp_demand(time_array[t], num_cells),
                 onramp_queue=onramp_queue[:, t],
                 onramp_flow=onramp_flow[:, t],
+                offramp_flow=offramp_flow[:, t],
                 dt=dt,
             )
 

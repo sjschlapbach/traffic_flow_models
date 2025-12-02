@@ -200,10 +200,12 @@ class METANET:
         speed: NDArray[np.float64],
         flow: NDArray[np.float64],
         mainline_demand: float,
-        input_queue: int,
+        input_queue: float,
+        input_flow: float,
         onramp_demand: NDArray[np.float64],
         onramp_queue: NDArray[np.float64],
         onramp_flow: NDArray[np.float64],
+        offramp_flow: NDArray[np.float64],
         dt: float,
     ) -> Tuple[
         NDArray[np.float64],
@@ -233,12 +235,15 @@ class METANET:
                 time), shape `(num_cells,)`.
             mainline_demand: Demand (flow) entering the first cell of the
                 segment (vehicles per time unit).
-            input_queue: Integer queue length at the segment input (vehicles).
+            input_queue: Float queue length at the segment input (vehicles).
+            input_flow: Flow that entered the first cell during the previous
             onramp_demand: 1-D array with onramp demands for each cell
                 (vehicles per time unit), shape `(num_cells,)`.
             onramp_queue: 1-D integer array with current onramp queue lengths
                 for each cell (vehicles), shape `(num_cells,)`.
             onramp_flow: 1-D array with the previous time-step onramp flows for
+                each cell (vehicles per time unit), shape `(num_cells,)`.
+            offramp_flow: 1-D array with the previous time-step offramp flows for
                 each cell (vehicles per time unit), shape `(num_cells,)`.
             dt: Time step length (same time units as flows).
 
