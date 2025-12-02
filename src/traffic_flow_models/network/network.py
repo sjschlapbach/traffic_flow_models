@@ -433,6 +433,14 @@ class Network:
             input_flow, input_queue, onramp_flow, onramp_queue)`.
         """
 
+        # verify that the CFL condition is satisfied for the chosen dt and all cells
+        # CFL condition: dt <= cell.length / cell.vf for all cells
+        min_dt = min((cell.length / cell.vf) for cell in self.cells)
+        if dt > min_dt:
+            raise ValueError(
+                f"Time step T={dt} exceeds CFL condition limit of {min_dt:.4f}. Reduce T."
+            )
+
         # define a time array for the simulation (5000 seconds in 10 second intervals)
         time_array: NDArray[np.float64] = np.arange(
             0, duration + dt, dt, dtype=np.float64
