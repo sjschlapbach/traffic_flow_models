@@ -4,28 +4,29 @@ from traffic_flow_models import CTM, Network
 
 
 class TestCTM:
-    def test_cell_update_basic(self):
-        model = CTM()
-        # simple values chosen to allow manual verification
-        next_density, speed = model.cell_update(
-            cell_lanes=2,
-            cell_length=0.5,
-            cell_vf=100.0,
-            density=20.0,
-            upstream_flow=100.0,
-            cell_flow=80.0,
-            onramp_flow=10.0,
-            offramp_flow=5.0,
-            dt=0.25,
-        )
+    # TODO: re-introduce this function once cell-specific updates are available again
+    # def test_cell_update_basic(self):
+    #     model = CTM()
+    #     # simple values chosen to allow manual verification
+    #     next_density, speed = model.cell_update(
+    #         cell_lanes=2,
+    #         cell_length=0.5,
+    #         cell_vf=100.0,
+    #         density=20.0,
+    #         upstream_flow=100.0,
+    #         cell_flow=80.0,
+    #         onramp_flow=10.0,
+    #         offramp_flow=5.0,
+    #         dt=0.25,
+    #     )
 
-        # compute expected next density directly
-        expected_next = 20.0 + 0.25 * (100.0 + 10.0 - 5.0 - 80.0) / (0.5 * 2)
-        # speed should be computed from total outflow (mainline + offramp)
-        expected_speed = (80.0 + 5.0) / (2 * 20.0)
+    #     # compute expected next density directly
+    #     expected_next = 20.0 + 0.25 * (100.0 + 10.0 - 5.0 - 80.0) / (0.5 * 2)
+    #     # speed should be computed from total outflow (mainline + offramp)
+    #     expected_speed = (80.0 + 5.0) / (2 * 20.0)
 
-        assert np.isclose(next_density, expected_next)
-        assert np.isclose(speed, expected_speed)
+    #     assert np.isclose(next_density, expected_next)
+    #     assert np.isclose(speed, expected_speed)
 
     def test_step_single_cell_no_onramp(self):
         # build a minimal network with one mainline cell and no ramps
@@ -48,17 +49,22 @@ class TestCTM:
         previous_onramp_flow = np.array([0.0], dtype=np.float64)
         dt = 0.25
 
+        prev_flow = np.array([0.0], dtype=np.float64)
+        prev_input_flow = mainline_demand
+
         flow, density, speed, input_flow, _, onramp_flow, _, next_onramp_queue = (
             model.step(
                 network=net,
                 density=previous_density,
                 speed=np.array([0.0], dtype=np.float64),  # ignored for CTM
-                flow=np.array([0.0], dtype=np.float64),  # ignored for CTM
+                flow=prev_flow,  # previous outflow
                 mainline_demand=mainline_demand,
                 input_queue=input_queue,
+                input_flow=prev_input_flow,
                 onramp_demand=onramp_demand,
                 onramp_queue=onramp_queue,
                 onramp_flow=previous_onramp_flow,
+                offramp_flow=np.array([0.0], dtype=np.float64),
                 dt=dt,
             )
         )
@@ -72,17 +78,16 @@ class TestCTM:
         assert onramp_flow[0] == 0.0
         assert next_onramp_queue[0] == 0
 
-        # the density returned should match a direct call to cell_update for the same arguments
-        next_density_direct, speed_direct = model.cell_update(
-            cell_lanes=net.cells[0].lanes,
-            cell_length=net.cells[0].length,
-            cell_vf=net.cells[0].vf,
-            density=previous_density[0],
-            upstream_flow=input_flow,
-            cell_flow=flow[0],
-            onramp_flow=0.0,
-            offramp_flow=0.0,
-            dt=dt,
+        # compute expected next density directly using conservation
+        # using the *previous* timestep flows
+        next_density_direct = previous_density[0] + dt * (
+            prev_input_flow + previous_onramp_flow[0] - prev_flow[0] - 0.0
+        ) / (net.cells[0].length * net.cells[0].lanes)
+
+        speed_direct = (
+            flow[0] / (net.cells[0].lanes * next_density_direct)
+            if next_density_direct > 0
+            else net.cells[0].vf
         )
 
         assert np.isclose(density[0], next_density_direct)

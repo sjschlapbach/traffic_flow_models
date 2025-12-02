@@ -11,7 +11,7 @@ def calculate_segment_input_flow(
     backward_wave_speed: float,
     density: float,
     input_demand: float,
-    input_queue: int,
+    input_queue: float,
     dt: float,
 ) -> Tuple[float, float]:
     """
@@ -39,7 +39,7 @@ def calculate_segment_input_flow(
     return input_flow, updated_input_queue
 
 
-def update_queue(queue_length: int, demand: float, flow: float, dt: float) -> float:
+def update_queue(queue_length: float, demand: float, flow: float, dt: float) -> float:
     """
     Update the queue length based on demand and flow.
 
@@ -147,63 +147,3 @@ def calculate_regulated_onramp_flow(
     )
 
     return regulated_onramp_flow
-
-
-def cap_cell_flows(
-    cell: Cell,
-    backward_wave_speed: float,
-    density: float,
-    current_flow: float,
-    onramp_flow: float,
-) -> Tuple[np.float64, np.float64]:
-    """
-    Verify that the cell desired cell flow and the onramp flow combined do
-    not exceed the capacity of the cell (for CTM). If they do, scale them
-    down proportionally.
-
-    Args:
-        cell: The Cell instance being evaluated.
-        backward_wave_speed: The backward wave speed of the cell.
-        density: Current density in the cell (vehicles per length unit).
-        current_flow: Desired flow in the cell (vehicles per time unit).
-        onramp_flow: Desired onramp flow into the cell (vehicles per time unit).
-
-    Returns:
-        A tuple (capped_cell_flow, capped_onramp_flow) where both flows are
-        scaled down if necessary to not exceed the cell capacity.
-    """
-
-    supply_threshold = min(backward_wave_speed * (cell.rho_jam - density), cell.Qc)
-    total_flow = current_flow + onramp_flow
-
-    if total_flow > supply_threshold:
-        scaling_factor = supply_threshold / total_flow
-        reduced_mainline_flow = current_flow * scaling_factor
-        reduced_onramp_flow = onramp_flow * scaling_factor
-        return np.float64(reduced_mainline_flow), np.float64(reduced_onramp_flow)
-
-    return np.float64(current_flow), np.float64(onramp_flow)
-
-
-def calculate_cell_flow(
-    cell: Cell, backward_wave_speed: float, density: float, downstream_density: float
-) -> float:
-    """
-    Compute the flow for a cell based on its demand for flow and the downstream supply.
-
-    Args:
-        cell: The Cell instance for which to compute the flow.
-        backward_wave_speed: The backward wave speed of the cell.
-        density: The density in the cell (vehicles per length unit).
-        downstream_density: The density in the downstream cell (vehicles per length unit).
-
-    Returns:
-        The computed cell flow (vehicles per time unit).
-    """
-    q_demand = cell.vf * density * cell.lanes
-    q_supply = backward_wave_speed * (cell.rho_jam - downstream_density)
-
-    if cell.offramp is not None:
-        q_supply *= 1 + cell.offramp.split_ratio
-
-    return min(cell.Qc, q_demand, q_supply)
