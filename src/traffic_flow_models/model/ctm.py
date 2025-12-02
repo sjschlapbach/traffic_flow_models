@@ -23,7 +23,11 @@ class CTM:
     of the cell inflows in case they exceed the cell's capacity.
 
     Methods:
-        cell_update: Compute next-step density and a speed estimate for a cell.
+        critical_density: Compute the critical density for a cell.
+        backward_wave_speed: Compute the backward wave speed for a cell.
+        raw_updated_cell_flow: Compute the desired flow for a cell based on demand and supply.
+        cap_cell_flows: Cap the combined mainline and onramp flows to not exceed cell capacity.
+        step: Perform a single time step update of the CTM model over the entire network.
     """
 
     def __init__(self) -> None:
@@ -69,9 +73,11 @@ class CTM:
             backward_wave_speed: The backward wave speed of the cell.
             density: The density in the cell (vehicles per length unit).
             downstream_density: The density in the downstream cell (vehicles per length unit).
+            downstream_jam_density: The jam density in the downstream cell (vehicles per length unit).
 
         Returns:
-            The computed cell flow (vehicles per time unit).
+            The computed cell flow (vehicles per time unit). This does not take into account
+            potential capacity constraints due to combined onramp and mainline flows.
         """
         q_demand = cell.vf * density * cell.lanes
         q_supply = backward_wave_speed * (downstream_jam_density - downstream_density)
