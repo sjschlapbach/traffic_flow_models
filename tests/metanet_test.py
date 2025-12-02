@@ -107,9 +107,11 @@ class TestMETANET:
             flow=previous_flow,
             mainline_demand=mainline_demand,
             input_queue=input_queue,
+            input_flow=mainline_demand,
             onramp_demand=onramp_demand,
             onramp_queue=onramp_queue,
             onramp_flow=previous_onramp_flow,
+            offramp_flow=np.array([0.0, 0.0], dtype=np.float64),
             dt=dt,
         )
 

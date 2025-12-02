@@ -352,7 +352,8 @@ class CTM:
 
             # update the speed for the current cell based on density and flow
             next_speed[i] = (
-                next_flow[i] / (network.cells[i].lanes * next_density[i])
+                (next_flow[i] + next_offramp_flow[i])
+                / (network.cells[i].lanes * next_density[i])
                 if next_density[i] > 0
                 else network.cells[i].vf
             )
