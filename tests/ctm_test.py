@@ -4,30 +4,6 @@ from traffic_flow_models import CTM, Network
 
 
 class TestCTM:
-    # TODO: re-introduce this function once cell-specific updates are available again
-    # def test_cell_update_basic(self):
-    #     model = CTM()
-    #     # simple values chosen to allow manual verification
-    #     next_density, speed = model.cell_update(
-    #         cell_lanes=2,
-    #         cell_length=0.5,
-    #         cell_vf=100.0,
-    #         density=20.0,
-    #         upstream_flow=100.0,
-    #         cell_flow=80.0,
-    #         onramp_flow=10.0,
-    #         offramp_flow=5.0,
-    #         dt=0.25,
-    #     )
-
-    #     # compute expected next density directly
-    #     expected_next = 20.0 + 0.25 * (100.0 + 10.0 - 5.0 - 80.0) / (0.5 * 2)
-    #     # speed should be computed from total outflow (mainline + offramp)
-    #     expected_speed = (80.0 + 5.0) / (2 * 20.0)
-
-    #     assert np.isclose(next_density, expected_next)
-    #     assert np.isclose(speed, expected_speed)
-
     def test_step_single_cell_no_onramp(self):
         # build a minimal network with one mainline cell and no ramps
         net = Network()
