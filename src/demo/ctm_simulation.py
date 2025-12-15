@@ -43,8 +43,12 @@ if __name__ == "__main__":
     else:
         raise ValueError(f"Scenario {scenario} is not defined.")
 
+    # initialize the CTM model
+    ctm = CTM()
+
     # initialize the network with the correct structure (optionally with ALINEA ramp metering)
     network = setup_network(
+        get_critical_density=ctm.critical_density,
         ramp_control=alinea_ramp_control,
         alinea_gain=alinea_gain,
         alinea_setpoint=alinea_setpoint,
@@ -52,7 +56,6 @@ if __name__ == "__main__":
     network.plot()
 
     # run a simulation of the network using the CTM model
-    ctm = CTM()
     density, flow, speed, input_flow, input_queue, onramp_flow, onramp_queue = (
         network.simulate(
             duration=duration,

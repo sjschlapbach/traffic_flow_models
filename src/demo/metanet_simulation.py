@@ -19,7 +19,6 @@ if __name__ == "__main__":
     scenario = "A"
     alinea_ramp_control = False
     alinea_gain = 5.0
-    alinea_setpoint = 2000.0 / 100.0  # = rho_cr = Qc_lane / vf (triangular FD)
     dt = 10.0 / 3600
     duration = 5000.0 / 3600
 
@@ -51,16 +50,19 @@ if __name__ == "__main__":
     else:
         raise ValueError(f"Scenario {scenario} is not defined.")
 
+    # initialize the METANET model with the specified parameters
+    metanet = METANET(tau=tau, nu=nu, kappa=kappa, delta=delta, phi=phi, alpha=alpha)
+
     # initialize the network with the correct structure (optionally with ALINEA ramp metering)
     network = setup_network(
+        get_critical_density=metanet.critical_density,
         ramp_control=alinea_ramp_control,
         alinea_gain=alinea_gain,
-        alinea_setpoint=alinea_setpoint,
+        alinea_setpoint=None,  # for METANET, directly obtain the ALINEA setpoint as the critical density of the cell
     )
     network.plot()
 
-    # run a simulation of the network using the CTM model
-    metanet = METANET(tau=tau, nu=nu, kappa=kappa, delta=delta, phi=phi, alpha=alpha)
+    # run a simulation of the network using the METANET model
     density, flow, speed, input_flow, input_queue, onramp_flow, onramp_queue = (
         network.simulate(
             duration=duration,

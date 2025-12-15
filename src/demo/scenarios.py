@@ -1,5 +1,6 @@
-from traffic_flow_models import Network, Onramp, Offramp, AlineaController
+from traffic_flow_models import Network, Cell, Onramp, Offramp, AlineaController
 import numpy as np
+from typing import Callable
 from numpy.typing import NDArray
 
 from .demand import demand
@@ -36,7 +37,10 @@ def onramp_demand_c(time: float, network_length: int) -> NDArray[np.float64]:
 
 
 def setup_network_ab(
-    ramp_control: bool = False, alinea_gain: float = 5.0, alinea_setpoint: float = 20.0
+    get_critical_density: Callable[[Cell], float],
+    ramp_control: bool = False,
+    alinea_gain: float = 5.0,
+    alinea_setpoint: float | None = None,
 ) -> Network:
     """Create a simple network with a single onramp in the middle."""
 
@@ -47,26 +51,35 @@ def setup_network_ab(
     network.add_cell(
         length=0.5, lanes=3, lane_capacity=2000, free_flow_speed=100, jam_density=180
     )
-    network.add_cell(
+
+    onramp_cell = network.add_cell(
         length=0.5,
         lanes=3,
         lane_capacity=2000,
         free_flow_speed=100,
         jam_density=180,
-        onramp=Onramp(
-            lanes=1,
-            lane_capacity=2000,
-            free_flow_speed=100,
-            jam_density=180,
-            controller=(
-                AlineaController(
-                    gain=alinea_gain, setpoint=alinea_setpoint, measurement_cell=3
-                )
-                if ramp_control is True
-                else None
-            ),
+    )
+    onramp_cell.onramp = Onramp(
+        lanes=1,
+        lane_capacity=2000,
+        free_flow_speed=100,
+        jam_density=180,
+        controller=(
+            AlineaController(
+                gain=alinea_gain,
+                # set the ALINEA setpoint to the critical density of the cell (fallback if no static setpoint is provided)
+                setpoint=(
+                    alinea_setpoint
+                    if alinea_setpoint is not None
+                    else get_critical_density(onramp_cell)
+                ),
+                measurement_cell=3,
+            )
+            if ramp_control is True
+            else None
         ),
     )
+
     network.add_cell(
         length=0.5, lanes=3, lane_capacity=2000, free_flow_speed=100, jam_density=180
     )
@@ -81,7 +94,10 @@ def setup_network_ab(
 
 
 def setup_network_c(
-    ramp_control: bool = False, alinea_gain: float = 5.0, alinea_setpoint: float = 20.0
+    get_critical_density: Callable[[Cell], float],
+    ramp_control: bool = False,
+    alinea_gain: float = 5.0,
+    alinea_setpoint: float | None = None,
 ) -> Network:
     """
     Create a simple network with a single onramp in the middle and a
@@ -99,26 +115,35 @@ def setup_network_c(
     network.add_cell(
         length=0.5, lanes=3, lane_capacity=2000, free_flow_speed=100, jam_density=180
     )
-    network.add_cell(
+
+    onramp_cell = network.add_cell(
         length=0.5,
         lanes=3,
         lane_capacity=2000,
         free_flow_speed=100,
         jam_density=180,
-        onramp=Onramp(
-            lanes=1,
-            lane_capacity=2000,
-            free_flow_speed=100,
-            jam_density=180,
-            controller=(
-                AlineaController(
-                    gain=alinea_gain, setpoint=alinea_setpoint, measurement_cell=3
-                )
-                if ramp_control is True
-                else None
-            ),
+    )
+    onramp_cell.onramp = Onramp(
+        lanes=1,
+        lane_capacity=2000,
+        free_flow_speed=100,
+        jam_density=180,
+        controller=(
+            AlineaController(
+                gain=alinea_gain,
+                # set the ALINEA setpoint to the critical density of the cell (fallback if no static setpoint is provided)
+                setpoint=(
+                    alinea_setpoint
+                    if alinea_setpoint is not None
+                    else get_critical_density(onramp_cell)
+                ),
+                measurement_cell=3,
+            )
+            if ramp_control is True
+            else None
         ),
     )
+
     network.add_cell(
         length=0.5, lanes=3, lane_capacity=2000, free_flow_speed=100, jam_density=180
     )
@@ -146,7 +171,10 @@ def onramp_demand_d(time: float, network_length: int) -> NDArray[np.float64]:
 
 
 def setup_network_d(
-    ramp_control: bool = False, alinea_gain: float = 5.0, alinea_setpoint: float = 20.0
+    get_critical_density: Callable[[Cell], float],
+    ramp_control: bool = False,
+    alinea_gain: float = 5.0,
+    alinea_setpoint: float | None = None,
 ) -> Network:
     """Create a network with a mid-network onramp and a downstream offramp.
 
@@ -165,24 +193,31 @@ def setup_network_d(
     )
 
     # cell with onramp attached (third cell)
-    network.add_cell(
+    onramp_cell = network.add_cell(
         length=0.5,
         lanes=3,
         lane_capacity=2000,
         free_flow_speed=100,
         jam_density=180,
-        onramp=Onramp(
-            lanes=1,
-            lane_capacity=2000,
-            free_flow_speed=100,
-            jam_density=180,
-            controller=(
-                AlineaController(
-                    gain=alinea_gain, setpoint=alinea_setpoint, measurement_cell=3
-                )
-                if ramp_control is True
-                else None
-            ),
+    )
+    onramp_cell.onramp = Onramp(
+        lanes=1,
+        lane_capacity=2000,
+        free_flow_speed=100,
+        jam_density=180,
+        controller=(
+            AlineaController(
+                gain=alinea_gain,
+                # set the ALINEA setpoint to the critical density of the cell (fallback if no static setpoint is provided)
+                setpoint=(
+                    alinea_setpoint
+                    if alinea_setpoint is not None
+                    else get_critical_density(onramp_cell)
+                ),
+                measurement_cell=3,
+            )
+            if ramp_control is True
+            else None
         ),
     )
 
