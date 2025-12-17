@@ -127,6 +127,21 @@ jobs:
           fi
           echo "✓ Package version matches tag"
 
+      # TODO: Temporary check — remove this step once PyPI publishing is enabled
+      - name: Check PyPI token presence (temporary)
+        if: ${{ always() }}
+        env:
+          PYPI_TOKEN: ${{ secrets.PYPI_TOKEN }}
+        run: |
+          # Do not print or echo the token itself. Just detect presence.
+          if [ -z "${PYPI_TOKEN}" ]; then
+            echo "pypi_token_present=false" >> $GITHUB_OUTPUT
+            echo "❌ PYPI_TOKEN secret is not set. Publishing steps will remain disabled."
+          else
+            echo "pypi_token_present=true" >> $GITHUB_OUTPUT
+            echo "✓ PYPI_TOKEN secret is set."
+          fi
+
       # TODO: introduce pypi publishing once is ready for merge
       # - name: Publish to PyPI
       #   env:
