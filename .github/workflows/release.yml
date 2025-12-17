@@ -77,19 +77,20 @@ jobs:
           echo "changelog_version=$CHANGELOG_VERSION" >> $GITHUB_OUTPUT
           echo "Changelog version: $CHANGELOG_VERSION"
 
-      - name: Validate changelog version
-        run: |
-          CHANGELOG_VERSION=${{ steps.changelog.outputs.changelog_version }}
-          TAG_VERSION=${{ steps.tag_version.outputs.version }}
+      # TODO: re-introduce changelog version check once trigger through tag has been set again
+      # - name: Validate changelog version
+      #   run: |
+      #     CHANGELOG_VERSION=${{ steps.changelog.outputs.changelog_version }}
+      #     TAG_VERSION=${{ steps.tag_version.outputs.version }}
 
-          if [ "$CHANGELOG_VERSION" != "$TAG_VERSION" ]; then
-            echo "❌ Version mismatch:"
-            echo "  Tag version: $TAG_VERSION"
-            echo "  Changelog version: $CHANGELOG_VERSION"
-            echo "⚠️  Changelog entry may not match the tag. Ensure conventional commits are used."
-            exit 1
-          fi
-          echo "✓ Changelog version matches tag"
+      #     if [ "$CHANGELOG_VERSION" != "$TAG_VERSION" ]; then
+      #       echo "❌ Version mismatch:"
+      #       echo "  Tag version: $TAG_VERSION"
+      #       echo "  Changelog version: $CHANGELOG_VERSION"
+      #       echo "⚠️  Changelog entry may not match the tag. Ensure conventional commits are used."
+      #       exit 1
+      #     fi
+      #     echo "✓ Changelog version matches tag"
 
       - name: Commit and push CHANGELOG.md
         run: |
