@@ -41,21 +41,22 @@ jobs:
           echo "version=$TAG_VERSION" >> $GITHUB_OUTPUT
           echo "Extracted version from tag: $TAG_VERSION"
 
-      - name: Validate pyproject.toml version
-        id: validate_project
-        run: |
-          PYPROJECT_VERSION=$(grep '^version = ' pyproject.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
-          echo "pyproject_version=$PYPROJECT_VERSION" >> $GITHUB_OUTPUT
-          echo "pyproject.toml version: $PYPROJECT_VERSION"
+      # TODO: re-introduce pyproject versioning check once trigger through tag has been set again
+      # - name: Validate pyproject.toml version
+      #   id: validate_project
+      #   run: |
+      #     PYPROJECT_VERSION=$(grep '^version = ' pyproject.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
+      #     echo "pyproject_version=$PYPROJECT_VERSION" >> $GITHUB_OUTPUT
+      #     echo "pyproject.toml version: $PYPROJECT_VERSION"
 
-          TAG_VERSION=${{ steps.tag_version.outputs.version }}
-          if [ "$PYPROJECT_VERSION" != "$TAG_VERSION" ]; then
-            echo "❌ Version mismatch:"
-            echo "  Tag version: $TAG_VERSION"
-            echo "  pyproject.toml version: $PYPROJECT_VERSION"
-            exit 1
-          fi
-          echo "✓ pyproject.toml version matches tag"
+      #     TAG_VERSION=${{ steps.tag_version.outputs.version }}
+      #     if [ "$PYPROJECT_VERSION" != "$TAG_VERSION" ]; then
+      #       echo "❌ Version mismatch:"
+      #       echo "  Tag version: $TAG_VERSION"
+      #       echo "  pyproject.toml version: $PYPROJECT_VERSION"
+      #       exit 1
+      #     fi
+      #     echo "✓ pyproject.toml version matches tag"
 
       - name: Generate changelog with git-cliff
         id: changelog
