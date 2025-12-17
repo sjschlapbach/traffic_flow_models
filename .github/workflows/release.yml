@@ -101,7 +101,7 @@ jobs:
           if git diff --cached --quiet; then
             echo "No changes to CHANGELOG.md, skipping commit"
           else
-            git commit -m "chore: update changelog for version ${{ steps.tag_version.outputs.version }}"
+            git commit -m "chore(release): update changelog for version ${{ steps.tag_version.outputs.version }}"
             git push
             echo "✓ CHANGELOG.md updated and pushed"
           fi

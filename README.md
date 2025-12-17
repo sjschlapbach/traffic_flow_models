@@ -72,6 +72,45 @@ Contributions are welcome! Please ensure that:
 2. Code is formatted with [Black](https://github.com/psf/black)
 3. New features include appropriate tests
 
+## Release
+
+To release a new version of the macroscopic traffic flow package, please make sure that all tests and builds are passing and follow these steps:
+
+### 1. Update version in pyproject.toml
+
+Update the version of the package in the pyproject file according to the next release version according to the conventional commit guidelines. To make sure you update the version correctly, you can run the following command:
+
+```bash
+git cliff bump
+```
+
+⚠️ CAUTION: Do not commit the changelog changes yet, as these will be handled automatically by the release workflow. Only commit the version change in `pyproject.toml`. If the version in the pyproject configuration and the changelog are not in sync, the release workflow will fail.
+
+### 2. Commit the change
+
+```bash
+git commit -m "chore(release): prepare for v1.0.0"
+```
+
+### 3. Create and push tag (triggers workflow)
+
+```bash
+git tag -a v1.0.0 -m "Release version 1.0.0"
+git push origin main v1.0.0
+```
+
+### 4. GitHub Actions automatically:
+
+├─ Validates all versions match
+
+├─ Generates changelog
+
+├─ Builds distribution packages
+
+├─ Publishes to PyPI
+
+└─ Creates GitHub release
+
 ## Usage Examples
 
 ### Creating a Network
