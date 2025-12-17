@@ -2,11 +2,8 @@ name: Release
 
 on:
   push:
-    # TODO: replace release test branch trigger to tag trigger
-    # tags:
-    #   - "v*.*.*"
-    branches:
-      - release-test
+    tags:
+      - "v*.*.*"
 
 permissions:
   contents: write
@@ -41,22 +38,21 @@ jobs:
           echo "version=$TAG_VERSION" >> $GITHUB_OUTPUT
           echo "Extracted version from tag: $TAG_VERSION"
 
-      # TODO: re-introduce pyproject versioning check once trigger through tag has been set again
-      # - name: Validate pyproject.toml version
-      #   id: validate_project
-      #   run: |
-      #     PYPROJECT_VERSION=$(grep '^version = ' pyproject.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
-      #     echo "pyproject_version=$PYPROJECT_VERSION" >> $GITHUB_OUTPUT
-      #     echo "pyproject.toml version: $PYPROJECT_VERSION"
+      - name: Validate pyproject.toml version
+        id: validate_project
+        run: |
+          PYPROJECT_VERSION=$(grep '^version = ' pyproject.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
+          echo "pyproject_version=$PYPROJECT_VERSION" >> $GITHUB_OUTPUT
+          echo "pyproject.toml version: $PYPROJECT_VERSION"
 
-      #     TAG_VERSION=${{ steps.tag_version.outputs.version }}
-      #     if [ "$PYPROJECT_VERSION" != "$TAG_VERSION" ]; then
-      #       echo "❌ Version mismatch:"
-      #       echo "  Tag version: $TAG_VERSION"
-      #       echo "  pyproject.toml version: $PYPROJECT_VERSION"
-      #       exit 1
-      #     fi
-      #     echo "✓ pyproject.toml version matches tag"
+          TAG_VERSION=${{ steps.tag_version.outputs.version }}
+          if [ "$PYPROJECT_VERSION" != "$TAG_VERSION" ]; then
+            echo "❌ Version mismatch:"
+            echo "  Tag version: $TAG_VERSION"
+            echo "  pyproject.toml version: $PYPROJECT_VERSION"
+            exit 1
+          fi
+          echo "✓ pyproject.toml version matches tag"
 
       - name: Generate changelog with git-cliff
         id: changelog
@@ -77,20 +73,19 @@ jobs:
           echo "changelog_version=$CHANGELOG_VERSION" >> $GITHUB_OUTPUT
           echo "Changelog version: $CHANGELOG_VERSION"
 
-      # TODO: re-introduce changelog version check once trigger through tag has been set again
-      # - name: Validate changelog version
-      #   run: |
-      #     CHANGELOG_VERSION=${{ steps.changelog.outputs.changelog_version }}
-      #     TAG_VERSION=${{ steps.tag_version.outputs.version }}
+      - name: Validate changelog version
+        run: |
+          CHANGELOG_VERSION=${{ steps.changelog.outputs.changelog_version }}
+          TAG_VERSION=${{ steps.tag_version.outputs.version }}
 
-      #     if [ "$CHANGELOG_VERSION" != "$TAG_VERSION" ]; then
-      #       echo "❌ Version mismatch:"
-      #       echo "  Tag version: $TAG_VERSION"
-      #       echo "  Changelog version: $CHANGELOG_VERSION"
-      #       echo "⚠️  Changelog entry may not match the tag. Ensure conventional commits are used."
-      #       exit 1
-      #     fi
-      #     echo "✓ Changelog version matches tag"
+          if [ "$CHANGELOG_VERSION" != "$TAG_VERSION" ]; then
+            echo "❌ Version mismatch:"
+            echo "  Tag version: $TAG_VERSION"
+            echo "  Changelog version: $CHANGELOG_VERSION"
+            echo "⚠️  Changelog entry may not match the tag. Ensure conventional commits are used."
+            exit 1
+          fi
+          echo "✓ Changelog version matches tag"
 
       - name: Commit and push CHANGELOG.md
         run: |
@@ -129,24 +124,22 @@ jobs:
           fi
           echo "✓ Package version matches tag"
 
-      # TODO: introduce pypi publishing once is ready for merge
-      # - name: Publish to PyPI
-      #   env:
-      #     TWINE_USERNAME: __token__
-      #     TWINE_PASSWORD: ${{ secrets.PYPI_TOKEN }}
-      #   run: |
-      #     python -m twine upload dist/* --verbose
+      - name: Publish to PyPI
+        env:
+          TWINE_USERNAME: __token__
+          TWINE_PASSWORD: ${{ secrets.PYPI_TOKEN }}
+        run: |
+          python -m twine upload dist/* --verbose
 
-      # TODO: introduce GitHub Release creation once is ready for merge
-      # - name: Create GitHub Release
-      #   uses: softprops/action-gh-release@v1
-      #   with:
-      #     files: dist/*
-      #     body: ${{ steps.changelog.outputs.changelog_content }}
-      #     draft: false
-      #     prerelease: false
-      #   env:
-      #     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: dist/*
+          body: ${{ steps.changelog.outputs.changelog_content }}
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Summary
         run: |
