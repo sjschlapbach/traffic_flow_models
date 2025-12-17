@@ -64,10 +64,7 @@ jobs:
           GITHUB_REPO: ${{ github.repository }}
           RUST_LOG: error
         run: |
-          # Capture unreleased notes directly from git-cliff (suppress stderr)
-          UNRELEASED_CONTENT=$(git-cliff --unreleased --strip header 2>/dev/null || true)
-
-          # Bump and write CHANGELOG.md (this may add the release header)
+          # Bump and write CHANGELOG.md (create the release section)
           git-cliff --bump --output CHANGELOG.md
 
           # Determine bumped version (strip leading 'v')
@@ -75,16 +72,9 @@ jobs:
           echo "changelog_version=$CHANGELOG_VERSION" >> $GITHUB_OUTPUT
           echo "Changelog version: $CHANGELOG_VERSION"
 
-          # Prefer the captured unreleased content; fallback to extracting from CHANGELOG.md
-          if [ -n "$UNRELEASED_CONTENT" ]; then
-            CHANGELOG_CONTENT="$UNRELEASED_CONTENT"
-          else
-            CHANGELOG_CONTENT=$(awk -v ver="$CHANGELOG_VERSION" '
-              $0 ~ ("^## .*" ver) {found=1; next}
-              found && /^## / {exit}
-              found {print}
-            ' CHANGELOG.md)
-          fi
+          # Extract the release notes for the bumped version from CHANGELOG.md.
+          # Match headers like: '## [0.1.3]', '## v0.1.3', or '## 0.1.3'
+          CHANGELOG_CONTENT=$(awk -v ver="$CHANGELOG_VERSION" 'BEGIN{p="^## .*\\[?v?" ver "\\]?"} $0 ~ p {found=1; next} found && /^## / {exit} found {print}' CHANGELOG.md | sed -e '1,/[^[:space:]]/d' -e ':a;N;$!ba;s/\n\s*$//')
 
           # Emit multiline output safely
           echo "changelog_content<<EOF" >> $GITHUB_OUTPUT
