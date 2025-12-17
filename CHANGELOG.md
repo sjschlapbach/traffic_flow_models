@@ -1,3 +1,12 @@
+## [0.1.3] - 2025-12-17
+
+### Miscellaneous Tasks
+
+- *(release)* Update changelog for version 0.1.2
+- Update README with release commands
+- *(ci)* Update logic for extraction of changes
+- *(release)* Update changelog for version
+- Debug release workflow and changelog generation
 ## [0.1.2] - 2025-12-17
 
 ### Features
