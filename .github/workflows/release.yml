@@ -62,21 +62,29 @@ jobs:
         env:
           OUTPUT: CHANGELOG.md
           GITHUB_REPO: ${{ github.repository }}
+          RUST_LOG: error
         run: |
-          # Generate full CHANGELOG.md file
-          git-cliff --verbose --bump --output CHANGELOG.md
+          # Capture unreleased notes directly from git-cliff (suppress stderr)
+          UNRELEASED_CONTENT=$(git-cliff --unreleased --strip header 2>/dev/null || true)
+
+          # Bump and write CHANGELOG.md (this may add the release header)
+          git-cliff --bump --output CHANGELOG.md
 
           # Determine bumped version (strip leading 'v')
           CHANGELOG_VERSION=$(git-cliff --bumped-version | sed 's/^v//')
           echo "changelog_version=$CHANGELOG_VERSION" >> $GITHUB_OUTPUT
           echo "Changelog version: $CHANGELOG_VERSION"
 
-          # Extract the release notes section for the bumped version from CHANGELOG.md
-          CHANGELOG_CONTENT=$(awk -v ver="$CHANGELOG_VERSION" '
-            $0 ~ ("^## .*" ver) {found=1; next}
-            found && /^## / {exit}
-            found {print}
-          ' CHANGELOG.md)
+          # Prefer the captured unreleased content; fallback to extracting from CHANGELOG.md
+          if [ -n "$UNRELEASED_CONTENT" ]; then
+            CHANGELOG_CONTENT="$UNRELEASED_CONTENT"
+          else
+            CHANGELOG_CONTENT=$(awk -v ver="$CHANGELOG_VERSION" '
+              $0 ~ ("^## .*" ver) {found=1; next}
+              found && /^## / {exit}
+              found {print}
+            ' CHANGELOG.md)
+          fi
 
           # Emit multiline output safely
           echo "changelog_content<<EOF" >> $GITHUB_OUTPUT
@@ -128,7 +136,7 @@ jobs:
       #   run: |
       #     python -m twine upload dist/* --verbose
 
-      # TODO: Change push action to master branch again after tag-based triggering is restored
+      # TODO: make sure that this action pushed to the master branch again after committing
       - name: Commit and push CHANGELOG.md
         run: |
           git config user.name "github-actions[bot]"
@@ -142,8 +150,8 @@ jobs:
             git commit -m "chore(release): update changelog for version ${{ steps.tag_version.outputs.version }}"
             # git push origin HEAD:master
             # echo "✓ CHANGELOG.md updated and pushed to master"
-            git push
-            echo "✓ CHANGELOG.md updated and pushed"
+            git push origin HEAD:readme-updates-pip
+            echo "✓ CHANGELOG.md updated and pushed to readme-updates-pip"
           fi
 
       # - name: Create GitHub Release
