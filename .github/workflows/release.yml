@@ -4,6 +4,7 @@ on:
   push:
     tags:
       - "v*.*.*"
+
 permissions:
   contents: write
   packages: write
@@ -58,7 +59,6 @@ jobs:
         env:
           OUTPUT: CHANGELOG.md
           GITHUB_REPO: ${{ github.repository }}
-          RUST_LOG: error
         run: |
           # Bump and write CHANGELOG.md (create the release section)
           git-cliff --bump --output CHANGELOG.md
