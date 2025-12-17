@@ -2,11 +2,8 @@ name: Release
 
 on:
   push:
-    # TODO: re-introduce tag-based triggering
-    # tags:
-    #   - "v*.*.*"
-    branches:
-      - readme-updates-pip
+    tags:
+      - "v*.*.*"
 permissions:
   contents: write
   packages: write
@@ -33,29 +30,28 @@ jobs:
           pip install build twine git-cliff
           pip install -e .
 
-      # TODO: Re-enable version validation when tag-based triggering is restored
-      # - name: Extract version from tag
-      #   id: tag_version
-      #   run: |
-      #     TAG_VERSION=${GITHUB_REF#refs/tags/v}
-      #     echo "version=$TAG_VERSION" >> $GITHUB_OUTPUT
-      #     echo "Extracted version from tag: $TAG_VERSION"
+      - name: Extract version from tag
+        id: tag_version
+        run: |
+          TAG_VERSION=${GITHUB_REF#refs/tags/v}
+          echo "version=$TAG_VERSION" >> $GITHUB_OUTPUT
+          echo "Extracted version from tag: $TAG_VERSION"
 
-      # - name: Validate pyproject.toml version
-      #   id: validate_project
-      #   run: |
-      #     PYPROJECT_VERSION=$(grep '^version = ' pyproject.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
-      #     echo "pyproject_version=$PYPROJECT_VERSION" >> $GITHUB_OUTPUT
-      #     echo "pyproject.toml version: $PYPROJECT_VERSION"
+      - name: Validate pyproject.toml version
+        id: validate_project
+        run: |
+          PYPROJECT_VERSION=$(grep '^version = ' pyproject.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
+          echo "pyproject_version=$PYPROJECT_VERSION" >> $GITHUB_OUTPUT
+          echo "pyproject.toml version: $PYPROJECT_VERSION"
 
-      #     TAG_VERSION=${{ steps.tag_version.outputs.version }}
-      #     if [ "$PYPROJECT_VERSION" != "$TAG_VERSION" ]; then
-      #       echo "❌ Version mismatch:"
-      #       echo "  Tag version: $TAG_VERSION"
-      #       echo "  pyproject.toml version: $PYPROJECT_VERSION"
-      #       exit 1
-      #     fi
-      #     echo "✓ pyproject.toml version matches tag"
+          TAG_VERSION=${{ steps.tag_version.outputs.version }}
+          if [ "$PYPROJECT_VERSION" != "$TAG_VERSION" ]; then
+            echo "❌ Version mismatch:"
+            echo "  Tag version: $TAG_VERSION"
+            echo "  pyproject.toml version: $PYPROJECT_VERSION"
+            exit 1
+          fi
+          echo "✓ pyproject.toml version matches tag"
 
       - name: Generate changelog with git-cliff
         id: changelog
@@ -76,75 +72,55 @@ jobs:
           # Match headers like: '## [0.1.3]', '## v0.1.3', or '## 0.1.3'
           CHANGELOG_CONTENT=$(awk -v ver="$CHANGELOG_VERSION" 'BEGIN{p="^## .*\\[?v?" ver "\\]?"} $0 ~ p {found=1; next} found && /^## / {exit} found {print}' CHANGELOG.md | sed -e '1,/[^[:space:]]/d' -e ':a;N;$!ba;s/\n\s*$//')
 
-          # Debug: print raw extracted content to the job log (delimited)
-          echo "::group::Changelog debug: extracted content"
-          echo "----CHANGELOG_CONTENT START----"
-          if [ -n "$CHANGELOG_CONTENT" ]; then
-            printf '%s\n' "$CHANGELOG_CONTENT" | sed -n '1,500p'
-          else
-            echo "(extracted content is empty)";
-            echo "--- Showing top of CHANGELOG.md for diagnosis ---"
-            sed -n '1,200p' CHANGELOG.md
-          fi
-          echo "----CHANGELOG_CONTENT END----"
-          echo "::endgroup::"
-
           # Emit multiline output safely
           echo "changelog_content<<EOF" >> $GITHUB_OUTPUT
           printf '%s\n' "$CHANGELOG_CONTENT" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
 
-          # Debug: show the tail of GITHUB_OUTPUT to verify it was written
-          echo "::group::GITHUB_OUTPUT preview"
-          tail -n 80 "$GITHUB_OUTPUT" || true
-          echo "::endgroup::"
+      - name: Validate changelog version
+        run: |
+          CHANGELOG_VERSION=${{ steps.changelog.outputs.changelog_version }}
+          TAG_VERSION=${{ steps.tag_version.outputs.version }}
 
-      # TODO: Re-enable relevant publishing steps when tag-based triggering is restored
-      # - name: Validate changelog version
-      #   run: |
-      #     CHANGELOG_VERSION=${{ steps.changelog.outputs.changelog_version }}
-      #     TAG_VERSION=${{ steps.tag_version.outputs.version }}
+          if [ "$CHANGELOG_VERSION" != "$TAG_VERSION" ]; then
+            echo "❌ Version mismatch:"
+            echo "  Tag version: $TAG_VERSION"
+            echo "  Changelog version: $CHANGELOG_VERSION"
+            echo "⚠️  Changelog entry may not match the tag. Ensure conventional commits are used."
+            exit 1
+          fi
+          echo "✓ Changelog version matches tag"
 
-      #     if [ "$CHANGELOG_VERSION" != "$TAG_VERSION" ]; then
-      #       echo "❌ Version mismatch:"
-      #       echo "  Tag version: $TAG_VERSION"
-      #       echo "  Changelog version: $CHANGELOG_VERSION"
-      #       echo "⚠️  Changelog entry may not match the tag. Ensure conventional commits are used."
-      #       exit 1
-      #     fi
-      #     echo "✓ Changelog version matches tag"
+      - name: Build distribution packages
+        run: |
+          python -m build
 
-      # - name: Build distribution packages
-      #   run: |
-      #     python -m build
+      - name: Verify package version
+        run: |
+          WHEEL_FILE=$(ls dist/*.whl | head -1)
+          pip install "$WHEEL_FILE"
 
-      # - name: Verify package version
-      #   run: |
-      #     WHEEL_FILE=$(ls dist/*.whl | head -1)
-      #     pip install "$WHEEL_FILE"
+          # Extract package name from pyproject.toml and query installed version safely
+          PACKAGE_NAME=$(grep '^name = ' pyproject.toml | head -1 | sed 's/name = "\(.*\)"/\1/')
+          INSTALLED_VERSION=$(python -c "import importlib.metadata, sys; print(importlib.metadata.version(sys.argv[1]))" "$PACKAGE_NAME")
+          TAG_VERSION=${{ steps.tag_version.outputs.version }}
 
-      #     # Extract package name from pyproject.toml and query installed version safely
-      #     PACKAGE_NAME=$(grep '^name = ' pyproject.toml | head -1 | sed 's/name = "\(.*\)"/\1/')
-      #     INSTALLED_VERSION=$(python -c "import importlib.metadata, sys; print(importlib.metadata.version(sys.argv[1]))" "$PACKAGE_NAME")
-      #     TAG_VERSION=${{ steps.tag_version.outputs.version }}
+          echo "Installed package version: $INSTALLED_VERSION"
+          if [ "$INSTALLED_VERSION" != "$TAG_VERSION" ]; then
+            echo "❌ Package version mismatch:"
+            echo "  Tag version: $TAG_VERSION"
+            echo "  Package version: $INSTALLED_VERSION"
+            exit 1
+          fi
+          echo "✓ Package version matches tag"
 
-      #     echo "Installed package version: $INSTALLED_VERSION"
-      #     if [ "$INSTALLED_VERSION" != "$TAG_VERSION" ]; then
-      #       echo "❌ Package version mismatch:"
-      #       echo "  Tag version: $TAG_VERSION"
-      #       echo "  Package version: $INSTALLED_VERSION"
-      #       exit 1
-      #     fi
-      #     echo "✓ Package version matches tag"
+      - name: Publish to PyPI
+        env:
+          TWINE_USERNAME: __token__
+          TWINE_PASSWORD: ${{ secrets.PYPI_TOKEN }}
+        run: |
+          python -m twine upload dist/* --verbose
 
-      # - name: Publish to PyPI
-      #   env:
-      #     TWINE_USERNAME: __token__
-      #     TWINE_PASSWORD: ${{ secrets.PYPI_TOKEN }}
-      #   run: |
-      #     python -m twine upload dist/* --verbose
-
-      # TODO: make sure that this action pushed to the master branch again after committing
       - name: Commit and push CHANGELOG.md
         run: |
           git config user.name "github-actions[bot]"
@@ -156,21 +132,19 @@ jobs:
           else
             # We're on a detached HEAD when running on a tag; push the commit directly to the master branch
             git commit -m "chore(release): update changelog for version ${{ steps.tag_version.outputs.version }}"
-            # git push origin HEAD:master
-            # echo "✓ CHANGELOG.md updated and pushed to master"
-            git push origin HEAD:readme-updates-pip
-            echo "✓ CHANGELOG.md updated and pushed to readme-updates-pip"
+            git push origin HEAD:master
+            echo "✓ CHANGELOG.md updated and pushed to master"
           fi
 
-      # - name: Create GitHub Release
-      #   uses: softprops/action-gh-release@v1
-      #   with:
-      #     files: dist/*
-      #     body: ${{ steps.changelog.outputs.changelog_content }}
-      #     draft: false
-      #     prerelease: false
-      #   env:
-      #     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: dist/*
+          body: ${{ steps.changelog.outputs.changelog_content }}
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Summary
         run: |
