@@ -52,3 +52,5 @@
 - Update README
 - Add build workflow that runs on every relevant commit
 - *(release)* Update changelog for version refs/heads/release-test
+- *(release)* Update changelog for version refs/heads/release-test
+- Add check if pypi token is available
