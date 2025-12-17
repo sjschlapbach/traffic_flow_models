@@ -54,3 +54,5 @@
 - *(release)* Update changelog for version refs/heads/release-test
 - *(release)* Update changelog for version refs/heads/release-test
 - Add check if pypi token is available
+- *(release)* Update changelog for version refs/heads/release-test
+- Update release action
