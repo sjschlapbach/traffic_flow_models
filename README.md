@@ -95,7 +95,7 @@ git cliff bump
 ### 2. Commit the change
 
 ```bash
-git commit -m "chore(release): update pip package version for release"
+git commit -m "chore(release): bump pip package version for release"
 ```
 
 ### 3. Create and push tag (triggers workflow)
