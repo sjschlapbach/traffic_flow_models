@@ -50,3 +50,5 @@
 - Update release workflow with modified commit logic
 - Update changelog for version refs/heads/release-test
 - Update README
+- Add build workflow that runs on every relevant commit
+- *(release)* Update changelog for version refs/heads/release-test
