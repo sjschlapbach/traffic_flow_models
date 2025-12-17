@@ -128,9 +128,10 @@ jobs:
           if git diff --cached --quiet; then
             echo "No changes to CHANGELOG.md, skipping commit"
           else
+            # We're on a detached HEAD when running on a tag; push the commit directly to the master branch
             git commit -m "chore(release): update changelog for version ${{ steps.tag_version.outputs.version }}"
-            git push
-            echo "✓ CHANGELOG.md updated and pushed"
+            git push origin HEAD:master
+            echo "✓ CHANGELOG.md updated and pushed to master"
           fi
 
       - name: Create GitHub Release

@@ -78,6 +78,10 @@ Contributions are welcome! Please ensure that:
 
 To release a new version of the macroscopic traffic flow package, please make sure that all tests and builds are passing and follow these steps:
 
+#### 0. Prerequisites
+
+Ensure that the `master` branch is up to date with all changes that should be released. Also, make sure you have the necessary permissions to push tags to the repository.
+
 ### 1. Update version in pyproject.toml
 
 Update the version of the package in the pyproject file according to the next release version according to the conventional commit guidelines. To make sure you update the version correctly, you can run the following command:
