@@ -89,14 +89,14 @@ git cliff bump
 ### 2. Commit the change
 
 ```bash
-git commit -m "chore(release): prepare for v1.0.0"
+git commit -m "chore(release): update pip package version for release"
 ```
 
 ### 3. Create and push tag (triggers workflow)
 
 ```bash
-git tag -a v1.0.0 -m "Release version 1.0.0"
-git push origin main v1.0.0
+git tag -a v1.0.0 -m "chore(release): version 1.0.0"
+git push origin v1.0.0
 ```
 
 ### 4. GitHub Actions automatically:
