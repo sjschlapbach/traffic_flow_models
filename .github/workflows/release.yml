@@ -1,0 +1,152 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  validate-and-release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install build twine git-cliff
+          pip install -e .
+
+      - name: Extract version from tag
+        id: tag_version
+        run: |
+          TAG_VERSION=${GITHUB_REF#refs/tags/v}
+          echo "version=$TAG_VERSION" >> $GITHUB_OUTPUT
+          echo "Extracted version from tag: $TAG_VERSION"
+
+      - name: Validate pyproject.toml version
+        id: validate_project
+        run: |
+          PYPROJECT_VERSION=$(grep '^version = ' pyproject.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
+          echo "pyproject_version=$PYPROJECT_VERSION" >> $GITHUB_OUTPUT
+          echo "pyproject.toml version: $PYPROJECT_VERSION"
+
+          TAG_VERSION=${{ steps.tag_version.outputs.version }}
+          if [ "$PYPROJECT_VERSION" != "$TAG_VERSION" ]; then
+            echo "❌ Version mismatch:"
+            echo "  Tag version: $TAG_VERSION"
+            echo "  pyproject.toml version: $PYPROJECT_VERSION"
+            exit 1
+          fi
+          echo "✓ pyproject.toml version matches tag"
+
+      - name: Generate changelog with git-cliff
+        id: changelog
+        env:
+          OUTPUT: CHANGELOG.md
+          GITHUB_REPO: ${{ github.repository }}
+        run: |
+          # Generate full CHANGELOG.md file
+          git-cliff --verbose --bump --output CHANGELOG.md
+
+          # Extract latest release notes (unreleased changes without header)
+          CHANGELOG_CONTENT=$(git-cliff --verbose --bump --unreleased --strip header)
+          echo "changelog_content<<EOF" >> $GITHUB_OUTPUT
+          echo "$CHANGELOG_CONTENT" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+          CHANGELOG_VERSION=$(git cliff --bumped-version)
+          echo "changelog_version=$CHANGELOG_VERSION" >> $GITHUB_OUTPUT
+          echo "Changelog version: $CHANGELOG_VERSION"
+
+      - name: Validate changelog version
+        run: |
+          CHANGELOG_VERSION=${{ steps.changelog.outputs.changelog_version }}
+          TAG_VERSION=${{ steps.tag_version.outputs.version }}
+
+          if [ "$CHANGELOG_VERSION" != "$TAG_VERSION" ]; then
+            echo "❌ Version mismatch:"
+            echo "  Tag version: $TAG_VERSION"
+            echo "  Changelog version: $CHANGELOG_VERSION"
+            echo "⚠️  Changelog entry may not match the tag. Ensure conventional commits are used."
+            exit 1
+          fi
+          echo "✓ Changelog version matches tag"
+
+      - name: Commit and push CHANGELOG.md
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add CHANGELOG.md
+          # Only commit if there are changes
+          if git diff --cached --quiet; then
+            echo "No changes to CHANGELOG.md, skipping commit"
+          else
+            git commit -m "chore(release): update changelog for version ${{ steps.tag_version.outputs.version }}"
+            git push
+            echo "✓ CHANGELOG.md updated and pushed"
+          fi
+
+      - name: Build distribution packages
+        run: |
+          python -m build
+
+      - name: Verify package version
+        run: |
+          WHEEL_FILE=$(ls dist/*.whl | head -1)
+          pip install "$WHEEL_FILE"
+
+          # Extract package name from pyproject.toml and query installed version safely
+          PACKAGE_NAME=$(grep '^name = ' pyproject.toml | head -1 | sed 's/name = "\(.*\)"/\1/')
+          INSTALLED_VERSION=$(python -c "import importlib.metadata, sys; print(importlib.metadata.version(sys.argv[1]))" "$PACKAGE_NAME")
+          TAG_VERSION=${{ steps.tag_version.outputs.version }}
+
+          echo "Installed package version: $INSTALLED_VERSION"
+          if [ "$INSTALLED_VERSION" != "$TAG_VERSION" ]; then
+            echo "❌ Package version mismatch:"
+            echo "  Tag version: $TAG_VERSION"
+            echo "  Package version: $INSTALLED_VERSION"
+            exit 1
+          fi
+          echo "✓ Package version matches tag"
+
+      - name: Publish to PyPI
+        env:
+          TWINE_USERNAME: __token__
+          TWINE_PASSWORD: ${{ secrets.PYPI_TOKEN }}
+        run: |
+          python -m twine upload dist/* --verbose
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: dist/*
+          body: ${{ steps.changelog.outputs.changelog_content }}
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Summary
+        run: |
+          echo "## ✓ Release Complete"
+          echo "**Version:** ${{ steps.tag_version.outputs.version }}"
+          echo "**Tag:** ${{ github.ref_name }}"
+          echo "**Artifacts:**"
+          echo "  - Published to PyPI"
+          echo "  - Created GitHub Release"
+          echo "  - Changelog updated"
