@@ -60,63 +60,6 @@ python -m src.demo.ctm_simulation
 python -m src.demo.metanet_simulation
 ```
 
-## Testing
-
-```bash
-pytest
-```
-
-## Development
-
-Contributions are welcome! Please ensure that:
-
-1. All tests pass (`pytest`)
-2. Code is formatted with [Black](https://github.com/psf/black)
-3. New features include appropriate tests
-
-## Release
-
-To release a new version of the macroscopic traffic flow package, please make sure that all tests and builds are passing and follow these steps:
-
-#### 0. Prerequisites
-
-Ensure that the `master` branch is up to date with all changes that should be released. Also, make sure you have the necessary permissions to push tags to the repository.
-
-### 1. Update version in pyproject.toml
-
-Update the version of the package in the pyproject file according to the next release version according to the conventional commit guidelines. To make sure you update the version correctly, you can run the following command:
-
-```bash
-git cliff bump
-```
-
-⚠️ CAUTION: Do not commit the changelog changes yet, as these will be handled automatically by the release workflow. Only commit the version change in `pyproject.toml`. If the version in the pyproject configuration and the changelog are not in sync, the release workflow will fail.
-
-### 2. Commit the change
-
-```bash
-git commit -m "chore(release): bump pip package version for release"
-```
-
-### 3. Create and push tag (triggers workflow)
-
-```bash
-git tag -a v1.0.0 -m "chore(release): version 1.0.0"
-git push origin v1.0.0
-```
-
-### 4. GitHub Actions automatically:
-
-├─ Validates all versions match
-
-├─ Generates changelog
-
-├─ Builds distribution packages
-
-├─ Publishes to PyPI
-
-└─ Creates GitHub release
-
 ## Usage Examples
 
 ### Creating a Network
@@ -168,6 +111,68 @@ onramp = Onramp(lanes=1, lane_capacity=2000, free_flow_speed=100,
                 controller=AlineaController(gain=5.0, setpoint=20.0,
                                            measurement_cell=3))
 ```
+
+## Development
+
+Contributions are welcome! Please ensure that:
+
+1. All tests pass (`pytest`)
+2. Code is formatted with [Black](https://github.com/psf/black)
+3. New features include appropriate tests
+
+## Testing
+
+```bash
+pytest
+```
+
+## Release
+
+To release a new version of the macroscopic traffic flow package, please make sure that all tests and builds are passing and follow these steps:
+
+#### 0. Prerequisites (important!)
+
+Locally change to the `master` branch and make sure that it contains all the latest changes that should be part of the release
+
+```bash
+git checkout master
+git pull origin master
+```
+
+Also, make sure you have the necessary permissions to push tags to the repository.
+
+#### 1. Update version in pyproject.toml
+
+Update the version of the package in the pyproject file according to the next release version according to the conventional commit guidelines. To make sure you update the version correctly, you can run the following command:
+
+```bash
+git cliff bump
+```
+
+⚠️ **CAUTION:** Do not commit any changelog updates, as these will be handled automatically by the release workflow. Only commit the version change in `pyproject.toml`. If the version in the pyproject configuration and the changelog are not in sync, the release workflow will fail.
+
+#### 2. Commit the version change
+
+```bash
+git checkout master                     # safeguard to ensure you are on the master branch
+git commit -m "chore(release): v1.0.0"  # replace v1.0.0 with the current version
+```
+
+#### 3. Create and push tag (triggers workflow)
+
+```bash
+git checkout master                                     # safeguard to ensure you are on the master branch
+git tag -a v1.0.0 -m "chore(release): version 1.0.0"    # replace v1.0.0 with the current version
+git push origin v1.0.0                                  # push the new tag to GitHub to trigger the release workflow
+```
+
+#### 4. GitHub Actions automatically:
+
+- Validates all versions match
+- Generates changelog
+- Builds distribution packages
+- Publishes to PyPI
+- Creates GitHub release
 
 ## License
 
