@@ -15,49 +15,10 @@ A Python library for simulating and analyzing macroscopic traffic flow on highwa
 
 ## Installation
 
-**Requirements**: Python 3.13 or later
+The latest stable version of the package can be easily installed through pip. For more information on how to run the code in this repository, including the demo scripts, please refer to the [development section](#development) below.
 
 ```bash
-# Create and activate virtual environment
-python3 -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-
-# Install package
-pip install -e .
-
-# For development (includes pytest)
-pip install -e ".[dev]"
-```
-
-On macOS, you may need to install Python 3.13 explicitly:
-
-```bash
-brew install python@3.13
-python3.13 -m venv venv
-source venv/bin/activate
-pip install -e ".[dev]"
-```
-
-## Project Structure
-
-```
-traffic_flow_models/
-├── src/
-│   ├── traffic_flow_models/     # Main package
-│   │   ├── model/               # Traffic flow models (CTM, METANET)
-│   │   ├── network/             # Network components
-│   │   └── controller/          # Control strategies (ALINEA)
-│   └── demo/                    # Demo scripts
-└── tests/                       # Unit tests
-```
-
-## Quick Start
-
-Run a pre-configured demo simulation:
-
-```bash
-python -m src.demo.ctm_simulation
-python -m src.demo.metanet_simulation
+pip install traffic-flow-models
 ```
 
 ## Usage Examples
@@ -65,7 +26,7 @@ python -m src.demo.metanet_simulation
 ### Creating a Network
 
 ```python
-from traffic_flow_models import Network, Onramp
+from traffic-flow-models import Network, Onramp
 
 network = Network()
 network.add_cell(length=0.5, lanes=3, lane_capacity=2000,
@@ -79,7 +40,7 @@ network.add_cell(length=0.5, lanes=3, lane_capacity=2000,
 ### Running Simulations
 
 ```python
-from traffic_flow_models import CTM, METANET
+from traffic-flow-models import CTM, METANET
 import numpy as np
 
 # CTM simulation
@@ -104,23 +65,66 @@ density, flow, speed, *_ = network.simulate(
 ### ALINEA Ramp Metering
 
 ```python
-from traffic_flow_models import AlineaController
+from traffic-flow-models import AlineaController
 
-onramp = Onramp(lanes=1, lane_capacity=2000, free_flow_speed=100,
-                jam_density=180,
-                controller=AlineaController(gain=5.0, setpoint=20.0,
-                                           measurement_cell=3))
+onramp = Onramp(lanes=1, lane_capacity=2000, free_flow_speed=100, jam_density=180,
+               controller=AlineaController(gain=5.0, setpoint=20.0,measurement_cell=3))
 ```
 
 ## Development
 
-Contributions are welcome! Please ensure that:
+**Requirements**: Python 3.13 or later
+
+```bash
+# Create and activate virtual environment
+python3 -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+
+# Install package
+pip install -e .
+
+# For development (includes pytest)
+pip install -e ".[dev]"
+```
+
+On macOS, you may need to install Python 3.13 explicitly:
+
+```bash
+brew install python@3.13
+python3.13 -m venv venv
+source venv/bin/activate
+pip install -e ".[dev]"
+```
+
+Quickstart: Run one of the demo scripts to see the package in action:
+
+```bash
+python -m src.demo.ctm_simulation
+python -m src.demo.metanet_simulation
+```
+
+Contributions are welcome! Before opening a pull request, please ensure that:
 
 1. All tests pass (`pytest`)
 2. Code is formatted with [Black](https://github.com/psf/black)
 3. New features include appropriate tests
 
+## Project Structure
+
+```
+traffic_flow_models/
+├── src/
+│   ├── traffic_flow_models/     # Main package
+│   │   ├── model/               # Traffic flow models (CTM, METANET)
+│   │   ├── network/             # Network components
+│   │   └── controller/          # Control strategies (ALINEA)
+│   └── demo/                    # Demo scripts
+└── tests/                       # Unit tests
+```
+
 ## Testing
+
+All tests in this project are written using [pytest](https://docs.pytest.org/en/stable/). To run the tests, execute the following command in the project root directory:
 
 ```bash
 pytest
