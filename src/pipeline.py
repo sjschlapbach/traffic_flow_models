@@ -96,8 +96,7 @@ class SUMOpipeline:
             print(f"{self.rou_file} file generated.")
             
             if os.path.exists("temp_trips.xml"):
-                os.remove("temp_trips.xml")
-                
+                os.remove("temp_trips.xml") 
         except subprocess.CalledProcessError as e:
             print(f"An error occurred while generating demand: {e}")
 
@@ -174,4 +173,5 @@ def main():
 
 
 if __name__=="__main__":
+
     main()
