@@ -1,4 +1,23 @@
+## [0.1.3] - 2025-12-28
+
+### Miscellaneous Tasks
+
+- *(release)* Update changelog for version 0.1.2
+- Update README and release workflow for correct creation of release notes (#14)
+- Update README with package-based installation instructions
+- Update gitignore
+- *(release)* V0.1.3
 ## [0.1.2] - 2025-12-17
+
+### Enhancements
+
+- Add functionality to plot a network structure including ramps (#2)
+- Support offramps and split ratios in cell transmission model (#4)
+- Add demo scenarios for macroscopic flow simulation (#6)
+- Extend network flow plots with onramp and offramp flows
+- *(ctm)* Update CTM model equations to ensure causality during cell updates (#10)
+- *(metanet)* Update the model equations to maintain causality
+- *(network)* Ensure that CFL condition is satisfied for all each network
 
 ### Features
 
@@ -14,16 +33,6 @@
 - *(ctm)* Use the backward wave speed of the downstream cell to compute the supply of space for flow update
 - *(test)* Update interfaces in ctm tests to be consistent with class definitions
 - *(ci)* Ensure that version check of release workflow is consistent with changelog formatting
-
-### Other
-
-- Add functionality to plot a network structure including ramps (#2)
-- Support offramps and split ratios in cell transmission model (#4)
-- Add demo scenarios for macroscopic flow simulation (#6)
-- Extend network flow plots with onramp and offramp flows
-- *(ctm)* Update CTM model equations to ensure causality during cell updates (#10)
-- *(metanet)* Update the model equations to maintain causality
-- *(network)* Ensure that CFL condition is satisfied for all each network
 
 ### Refactor
 
