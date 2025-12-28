@@ -1,5 +1,6 @@
 # Macroscopic Traffic Flow Models
 
+[![PyPI version](https://img.shields.io/pypi/v/traffic-flow-models)](https://pypi.org/project/traffic-flow-models/)
 [![Python Testing](https://github.com/sjschlapbach/traffic_flow_models/actions/workflows/python_testing.yml/badge.svg)](https://github.com/sjschlapbach/traffic_flow_models/actions/workflows/python_testing.yml)
 [![Package Build](https://github.com/sjschlapbach/traffic_flow_models/actions/workflows/build.yml/badge.svg)](https://github.com/sjschlapbach/traffic_flow_models/actions/workflows/build.yml)
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](LICENSE)
@@ -15,7 +16,7 @@ A Python library for simulating and analyzing macroscopic traffic flow on highwa
 
 ## Installation
 
-The latest stable version of the package can be easily installed through pip. For more information on how to run the code in this repository, including the demo scripts, please refer to the [development section](#development) below.
+The latest [stable version of the package](https://pypi.org/project/traffic-flow-models/) can be easily installed through pip. For more information on how to run the code in this repository, including the demo scripts, please refer to the [development section](#development) below.
 
 ```bash
 pip install traffic-flow-models
@@ -160,6 +161,7 @@ git-cliff --bump
 ```bash
 git checkout master                     # safeguard to ensure you are on the master branch
 git commit -m "chore(release): v1.0.0"  # replace v1.0.0 with the current version
+git push origin master
 ```
 
 #### 3. Create and push tag (triggers workflow)
