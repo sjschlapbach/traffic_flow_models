@@ -150,7 +150,7 @@ Also, make sure you have the necessary permissions to push tags to the repositor
 Update the version of the package in the pyproject file according to the next release version according to the conventional commit guidelines. To make sure you update the version correctly, you can run the following command:
 
 ```bash
-git cliff bump
+git-cliff --bump
 ```
 
 ⚠️ **CAUTION:** Do not commit any changelog updates, as these will be handled automatically by the release workflow. Only commit the version change in `pyproject.toml`. If the version in the pyproject configuration and the changelog are not in sync, the release workflow will fail.
