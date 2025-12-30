@@ -22,6 +22,10 @@ The latest [stable version of the package](https://pypi.org/project/traffic-flow
 pip install traffic-flow-models
 ```
 
+If you plan to use the pipeline components involving SUMO (e.g. for benchmarking highway networks of a specific city), please refer to the [SUMO installation guide](https://sumo.dlr.de/docs/Installing/index.html) for instructions on how to install SUMO on your system (not included in the package).
+
+For the pipeline to be fully functional, auxiliary command line commands such as `netconvert` and `sumo` need to be accessible from your system PATH. For installations on MacOS the SUMO installer might not set the SUMO_HOME environment variable automatically / correctly. We recommend checking manually that the variable is set to your library installation (something like `/Library/Frameworks/EclipseSUMO.framework/Versions/Current/EclipseSUMO/share/sumo`).
+
 ## Usage Examples
 
 ### Creating a Network
