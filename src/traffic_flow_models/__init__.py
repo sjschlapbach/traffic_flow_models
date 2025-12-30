@@ -17,5 +17,19 @@ from .model.metanet import METANET
 # re-export controller components
 from .controller.alinea import AlineaController
 
+# re-export simulation and pipeline components
+from .simulator.sumo_simulation import SUMOSimulation
+from .simulator.sumo_pipeline import SUMOPipeline
 
-__all__ = ["Cell", "Onramp", "Offramp", "Network", "CTM", "METANET", "AlineaController"]
+
+__all__ = [
+    "Cell",
+    "Onramp",
+    "Offramp",
+    "Network",
+    "CTM",
+    "METANET",
+    "AlineaController",
+    "SUMOSimulation",
+    "SUMOPipeline",
+]

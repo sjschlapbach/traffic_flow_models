@@ -3,4 +3,10 @@
 Empty package for consistency with the project layout.
 """
 
-__all__ = []
+from .sumo_pipeline import SUMOPipeline
+from .sumo_simulation import SUMOSimulation
+
+__all__ = [
+    "SUMOPipeline",
+    "SUMOSimulation",
+]
