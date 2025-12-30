@@ -6,11 +6,12 @@ import sys
 from functools import wraps
 import xml.etree.ElementTree as ET
 import argparse
+import shutil
 
 
 # Use this command to run the code
 # pipeline.py --name run_name --loc location --veh number_of_vehicles(demand)
-# Ex: pipeline.py --name run1 --loc Blacksburg,Virgin,USA --veh 3000
+# Ex: python src/pipeline.py --name run1 --loc "Zurich, Switzerland" --veh 3000
 
 
 def skip_if_exists(attr_name):  # Decorator to check if a file exists
@@ -33,7 +34,10 @@ class SUMOpipeline:
         self.name = name
         self.location = location
 
-        self.output_dir = name
+        # set up output directory
+        self.output_dir = os.path.join("results", name)
+        if os.path.exists(self.output_dir):
+            shutil.rmtree(self.output_dir)
         os.makedirs(self.output_dir, exist_ok=True)
 
         self.osm_file = os.path.join(self.output_dir, f"{name}.osm")
@@ -176,9 +180,9 @@ class SUMOsimulation:
         stats = root.find("vehicleTripStatistics")
         if stats is not None:
             results = {
-                "mean_speed": float(stats.get("speed")),  # Average speed of all trips
-                "total_vehicles": int(stats.get("count")),
-                "mean_duration": float(stats.get("duration")),
+                "mean_speed": float(stats.get("speed", 0)),
+                "total_vehicles": int(stats.get("count", 0)),
+                "mean_duration": float(stats.get("duration", 0)),
             }
             print(
                 f"\n[RESULTS] {self.name}: {results['mean_speed']:.2f} m/s average speed over {results['total_vehicles']} vehicles."
