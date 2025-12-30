@@ -56,14 +56,15 @@ class TestCTM:
 
         # compute expected next density directly using conservation
         # using the *previous* timestep flows
+        first_cell = net.get_cell(0)
         next_density_direct = previous_density[0] + dt * (
             prev_input_flow + previous_onramp_flow[0] - prev_flow[0] - 0.0
-        ) / (net.cells[0].length * net.cells[0].lanes)
+        ) / (first_cell.length * first_cell.lanes)
 
         speed_direct = (
-            flow[0] / (net.cells[0].lanes * next_density_direct)
+            flow[0] / (first_cell.lanes * next_density_direct)
             if next_density_direct > 0
-            else net.cells[0].vf
+            else first_cell.vf
         )
 
         assert np.isclose(density[0], next_density_direct)
@@ -82,7 +83,7 @@ class TestCTM:
         )
 
         model = CTM()
-        cell = net.cells[0]
+        cell = net.get_cell(0)
 
         # expected critical density: Qc_lane / vf
         expected_rho_cr = cell.Qc_lane / cell.vf

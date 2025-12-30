@@ -21,8 +21,12 @@ class TestNetwork:
         assert l.vf == 100
         assert l.rho_jam == 150
 
-        # no chaining for a single cell
-        assert net.cells[0] is l
+        # verify linked list: single cell has no upstream/downstream
+        assert l.upstream is None
+        assert l.downstream is None
+        assert net.first_cell() is l
+        assert net.last_cell() is l
+        assert len(net) == 1
 
     def test_add_cell_chaining_multiple(self):
         net = Network()
@@ -40,8 +44,27 @@ class TestNetwork:
             jam_density=170,
         )
 
-        # order preserved
-        assert net.cells == [a, b, c]
+        # verify linked list structure: a -> b -> c
+        assert a.upstream is None
+        assert a.downstream is b
+        assert b.upstream is a
+        assert b.downstream is c
+        assert c.upstream is b
+        assert c.downstream is None
+
+        # verify network helpers
+        assert net.first_cell() is a
+        assert net.last_cell() is c
+        assert len(net) == 3
+
+        # verify iteration order
+        cells_list = list(net)
+        assert cells_list == [a, b, c]
+
+        # verify get_cell by index
+        assert net.get_cell(0) is a
+        assert net.get_cell(1) is b
+        assert net.get_cell(2) is c
 
     def test_add_cell_with_ramps_instances(self):
         net = Network()
@@ -185,19 +208,48 @@ class TestNetwork:
             )
 
     def test_network_sizes_and_pointer_integrity(self):
-        # build networks of various sizes and check pointers
+        # build networks of various sizes and check linked list pointers
         for n in (1, 2, 5, 10):
             net = Network()
+            cells = []
             for i in range(n):
-                net.add_cell(
+                cell = net.add_cell(
                     length=float(i + 1),
                     lanes=1 + i,
                     lane_capacity=1500 + i * 100,
                     free_flow_speed=80 + i * 5,
                     jam_density=140 + i * 2,
                 )
+                cells.append(cell)
 
-            assert len(net.cells) == n
+            # verify network size
+            assert len(net) == n
+
+            # verify first and last cells
+            assert net.first_cell() is cells[0]
+            assert net.last_cell() is cells[-1]
+
+            # verify linked list integrity
+            for i in range(n):
+                cell = cells[i]
+                # check upstream pointer
+                if i == 0:
+                    assert cell.upstream is None
+                else:
+                    assert cell.upstream is cells[i - 1]
+
+                # check downstream pointer
+                if i == n - 1:
+                    assert cell.downstream is None
+                else:
+                    assert cell.downstream is cells[i + 1]
+
+            # verify iteration produces correct order
+            assert list(net) == cells
+
+            # verify get_cell returns correct cells
+            for i in range(n):
+                assert net.get_cell(i) is cells[i]
 
     def test_lane_drops(self):
         net = Network()

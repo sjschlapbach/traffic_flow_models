@@ -274,7 +274,9 @@ class METANET:
         """
 
         # initialize model quantities for current iteration
-        num_cells = len(network.cells)
+        # Note: array indices 0..num_cells-1 correspond to cell traversal order
+        # (upstream to downstream). This ensures state arrays align with network topology.
+        num_cells = len(network)
         next_flow = np.zeros(num_cells)
         next_speed = np.zeros(num_cells)
         next_density = np.zeros(num_cells)
@@ -284,7 +286,10 @@ class METANET:
 
         # compute the input flow and queue simulating congestion at
         # the beginning of the currently considered highway segment
-        first_cell = network.cells[0]
+        first_cell = network.first_cell()
+        if first_cell is None:
+            raise ValueError("Network has no cells")
+
         next_input_flow, next_input_queue = calculate_segment_input_flow(
             first_cell=first_cell,
             backward_wave_speed=self.backward_wave_speed(cell=first_cell),
@@ -327,51 +332,58 @@ class METANET:
 
         # iterate over all intermediate cells and update the onramp and
         # cell flows according to the physically possible values
-        for i in range(num_cells):
+        for i, current_cell in network.enumerate_cells():
             # if an offramp is present in the current cell, determine the
             # offramp flow based on the total cell outflow at the previous
             # time step and the split ratio. Note that this does not correspond
             # to the previous offramp flow, since the mainline cell outflow is
             # updated in between through the cell update function
-            current_cell = network.cells[i]
 
-            # in the first cell, we assume v_0 = v_1 to eliminate the
-            # corresponding term from the speed update equation
-            # in the last cell, we assume rho_{n+1} = rho_n
+            # boundary conditions using linked list structure:
+            # - first cell (upstream is None): assume v_0 = v_1 to eliminate convection term
+            # - last cell (downstream is None): assume rho_{n+1} = rho_n
             next_density[i], next_speed[i], next_flow[i] = self.cell_update(
                 cell=current_cell,
-                upstream_flow=input_flow if i == 0 else flow[i - 1],
+                upstream_flow=(
+                    input_flow if current_cell.upstream is None else flow[i - 1]
+                ),
                 previous_flow=flow[i],
                 onramp_flow=onramp_flow[i],
                 offramp_flow=offramp_flow[i],
                 previous_density=density[i],
-                downstream_density=density[i + 1] if i < num_cells - 1 else density[i],
-                upstream_speed=speed[i] if i == 0 else speed[i - 1],
+                downstream_density=(
+                    density[i + 1]
+                    if current_cell.downstream is not None
+                    else density[i]
+                ),
+                upstream_speed=(
+                    speed[i] if current_cell.upstream is None else speed[i - 1]
+                ),
                 previous_speed=speed[i],
                 dt=dt,
             )
 
             # in case the current cell has an offramp, update the offramp flow accordingly
-            if network.cells[i].offramp is not None:
-                split = network.cells[i].offramp.split_ratio  # type: ignore
+            if current_cell.offramp is not None:
+                split = current_cell.offramp.split_ratio  # type: ignore
                 next_offramp_flow[i] = split / (1 - split) * next_flow[i]
 
             # LOOKAHEAD: if the next downstream cell has an onramp, compute the regulated
             # onramp flow and update the corresponding queue (if not the entire flow can be served)
-            if i < num_cells - 1 and network.cells[i + 1].onramp is not None:
+            if (
+                current_cell.downstream is not None
+                and current_cell.downstream.onramp is not None
+            ):
+                downstream_cell = current_cell.downstream
                 next_onramp_flow[i + 1] = calculate_regulated_onramp_flow(
-                    cell=network.cells[i + 1],
+                    cell=downstream_cell,
                     cell_ix=i + 1,
-                    backward_wave_speed=self.backward_wave_speed(
-                        cell=network.cells[i + 1]
-                    ),
+                    backward_wave_speed=self.backward_wave_speed(cell=downstream_cell),
                     density=density,
                     previous_onramp_flow=onramp_flow[i + 1],
                     onramp_demand=onramp_demand[i + 1],
                     onramp_queue=onramp_queue[i + 1],
-                    controller=network.cells[
-                        i + 1
-                    ].onramp.controller,  # pyright: ignore[reportOptionalMemberAccess]
+                    controller=downstream_cell.onramp.controller,  # pyright: ignore[reportOptionalMemberAccess]
                     dt=dt,
                 )
 
