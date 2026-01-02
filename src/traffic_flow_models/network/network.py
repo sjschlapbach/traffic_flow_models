@@ -18,26 +18,40 @@ if TYPE_CHECKING:
 class Network:
     """A simple ordered mainline network container.
 
-    The Network class stores an ordered list of mainline `Cell` instances
-    arranged from upstream (index 0) to downstream (last index). It
-    provides convenience methods to add cells and attach or detach on-/off-
-    ramps. The Network does not perform simulation — it only manages the
-    topology and basic validation when celling objects together.
+    The Network class stores mainline `Cell` instances as a bidirectional
+    linked list arranged from upstream to downstream. It provides convenience
+    methods to add cells and attach or detach on-/off-ramps. The Network does
+    not perform simulation — it only manages the topology and basic validation
+    when linking objects together.
 
     Attributes:
-        cells: Ordered list of mainline `Cell` objects (upstream ->
-            downstream).
+        head (protected): Reference to the first (most upstream) cell in the network.
+        tail (protected): Reference to the last (most downstream) cell in the network.
+        cell_count (protected): Number of cells in the network.
     """
 
     def __init__(self) -> None:
         """Initialize an empty network.
 
-        The created network contains an empty `cells` list. Cells can be
+        The created network contains no cells initially. Cells can be
         added with `add_cell` which takes physical parameters and optionally
         attaches existing ramp objects.
         """
-        # ordered list of mainline cells (upstream -> downstream)
-        self.cells: List[Cell] = []
+        # bidirectional linked list structure
+        self._head: Optional[Cell] = None
+        self._tail: Optional[Cell] = None
+        self._cell_count: int = 0
+
+    def __len__(self) -> int:
+        """Return the number of cells in the network."""
+        return self._cell_count
+
+    def __iter__(self):
+        """Iterate over cells from upstream to downstream."""
+        current = self._head
+        while current is not None:
+            yield current
+            current = current.downstream
 
     def add_cell(
         self,
@@ -76,8 +90,8 @@ class Network:
 
         # check if the network already contains an upstream cell and if there is a lane drop
         lane_drop = 0
-        if len(self.cells) > 0:
-            upstream_cell = self.cells[-1]
+        if self._tail is not None:
+            upstream_cell = self._tail
             lane_drop = upstream_cell.lanes - lanes
             if lane_drop > 0:
                 upstream_cell.upcoming_lane_drop = lane_drop
@@ -90,8 +104,21 @@ class Network:
             jam_density=jam_density,
         )
 
-        # append the new cell and update parameters dependent on relative coupling
-        self.cells.append(new_cell)
+        # link the new cell into the bidirectional linked list
+        if self._head is None:
+            # first cell in network
+            self._head = new_cell
+            self._tail = new_cell
+        elif self._tail is None:
+            # should not happen - if head is defined, tail should be too
+            raise RuntimeError("Network linked list is in an invalid state")
+        else:
+            # append to end of list
+            self._tail.downstream = new_cell
+            new_cell.upstream = self._tail
+            self._tail = new_cell
+
+        self._cell_count += 1
 
         # attach provided ramp objects directly (do not attempt to construct
         # ramps from dictionaries). Validate types for helpful errors.
@@ -107,6 +134,45 @@ class Network:
 
         return new_cell
 
+    def first_cell(self) -> Optional[Cell]:
+        """Return the first (most upstream) cell, or None if network is empty."""
+        return self._head
+
+    def last_cell(self) -> Optional[Cell]:
+        """Return the last (most downstream) cell, or None if network is empty."""
+        return self._tail
+
+    def enumerate_cells(self):
+        """Iterate over (index, cell) tuples from upstream to downstream."""
+        for i, cell in enumerate(self):
+            yield i, cell
+
+    def get_cell(self, index: int) -> Cell:
+        """Get cell at specified index by traversing linked list.
+
+        Args:
+            index: Zero-based index of cell (0 = first/upstream cell).
+
+        Returns:
+            Cell at the specified index.
+
+        Raises:
+            IndexError: If index is out of bounds.
+        """
+        if index < 0 or index >= self._cell_count:
+            raise IndexError(f"Cell index {index} out of range [0, {self._cell_count})")
+
+        current = self._head
+        for _ in range(index):
+            if current is None:
+                raise IndexError(f"Cell index {index} out of range")
+            current = current.downstream
+
+        if current is None:
+            raise IndexError(f"Cell index {index} out of range")
+
+        return current
+
     def add_onramp(
         self,
         cell_index: int,
@@ -118,8 +184,7 @@ class Network:
         """Attach a new `Onramp` to a cell by index.
 
         Args:
-            cell_index: Index of the cell in `self.cells` to attach the ramp
-                to.
+            cell_index: Index of the cell to attach the ramp to.
             lanes: Number of lanes on the onramp.
             lane_capacity: Capacity per lane in vehicles per hour.
             free_flow_speed: Free-flow speed in km/h for the onramp.
@@ -131,9 +196,10 @@ class Network:
 
         Raises:
             ValueError: If the target cell already has an onramp attached.
+            IndexError: If cell_index is out of bounds.
         """
 
-        cell = self.cells[cell_index]
+        cell = self.get_cell(cell_index)
         if cell.onramp is not None:
             raise ValueError("Cell already has an onramp attached")
 
@@ -158,8 +224,7 @@ class Network:
         """Attach a new `Offramp` to a cell by index.
 
         Args:
-            cell_index: Index of the cell in `self.cells` to attach the ramp
-                to.
+            cell_index: Index of the cell to attach the ramp to.
             lanes: Number of lanes on the offramp.
             lane_capacity: Capacity per lane in vehicles per hour.
             free_flow_speed: Free-flow speed in km/h for the offramp.
@@ -172,9 +237,10 @@ class Network:
 
         Raises:
             ValueError: If the target cell already has an offramp attached.
+            IndexError: If cell_index is out of bounds.
         """
 
-        cell = self.cells[cell_index]
+        cell = self.get_cell(cell_index)
         if cell.offramp is not None:
             raise ValueError("Cell already has an offramp attached")
 
@@ -192,26 +258,35 @@ class Network:
         """Return the `Onramp` attached to the cell at `cell_index`.
 
         Returns None if no onramp is attached.
+
+        Raises:
+            IndexError: If cell_index is out of bounds.
         """
 
-        return self.cells[cell_index].onramp
+        return self.get_cell(cell_index).onramp
 
     def get_offramp(self, cell_index: int) -> Optional[Offramp]:
         """Return the `Offramp` attached to the cell at `cell_index`.
 
         Returns None if no offramp is attached.
+
+        Raises:
+            IndexError: If cell_index is out of bounds.
         """
 
-        return self.cells[cell_index].offramp
+        return self.get_cell(cell_index).offramp
 
     def remove_onramp(self, cell_index: int) -> None:
         """Detach and remove the onramp from the cell at `cell_index`.
 
         After calling this the cell's `onramp` attribute will be set to
         `None`.
+
+        Raises:
+            IndexError: If cell_index is out of bounds.
         """
 
-        cell = self.cells[cell_index]
+        cell = self.get_cell(cell_index)
         cell.onramp = None
 
     def remove_offramp(self, cell_index: int) -> None:
@@ -219,9 +294,12 @@ class Network:
 
         After calling this the cell's `offramp` attribute will be set to
         `None`.
+
+        Raises:
+            IndexError: If cell_index is out of bounds.
         """
 
-        cell = self.cells[cell_index]
+        cell = self.get_cell(cell_index)
         cell.offramp = None
 
     def plot(self, show: bool = True, save_path: Optional[str] = None):
@@ -239,9 +317,7 @@ class Network:
         _, ax = plt.subplots(figsize=(10, 3))
 
         # basic layout parameters
-        total_length = sum(
-            max(0.0, float(getattr(l, "length", 0.0))) for l in self.cells
-        )
+        total_length = sum(max(0.0, float(getattr(l, "length", 0.0))) for l in self)
 
         # fall back to simple spacing when lengths are zero
         spacing = max(total_length * 0.02, 0.05) if total_length > 0 else 0.2
@@ -251,7 +327,7 @@ class Network:
         drawn_right = x
 
         # draw each cell as a rectangle whose width equals its length
-        for i, cell in enumerate(self.cells):
+        for i, cell in self.enumerate_cells():
             width = cell.length
             height = cell.lanes * lane_h
             lower = y_center - height / 2
@@ -289,9 +365,8 @@ class Network:
                 zorder=4,
             )
 
-            # only draw a connected for a downstream cell if it exists
-            next_idx = i + 1
-            if next_idx < len(self.cells):
+            # only draw a connector if a downstream cell exists
+            if cell.downstream is not None:
                 # small arrow between this cell and the next (flow left->right)
                 edge_off = min(width, spacing) * 0.05
                 start_x = x + width - edge_off
@@ -435,7 +510,7 @@ class Network:
 
         # verify that the CFL condition is satisfied for the chosen dt and all cells
         # CFL condition: dt <= cell.length / cell.vf for all cells
-        min_dt = min((cell.length / cell.vf) for cell in self.cells)
+        min_dt = min((cell.length / cell.vf) for cell in self)
         if dt > min_dt:
             raise ValueError(
                 f"Time step T={dt} exceeds CFL condition limit of {min_dt:.4f}. Reduce T."
@@ -447,12 +522,12 @@ class Network:
         )
 
         # initialize all quantities that should be tracked during the simulation
-        num_cells = len(self.cells)
+        num_cells = len(self)
         density = np.zeros((num_cells, len(time_array)))  # rho_i (veh/km/lane)
         flow = np.zeros((num_cells, len(time_array)))  # q_i (veh/h)
         speed = np.zeros((num_cells, len(time_array)), dtype=np.float64)  # v_i (km/h)
         speed[:, 0] = np.array(
-            [cell.vf for cell in self.cells], dtype=np.float64
+            [cell.vf for cell in self], dtype=np.float64
         )  # initialize first cell in free flow (especially important for METANET)
 
         input_flow = np.zeros(len(time_array))  # q_0 (veh/h)
@@ -540,7 +615,7 @@ class Network:
             # time vehicles spent in the input queue (veh * hours)
             VHT += dt * input_queue[t]
 
-            for idx, cell in enumerate(self.cells):
+            for idx, cell in self.enumerate_cells():
                 # add VKT: distance * vehicles that passed (flow is veh/h)
                 VKT += cell.length * dt * flow[idx, t]
 
@@ -558,7 +633,7 @@ class Network:
         num_cells, num_steps = speed.shape
         avg_speed = np.zeros(num_steps, dtype=np.float64)
         veh_in_cell = np.zeros_like(density)
-        for idx, cell in enumerate(self.cells):
+        for idx, cell in self.enumerate_cells():
             veh_in_cell[idx, :] = density[idx, :] * cell.length * cell.lanes
         veh_total = np.sum(veh_in_cell, axis=0)
 
@@ -672,7 +747,7 @@ class Network:
             None. Shows Matplotlib figures when called.
         """
 
-        num_cells = len(self.cells)
+        num_cells = len(self)
         time_seconds = time * 3600
 
         # calculate actual simulation duration
@@ -705,11 +780,10 @@ class Network:
         fig1.suptitle("Vehicle Density", fontsize=14, fontweight="bold")
         axes1 = np.array(axes1).flatten()
 
-        for i in range(num_cells):
-            rho_jam = self.cells[i].rho_jam
+        for i, cell in self.enumerate_cells():
             axes1[i].plot(time_seconds, density[i, :], linewidth=1.5)
-            axes1[i].axhline(rho_jam, color="red", linestyle="--", linewidth=1)
-            axes1[i].set_ylim([0, max(rho_jam * 1.1, max_density)])
+            axes1[i].axhline(cell.rho_jam, color="red", linestyle="--", linewidth=1)
+            axes1[i].set_ylim([0, max(cell.rho_jam * 1.1, max_density)])
             axes1[i].set_xlim([0, actual_duration_seconds])
             axes1[i].set_xlabel("time (s)")
             axes1[i].set_ylabel("density (veh/km/lane)")
@@ -727,16 +801,16 @@ class Network:
         fig2.suptitle("Vehicle Cell Outflow", fontsize=14, fontweight="bold")
         axes2 = np.array(axes2).flatten()
 
-        for i in range(num_cells):
-            Qc = self.cells[i].Qc
+        for i, cell in self.enumerate_cells():
+            Qc = cell.Qc
             # mainline outflow
             axes2[i].plot(
                 time_seconds[:-1], flow[i, :-1], linewidth=1.5, label="Cell outflow"
             )
             axes2[i].axhline(Qc, color="red", linestyle="--", linewidth=1)
 
-            has_offramp = getattr(self.cells[i], "offramp", None) is not None
-            has_onramp = getattr(self.cells[i], "onramp", None) is not None
+            has_offramp = cell.offramp is not None
+            has_onramp = cell.onramp is not None
             max_off = 0
             max_on = 0
             max_input = 0
@@ -827,8 +901,8 @@ class Network:
         fig3.suptitle("Vehicle Speed", fontsize=14, fontweight="bold")
         axes3 = np.array(axes3).flatten()
 
-        for i in range(num_cells):
-            vf_cell = self.cells[i].vf
+        for i, cell in self.enumerate_cells():
+            vf_cell = cell.vf
             axes3[i].plot(time_seconds[:-1], speed[i, :-1], linewidth=1.5)
             axes3[i].axhline(vf_cell, color="red", linestyle="--", linewidth=1)
             axes3[i].set_ylim([0, max(vf_cell * 1.05, max_speed)])
@@ -847,7 +921,7 @@ class Network:
         # determine which cells have onramps
         onramp_cells = [
             i
-            for i, c in enumerate(self.cells)
+            for i, c in self.enumerate_cells()
             if getattr(c, "onramp", None) is not None
         ]
         # rows: 1 for input, plus one per onramp
@@ -949,7 +1023,7 @@ class Network:
         )
 
         # 3D density plot
-        max_rho_jam = max([cell.rho_jam for cell in self.cells])
+        max_rho_jam = max(cell.rho_jam for cell in self)
         ax1 = fig5.add_subplot(1, 3, 1, projection="3d")
         ax1.plot_surface(
             X_full, Y_full, density, cmap="viridis", edgecolor="none", alpha=0.9
@@ -978,11 +1052,11 @@ class Network:
         ax2.set_zlabel("flow (veh/h)")
         ax2.set_xlim([0, actual_duration_seconds])
         ax2.set_ylim([1, num_cells])
-        max_capacity = max([cell.Qc for cell in self.cells])
+        max_capacity = max(cell.Qc for cell in self)
         ax2.set_zlim([0, max_capacity])
 
         # 3D speed plot
-        max_vf = max([cell.vf for cell in self.cells])
+        max_vf = max(cell.vf for cell in self)
         ax3 = fig5.add_subplot(1, 3, 3, projection="3d")
         ax3.plot_surface(
             X_truncated,

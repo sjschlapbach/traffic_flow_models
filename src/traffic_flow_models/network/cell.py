@@ -20,11 +20,15 @@ class Cell:
         lane_capacity: Capacity per lane in vehicles per hour.
         free_flow_speed: Free-flow speed in km/h.
         jam_density: Jam density in vehicles per km per lane.
+        upstream: Optional reference to upstream cell in linked list.
+        downstream: Optional reference to downstream cell in linked list.
         onramp: Optional attached `Onramp` instance.
         offramp: Optional attached `Offramp` instance.
     """
 
     # type annotations for static tools: instances will have these attributes
+    upstream: Optional["Cell"]
+    downstream: Optional["Cell"]
     onramp: Optional["Onramp"]
     offramp: Optional["Offramp"]
 
@@ -76,6 +80,10 @@ class Cell:
         self.Qc: float = lane_capacity * lanes  # total cell capacity
         self.vf: float = free_flow_speed  # in kilometers per hour
         self.rho_jam: float = jam_density  # in vehicles per kilometer per lane
+
+        # bidirectional linked list pointers for network topology
+        self.upstream: Optional["Cell"] = None
+        self.downstream: Optional["Cell"] = None
 
         # store if there is a lane drop coming up between this and the next downstream cell
         # if set, the number of dropped lanes is stored

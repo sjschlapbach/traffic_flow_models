@@ -209,7 +209,9 @@ class CTM:
         """
 
         # initialize model quantities for current iteration
-        num_cells = len(network.cells)
+        # Note: array indices 0..num_cells-1 correspond to cell traversal order
+        # (upstream to downstream). This ensures state arrays align with network topology.
+        num_cells = len(network)
         next_flow = np.zeros(num_cells)
         next_speed = np.zeros(num_cells)
         next_density = np.zeros(num_cells)
@@ -220,8 +222,7 @@ class CTM:
         next_offramp_flow = np.zeros(num_cells)
 
         # update the densities of all cells based on the previous flows
-        for i in range(num_cells):
-            cell = network.cells[i]
+        for i, cell in network.enumerate_cells():
             next_density[i] = density[i] + dt * (
                 (flow[i - 1] if i > 0 else input_flow)
                 + onramp_flow[i]
@@ -233,7 +234,10 @@ class CTM:
         # check if the mainline demand (including queue dissipation demand)
         # and the potential onramp demand in the first cell (including possible
         # queue dissipation demand) can be satisfied given the current density state
-        first_cell = network.cells[0]
+        first_cell = network.first_cell()
+        if first_cell is None:
+            raise ValueError("Network has no cells")
+
         next_input_flow, next_input_queue = calculate_segment_input_flow(
             first_cell=first_cell,
             backward_wave_speed=self.backward_wave_speed(cell=first_cell),
@@ -262,8 +266,8 @@ class CTM:
         # -> if they do, proportionally scale them down to fit within the supply
         # (and add surplus vehicles to the respective virtual queues)
         next_input_flow, next_onramp_flow[0] = self.cap_cell_flows(
-            cell=network.cells[0],
-            backward_wave_speed=self.backward_wave_speed(cell=network.cells[0]),
+            cell=first_cell,
+            backward_wave_speed=self.backward_wave_speed(cell=first_cell),
             density=next_density[0],
             current_flow=next_input_flow,
             onramp_flow=next_onramp_flow[0],
@@ -284,35 +288,34 @@ class CTM:
         )
 
         # CELL UPDATES (flows, densities, speeds, on- and offramp flows; entire network)
-        for i in range(num_cells):
+        for i, cell in network.enumerate_cells():
             # update the desired cell outflow
-            # (assume critical density / free flow downstream for the last cell)
-            if i == num_cells - 1:
+            # boundary condition: assume critical density / free flow downstream for the last cell
+            if cell.downstream is None:
                 next_flow[i] = self.raw_updated_cell_flow(
-                    cell=network.cells[i],
-                    backward_wave_speed=self.backward_wave_speed(cell=network.cells[i]),
+                    cell=cell,
+                    backward_wave_speed=self.backward_wave_speed(cell=cell),
                     density=next_density[i],
                     downstream_density=self.critical_density(
-                        cell=network.cells[i]
+                        cell=cell
                     ),  # assume critical density downstream
-                    downstream_jam_density=network.cells[i].rho_jam,
+                    downstream_jam_density=cell.rho_jam,
                 )
             else:
+                downstream_cell = cell.downstream
                 next_flow[i] = self.raw_updated_cell_flow(
-                    cell=network.cells[i],
-                    backward_wave_speed=self.backward_wave_speed(
-                        cell=network.cells[i + 1]
-                    ),
+                    cell=cell,
+                    backward_wave_speed=self.backward_wave_speed(cell=downstream_cell),
                     density=next_density[i],
                     downstream_density=next_density[i + 1],
-                    downstream_jam_density=network.cells[i + 1].rho_jam,
+                    downstream_jam_density=downstream_cell.rho_jam,
                 )
 
             # if downstream cell has an onramp, verify supply limits are respected
             # -> in case of violation -> reduce the cell outflow and next cell ramp inflow
             # -> also update the onramp queue accordingly
-            if i < num_cells - 1 and network.cells[i + 1].onramp is not None:
-                downstream_cell = network.cells[i + 1]
+            if cell.downstream is not None and cell.downstream.onramp is not None:
+                downstream_cell = cell.downstream
                 next_onramp_flow[i + 1] = (
                     calculate_regulated_onramp_flow(
                         cell=downstream_cell,
@@ -332,10 +335,8 @@ class CTM:
                 )
 
                 next_flow[i], next_onramp_flow[i + 1] = self.cap_cell_flows(
-                    cell=network.cells[i + 1],
-                    backward_wave_speed=self.backward_wave_speed(
-                        cell=network.cells[i + 1]
-                    ),
+                    cell=downstream_cell,
+                    backward_wave_speed=self.backward_wave_speed(cell=downstream_cell),
                     density=next_density[i + 1],
                     current_flow=next_flow[i],
                     onramp_flow=next_onramp_flow[i + 1],
@@ -352,15 +353,14 @@ class CTM:
 
             # update the speed for the current cell based on density and flow
             next_speed[i] = (
-                (next_flow[i] + next_offramp_flow[i])
-                / (network.cells[i].lanes * next_density[i])
+                (next_flow[i] + next_offramp_flow[i]) / (cell.lanes * next_density[i])
                 if next_density[i] > 0
-                else network.cells[i].vf
+                else cell.vf
             )
 
             # in case the current cell has an offramp, update the offramp flow accordingly
-            if network.cells[i].offramp is not None:
-                split = network.cells[i].offramp.split_ratio  # type: ignore
+            if cell.offramp is not None:
+                split = cell.offramp.split_ratio  # type: ignore
                 next_offramp_flow[i] = split / (1 - split) * next_flow[i]
 
         # return all updated quantities for the network

@@ -125,7 +125,7 @@ class TestMETANET:
 
         # verify that the first cell's density & speed match a direct
         # call to cell_update using the same values
-        first_cell = net.cells[0]
+        first_cell = net.get_cell(0)
         next_density_direct, next_speed_direct, _ = model.cell_update(
             cell=first_cell,
             upstream_flow=input_flow,
@@ -153,7 +153,7 @@ class TestMETANET:
         )
 
         model = METANET(tau=1.0, nu=0.0, kappa=0.1, delta=0.0, phi=0.0, alpha=2.0)
-        cell = net.cells[0]
+        cell = net.get_cell(0)
 
         expected_rho_cr = cell.Qc_lane / (cell.vf * np.exp(-1 / model.alpha))
         computed_rho_cr = model.critical_density(cell=cell)
@@ -193,7 +193,7 @@ class TestMETANET:
             tau=1.0, nu=0.0, kappa=0.1, delta=0.0, phi=0.5, alpha=1.0
         )
 
-        cell = net.cells[0]
+        cell = net.get_cell(0)
         previous_density = 20.0
         previous_speed = 30.0
         upstream_speed = 30.0

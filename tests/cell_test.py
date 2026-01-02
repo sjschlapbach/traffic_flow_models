@@ -17,3 +17,7 @@ class TestCell:
         assert cell.vf == 100
         assert cell.rho_jam == 150
         assert cell.upcoming_lane_drop == 0
+
+        # verify linked list pointers are initialized
+        assert cell.upstream is None
+        assert cell.downstream is None
