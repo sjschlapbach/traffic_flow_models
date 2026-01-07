@@ -1,3 +1,4 @@
+import argparse
 from traffic_flow_models import METANET
 from demo.scenarios import (
     mainline_demand_a,
@@ -29,6 +30,16 @@ if __name__ == "__main__":
     delta = 1.4
     phi = 10
     alpha = 2
+
+    # check if plotting is disabled through command line argument (CI environment)
+    parser = argparse.ArgumentParser(description="CTM Simulation Demo")
+    parser.add_argument(
+        "--no-plot",
+        action="store_true",
+        help="Disable plotting for CI/automated runs",
+    )
+    args = parser.parse_args()
+    plot_enabled = not args.no_plot
 
     # select the appropriate scenario functions
     if scenario == "A":
@@ -70,7 +81,7 @@ if __name__ == "__main__":
             model=metanet,
             mainline_demand=mainline_demand,
             onramp_demand=onramp_demand,
-            plot_results=True,
+            plot_results=plot_enabled,
         )
     )
 
@@ -82,7 +93,7 @@ if __name__ == "__main__":
         input_queue=input_queue,
         onramp_queues=onramp_queue,
         dt=dt,
-        plotting=True,
+        plotting=plot_enabled,
     )
     print(f"Total VKT: {VKT:.2f} veh-km")
     print(f"Total VHT: {VHT:.2f} veh-h")
