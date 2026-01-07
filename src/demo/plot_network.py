@@ -7,7 +7,7 @@ Usage: run this module as a script from the repository root:
 """
 
 import os
-
+import argparse
 from traffic_flow_models.network import Network
 
 
@@ -44,8 +44,18 @@ def build_sample_network() -> Network:
 
 
 if __name__ == "__main__":
+    # check if plotting is disabled through command line argument (CI environment)
+    parser = argparse.ArgumentParser(description="CTM Simulation Demo")
+    parser.add_argument(
+        "--no-plot",
+        action="store_true",
+        help="Disable plotting for CI/automated runs",
+    )
+    args = parser.parse_args()
+    plot_enabled = not args.no_plot
+
     network = build_sample_network()
     out_dir = os.path.join("src/demo/results")
     os.makedirs(out_dir, exist_ok=True)
     out_path = os.path.join(out_dir, "demo_network.png")
-    network.plot(show=True, save_path=out_path)
+    network.plot(show=plot_enabled, save_path=out_path)
