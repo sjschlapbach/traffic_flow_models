@@ -2,7 +2,7 @@ from typing import Tuple
 import numpy as np
 from numpy.typing import NDArray
 
-from traffic_flow_models.network.network import Network, Cell
+from traffic_flow_models.network.motorway_link import MotorwayLink, Cell
 from .helpers import (
     calculate_segment_input_flow,
     calculate_regulated_onramp_flow,
@@ -125,7 +125,7 @@ class CTM:
 
     def step(
         self,
-        network: Network,
+        link: MotorwayLink,
         density: NDArray[np.float64],
         speed: NDArray[
             np.float64
@@ -211,7 +211,7 @@ class CTM:
         # initialize model quantities for current iteration
         # Note: array indices 0..num_cells-1 correspond to cell traversal order
         # (upstream to downstream). This ensures state arrays align with network topology.
-        num_cells = len(network)
+        num_cells = len(link)
         next_flow = np.zeros(num_cells)
         next_speed = np.zeros(num_cells)
         next_density = np.zeros(num_cells)
@@ -222,7 +222,7 @@ class CTM:
         next_offramp_flow = np.zeros(num_cells)
 
         # update the densities of all cells based on the previous flows
-        for i, cell in network.enumerate_cells():
+        for i, cell in link.enumerate_cells():
             next_density[i] = density[i] + dt * (
                 (flow[i - 1] if i > 0 else input_flow)
                 + onramp_flow[i]
@@ -234,7 +234,7 @@ class CTM:
         # check if the mainline demand (including queue dissipation demand)
         # and the potential onramp demand in the first cell (including possible
         # queue dissipation demand) can be satisfied given the current density state
-        first_cell = network.first_cell()
+        first_cell = link.first_cell()
         if first_cell is None:
             raise ValueError("Network has no cells")
 
@@ -288,7 +288,7 @@ class CTM:
         )
 
         # CELL UPDATES (flows, densities, speeds, on- and offramp flows; entire network)
-        for i, cell in network.enumerate_cells():
+        for i, cell in link.enumerate_cells():
             # update the desired cell outflow
             # boundary condition: assume critical density / free flow downstream for the last cell
             if cell.downstream is None:
