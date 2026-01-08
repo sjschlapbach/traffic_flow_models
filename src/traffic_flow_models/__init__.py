@@ -8,7 +8,7 @@ Expose commonly used symbols at package level so tests can do
 from .network.cell import Cell
 from .network.onramp import Onramp
 from .network.offramp import Offramp
-from .network.network import Network
+from .network.motorway_link import MotorwayLink
 
 # re-export model components
 from .model.ctm import CTM
@@ -26,7 +26,7 @@ __all__ = [
     "Cell",
     "Onramp",
     "Offramp",
-    "Network",
+    "MotorwayLink",
     "CTM",
     "METANET",
     "AlineaController",

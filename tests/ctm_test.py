@@ -1,13 +1,13 @@
 import numpy as np
 
-from traffic_flow_models import CTM, Network
+from traffic_flow_models import CTM, MotorwayLink
 
 
 class TestCTM:
     def test_step_single_cell_no_onramp(self):
-        # build a minimal network with one mainline cell and no ramps
-        net = Network()
-        net.add_cell(
+        # build a minimal motorway link with one mainline cell and no ramps
+        link = MotorwayLink()
+        link.add_cell(
             length=1.0,
             lanes=1,
             lane_capacity=2000,
@@ -30,7 +30,7 @@ class TestCTM:
 
         flow, density, speed, input_flow, _, onramp_flow, _, next_onramp_queue = (
             model.step(
-                network=net,
+                link=link,
                 density=previous_density,
                 speed=np.array([0.0], dtype=np.float64),  # ignored for CTM
                 flow=prev_flow,  # previous outflow
@@ -56,7 +56,7 @@ class TestCTM:
 
         # compute expected next density directly using conservation
         # using the *previous* timestep flows
-        first_cell = net.get_cell(0)
+        first_cell = link.get_cell(0)
         next_density_direct = previous_density[0] + dt * (
             prev_input_flow + previous_onramp_flow[0] - prev_flow[0] - 0.0
         ) / (first_cell.length * first_cell.lanes)
@@ -71,10 +71,10 @@ class TestCTM:
         assert np.isclose(speed[0], speed_direct)
 
     def test_critical_density_and_backward_wave(self):
-        # create a simple network and CTM instance
-        net = Network()
+        # create a simple motorway link and CTM instance
+        link = MotorwayLink()
         # choose parameters that allow easy manual verification
-        net.add_cell(
+        link.add_cell(
             length=1.0,
             lanes=1,
             lane_capacity=2000,
@@ -83,7 +83,7 @@ class TestCTM:
         )
 
         model = CTM()
-        cell = net.get_cell(0)
+        cell = link.get_cell(0)
 
         # expected critical density: Qc_lane / vf
         expected_rho_cr = cell.Qc_lane / cell.vf

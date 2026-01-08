@@ -15,25 +15,25 @@ if TYPE_CHECKING:
     from traffic_flow_models import CTM, METANET
 
 
-class Network:
-    """A simple ordered mainline network container.
+class MotorwayLink:
+    """A motorway link composed of connected `Cell` instances.
 
-    The Network class stores mainline `Cell` instances as a bidirectional
+    The MotorwayLink class stores mainline `Cell` instances as a bidirectional
     linked list arranged from upstream to downstream. It provides convenience
-    methods to add cells and attach or detach on-/off-ramps. The Network does
+    methods to add cells and attach or detach on-/off-ramps. The MotorwayLink does
     not perform simulation — it only manages the topology and basic validation
     when linking objects together.
 
     Attributes:
-        head (protected): Reference to the first (most upstream) cell in the network.
-        tail (protected): Reference to the last (most downstream) cell in the network.
-        cell_count (protected): Number of cells in the network.
+        head (protected): Reference to the first (most upstream) cell in the motorway.
+        tail (protected): Reference to the last (most downstream) cell in the motorway.
+        cell_count (protected): Number of cells in the motorway.
     """
 
     def __init__(self) -> None:
-        """Initialize an empty network.
+        """Initialize an empty motorway link.
 
-        The created network contains no cells initially. Cells can be
+        The created motorway link contains no cells initially. Cells can be
         added with `add_cell` which takes physical parameters and optionally
         attaches existing ramp objects.
         """
@@ -43,7 +43,7 @@ class Network:
         self._cell_count: int = 0
 
     def __len__(self) -> int:
-        """Return the number of cells in the network."""
+        """Return the number of cells in the motorway link."""
         return self._cell_count
 
     def __iter__(self):
@@ -63,10 +63,10 @@ class Network:
         onramp: Optional[Onramp] = None,
         offramp: Optional[Offramp] = None,
     ) -> Cell:
-        """Create a new mainline cell and append it to the network.
+        """Create a new mainline cell and append it to the motorway link.
 
         This method constructs a `Cell` instance using the provided
-        physical parameters and appends it to the end of the network. If a
+        physical parameters and appends it to the end of the motorway link. If a
         previous cell exists it will set the upstream/downstream references
         so the two cells are connected. Optional `Onramp`/`Offramp`
         instances can be attached directly; their types are validated.
@@ -88,7 +88,7 @@ class Network:
                 types.
         """
 
-        # check if the network already contains an upstream cell and if there is a lane drop
+        # check if the motorway link already contains an upstream cell and if there is a lane drop
         lane_drop = 0
         if self._tail is not None:
             upstream_cell = self._tail
@@ -106,12 +106,12 @@ class Network:
 
         # link the new cell into the bidirectional linked list
         if self._head is None:
-            # first cell in network
+            # first cell in motorway link
             self._head = new_cell
             self._tail = new_cell
         elif self._tail is None:
             # should not happen - if head is defined, tail should be too
-            raise RuntimeError("Network linked list is in an invalid state")
+            raise RuntimeError("Motorway link linked list is in an invalid state")
         else:
             # append to end of list
             self._tail.downstream = new_cell
@@ -135,11 +135,11 @@ class Network:
         return new_cell
 
     def first_cell(self) -> Optional[Cell]:
-        """Return the first (most upstream) cell, or None if network is empty."""
+        """Return the first (most upstream) cell, or None if motorway link is empty."""
         return self._head
 
     def last_cell(self) -> Optional[Cell]:
-        """Return the last (most downstream) cell, or None if network is empty."""
+        """Return the last (most downstream) cell, or None if motorway link is empty."""
         return self._tail
 
     def enumerate_cells(self):
@@ -303,7 +303,7 @@ class Network:
         cell.offramp = None
 
     def plot(self, show: bool = True, save_path: Optional[str] = None):
-        """Plot the network using Matplotlib primitives.
+        """Plot the motorway link using Matplotlib primitives.
 
         Args:
             show: Whether to call matplotlib.pyplot.show() after drawing.
@@ -456,7 +456,7 @@ class Network:
         ax.set_xlim(-spacing, drawn_right + spacing)
         ax.set_ylim(-1.5, 1.5)
         ax.set_axis_off()
-        ax.set_title("Traffic Network", fontsize=14, fontweight="bold")
+        ax.set_title("Motorway Link", fontsize=14, fontweight="bold")
         plt.tight_layout()
 
         if save_path is not None:
@@ -484,7 +484,7 @@ class Network:
         NDArray[np.float64],
         NDArray[np.float64],
     ]:
-        """Run a time-based simulation of the network using the provided model.
+        """Run a time-based simulation of the motorway link using the provided model.
 
         The method advances the provided `model` (typically a `CTM` instance)
         over the time interval specified by `duration` using time steps of
@@ -495,7 +495,7 @@ class Network:
             duration: Total simulation duration (hours).
             dt: Time step for the simulation (hours).
             model: A model instance implementing a `step` method compatible
-                with the network (e.g. `CTM`).
+                with the motorway link (e.g. `CTM`).
             mainline_demand: Callable that returns mainline demand (veh/h)
                 given the current time (hours).
             onramp_demand: Callable that returns onramp demands array
@@ -550,7 +550,7 @@ class Network:
                 offramp_flow[:, t + 1],
                 onramp_queue[:, t + 1],
             ) = model.step(
-                network=self,
+                link=self,
                 density=density[:, t],
                 speed=speed[:, t],
                 flow=flow[:, t],
@@ -718,11 +718,11 @@ class Network:
         onramp_queue: NDArray[np.float64],
         offramp_flow: NDArray[np.float64],
     ) -> None:
-        """Plot comprehensive simulation results for the network.
+        """Plot comprehensive simulation results for the motorway link.
 
         Produces multiple figures showing density, flow, speed, input and
         onramp demands/flows/queues and 3D surface visualizations. The
-        provided arrays must match the network's number of cells and the
+        provided arrays must match the motorway link's number of cells and the
         supplied `time` vector.
 
         Args:

@@ -2,7 +2,7 @@ from typing import Tuple
 import numpy as np
 from numpy.typing import NDArray
 
-from traffic_flow_models.network.network import Network, Cell
+from traffic_flow_models.network.motorway_link import MotorwayLink, Cell
 from .helpers import (
     calculate_segment_input_flow,
     calculate_regulated_onramp_flow,
@@ -195,7 +195,7 @@ class METANET:
 
     def step(
         self,
-        network: Network,
+        link: MotorwayLink,
         density: NDArray[np.float64],
         speed: NDArray[np.float64],
         flow: NDArray[np.float64],
@@ -276,7 +276,7 @@ class METANET:
         # initialize model quantities for current iteration
         # Note: array indices 0..num_cells-1 correspond to cell traversal order
         # (upstream to downstream). This ensures state arrays align with network topology.
-        num_cells = len(network)
+        num_cells = len(link)
         next_flow = np.zeros(num_cells)
         next_speed = np.zeros(num_cells)
         next_density = np.zeros(num_cells)
@@ -286,9 +286,9 @@ class METANET:
 
         # compute the input flow and queue simulating congestion at
         # the beginning of the currently considered highway segment
-        first_cell = network.first_cell()
+        first_cell = link.first_cell()
         if first_cell is None:
-            raise ValueError("Network has no cells")
+            raise ValueError("Motorway link has no cells")
 
         next_input_flow, next_input_queue = calculate_segment_input_flow(
             first_cell=first_cell,
@@ -332,7 +332,7 @@ class METANET:
 
         # iterate over all intermediate cells and update the onramp and
         # cell flows according to the physically possible values
-        for i, current_cell in network.enumerate_cells():
+        for i, current_cell in link.enumerate_cells():
             # if an offramp is present in the current cell, determine the
             # offramp flow based on the total cell outflow at the previous
             # time step and the split ratio. Note that this does not correspond

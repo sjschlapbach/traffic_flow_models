@@ -7,11 +7,11 @@ Use explicit relative imports so the package works when imported from the
 from .cell import Cell
 from .onramp import Onramp
 from .offramp import Offramp
-from .network import Network
+from .motorway_link import MotorwayLink
 
 __all__ = [
     "Cell",
     "Onramp",
     "Offramp",
-    "Network",
+    "MotorwayLink",
 ]
