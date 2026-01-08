@@ -1,7 +1,8 @@
-from traffic_flow_models import Network, Cell, Onramp, Offramp, AlineaController
+from traffic_flow_models import MotorwayLink, Cell, Onramp, Offramp, AlineaController
 import numpy as np
 from typing import Callable
 from numpy.typing import NDArray
+from traitlets import link
 
 from .demand import demand
 
@@ -41,18 +42,18 @@ def setup_network_ab(
     ramp_control: bool = False,
     alinea_gain: float = 5.0,
     alinea_setpoint: float | None = None,
-) -> Network:
+) -> MotorwayLink:
     """Create a simple network with a single onramp in the middle."""
 
-    network = Network()
-    network.add_cell(
+    link = MotorwayLink()
+    link.add_cell(
         length=0.5, lanes=3, lane_capacity=2000, free_flow_speed=100, jam_density=180
     )
-    network.add_cell(
+    link.add_cell(
         length=0.5, lanes=3, lane_capacity=2000, free_flow_speed=100, jam_density=180
     )
 
-    onramp_cell = network.add_cell(
+    onramp_cell = link.add_cell(
         length=0.5,
         lanes=3,
         lane_capacity=2000,
@@ -80,17 +81,17 @@ def setup_network_ab(
         ),
     )
 
-    network.add_cell(
+    link.add_cell(
         length=0.5, lanes=3, lane_capacity=2000, free_flow_speed=100, jam_density=180
     )
-    network.add_cell(
+    link.add_cell(
         length=0.5, lanes=3, lane_capacity=2000, free_flow_speed=100, jam_density=180
     )
-    network.add_cell(
+    link.add_cell(
         length=0.5, lanes=3, lane_capacity=2000, free_flow_speed=100, jam_density=180
     )
 
-    return network
+    return link
 
 
 def setup_network_c(
@@ -98,7 +99,7 @@ def setup_network_c(
     ramp_control: bool = False,
     alinea_gain: float = 5.0,
     alinea_setpoint: float | None = None,
-) -> Network:
+) -> MotorwayLink:
     """
     Create a simple network with a single onramp in the middle and a
     bottleneck with lane drop downstream.
@@ -108,15 +109,15 @@ def setup_network_c(
     that propagates upstream and interacts with the onramp / virtual input queue.
     """
 
-    network = Network()
-    network.add_cell(
+    link = MotorwayLink()
+    link.add_cell(
         length=0.5, lanes=3, lane_capacity=2000, free_flow_speed=100, jam_density=180
     )
-    network.add_cell(
+    link.add_cell(
         length=0.5, lanes=3, lane_capacity=2000, free_flow_speed=100, jam_density=180
     )
 
-    onramp_cell = network.add_cell(
+    onramp_cell = link.add_cell(
         length=0.5,
         lanes=3,
         lane_capacity=2000,
@@ -144,17 +145,17 @@ def setup_network_c(
         ),
     )
 
-    network.add_cell(
+    link.add_cell(
         length=0.5, lanes=3, lane_capacity=2000, free_flow_speed=100, jam_density=180
     )
-    network.add_cell(
+    link.add_cell(
         length=0.5, lanes=1, lane_capacity=2000, free_flow_speed=100, jam_density=180
     )
-    network.add_cell(
+    link.add_cell(
         length=0.5, lanes=3, lane_capacity=2000, free_flow_speed=100, jam_density=180
     )
 
-    return network
+    return link
 
 
 def mainline_demand_d(time: float) -> float:
@@ -175,7 +176,7 @@ def setup_network_d(
     ramp_control: bool = False,
     alinea_gain: float = 5.0,
     alinea_setpoint: float | None = None,
-) -> Network:
+) -> MotorwayLink:
     """Create a network with a mid-network onramp and a downstream offramp.
 
     The layout is designed so the onramp merges upstream of an offramp
@@ -184,16 +185,16 @@ def setup_network_d(
     recovery downstream) clearly visible in the results and plots.
     """
 
-    network = Network()
-    network.add_cell(
+    link = MotorwayLink()
+    link.add_cell(
         length=0.5, lanes=3, lane_capacity=2000, free_flow_speed=100, jam_density=180
     )
-    network.add_cell(
+    link.add_cell(
         length=0.5, lanes=3, lane_capacity=2000, free_flow_speed=100, jam_density=180
     )
 
     # cell with onramp attached (third cell)
-    onramp_cell = network.add_cell(
+    onramp_cell = link.add_cell(
         length=0.5,
         lanes=3,
         lane_capacity=2000,
@@ -222,10 +223,10 @@ def setup_network_d(
     )
 
     # downstream cells - attach an offramp to the 5th cell to create a split
-    network.add_cell(
+    link.add_cell(
         length=0.5, lanes=2, lane_capacity=2000, free_flow_speed=100, jam_density=180
     )
-    network.add_cell(
+    link.add_cell(
         length=0.5,
         lanes=2,
         lane_capacity=2000,
@@ -239,8 +240,8 @@ def setup_network_d(
             jam_density=180,
         ),
     )
-    network.add_cell(
+    link.add_cell(
         length=0.5, lanes=2, lane_capacity=2000, free_flow_speed=100, jam_density=180
     )
 
-    return network
+    return link

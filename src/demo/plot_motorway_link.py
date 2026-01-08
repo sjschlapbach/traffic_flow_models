@@ -1,8 +1,8 @@
-"""Demo script: build a small network and plot it using the network.plot utilities.
+"""Demo script: build a motorway link and plot it using the plotting utilities.
 
 Usage: run this module as a script from the repository root:
 
-    python -m src.demo.plot_network
+    python -m src.demo.plot_motorway_link
 
 """
 
