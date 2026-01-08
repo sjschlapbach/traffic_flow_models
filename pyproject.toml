@@ -24,6 +24,7 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
   "pytest==9.0.0",
+  "pylint==4.0.4",
   "git-cliff==2.11.0",
 ]
 
