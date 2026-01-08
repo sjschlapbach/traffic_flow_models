@@ -2,7 +2,6 @@ from traffic_flow_models import MotorwayLink, Cell, Onramp, Offramp, AlineaContr
 import numpy as np
 from typing import Callable
 from numpy.typing import NDArray
-from traitlets import link
 
 from .demand import demand
 
