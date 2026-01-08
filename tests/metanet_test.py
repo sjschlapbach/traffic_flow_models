@@ -1,6 +1,6 @@
 import numpy as np
 
-from traffic_flow_models import METANET, Network
+from traffic_flow_models import METANET, MotorwayLink
 
 
 class TestMETANET:
@@ -9,8 +9,8 @@ class TestMETANET:
         # METANET speed update reduces to a no-op (stationary speed)
         model = METANET(tau=1.0, nu=0.0, kappa=0.0, delta=0.0, phi=0.0, alpha=1.0)
 
-        net = Network()
-        cell = net.add_cell(
+        link = MotorwayLink()
+        cell = link.add_cell(
             length=0.5,
             lanes=2,
             lane_capacity=2000,
@@ -60,17 +60,17 @@ class TestMETANET:
     def test_step_two_cells_no_onramp(self):
         # METANET.step implementation expects at least two cells when
         # evaluating the first cell's downstream density. Test a small
-        # two-cell network without ramps to validate consistency between
+        # two-cell motorway link without ramps to validate consistency between
         # step() and cell_update() for the first cell.
-        net = Network()
-        net.add_cell(
+        link = MotorwayLink()
+        link.add_cell(
             length=1.0,
             lanes=1,
             lane_capacity=2000,
             free_flow_speed=100,
             jam_density=150,
         )
-        net.add_cell(
+        link.add_cell(
             length=1.0,
             lanes=1,
             lane_capacity=2000,
@@ -101,7 +101,7 @@ class TestMETANET:
             _,
             next_onramp_queue,
         ) = model.step(
-            network=net,
+            link=link,
             density=previous_density,
             speed=previous_speed,
             flow=previous_flow,
@@ -125,7 +125,7 @@ class TestMETANET:
 
         # verify that the first cell's density & speed match a direct
         # call to cell_update using the same values
-        first_cell = net.get_cell(0)
+        first_cell = link.get_cell(0)
         next_density_direct, next_speed_direct, _ = model.cell_update(
             cell=first_cell,
             upstream_flow=input_flow,
@@ -143,8 +143,8 @@ class TestMETANET:
         assert np.isclose(speed[0], next_speed_direct)
 
     def test_critical_density_and_backward_wave(self):
-        net = Network()
-        net.add_cell(
+        link = MotorwayLink()
+        link.add_cell(
             length=1.0,
             lanes=1,
             lane_capacity=2000,
@@ -153,7 +153,7 @@ class TestMETANET:
         )
 
         model = METANET(tau=1.0, nu=0.0, kappa=0.1, delta=0.0, phi=0.0, alpha=2.0)
-        cell = net.get_cell(0)
+        cell = link.get_cell(0)
 
         expected_rho_cr = cell.Qc_lane / (cell.vf * np.exp(-1 / model.alpha))
         computed_rho_cr = model.critical_density(cell=cell)
@@ -166,9 +166,9 @@ class TestMETANET:
     def test_lane_drop_deceleration(self):
         # verify that an upcoming lane drop reduces the computed speed
         # (phi term should apply additional deceleration)
-        # build a two-cell network with an upstream cell having an upcoming drop
-        net = Network()
-        net.add_cell(
+        # build a two-cell motorway link with an upstream cell having an upcoming drop
+        link = MotorwayLink()
+        link.add_cell(
             length=1.0,
             lanes=2,
             lane_capacity=2000,
@@ -176,7 +176,7 @@ class TestMETANET:
             jam_density=150,
         )
         # downstream cell has fewer lanes -> induces upcoming_lane_drop on previous
-        net.add_cell(
+        link.add_cell(
             length=1.0,
             lanes=1,
             lane_capacity=2000,
@@ -193,7 +193,7 @@ class TestMETANET:
             tau=1.0, nu=0.0, kappa=0.1, delta=0.0, phi=0.5, alpha=1.0
         )
 
-        cell = net.get_cell(0)
+        cell = link.get_cell(0)
         previous_density = 20.0
         previous_speed = 30.0
         upstream_speed = 30.0

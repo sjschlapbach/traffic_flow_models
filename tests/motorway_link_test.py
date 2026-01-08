@@ -1,12 +1,12 @@
 import pytest
 
-from traffic_flow_models import Network, Cell, Onramp, Offramp
+from traffic_flow_models import MotorwayLink, Cell, Onramp, Offramp
 
 
-class TestNetwork:
+class TestMotorwayLink:
     def test_add_cell_single(self):
-        net = Network()
-        l = net.add_cell(
+        link = MotorwayLink()
+        l = link.add_cell(
             length=2.0,
             lanes=3,
             lane_capacity=2000,
@@ -24,19 +24,19 @@ class TestNetwork:
         # verify linked list: single cell has no upstream/downstream
         assert l.upstream is None
         assert l.downstream is None
-        assert net.first_cell() is l
-        assert net.last_cell() is l
-        assert len(net) == 1
+        assert link.first_cell() is l
+        assert link.last_cell() is l
+        assert len(link) == 1
 
     def test_add_cell_chaining_multiple(self):
-        net = Network()
-        a = net.add_cell(
+        link = MotorwayLink()
+        a = link.add_cell(
             length=1.0, lanes=1, lane_capacity=1500, free_flow_speed=80, jam_density=140
         )
-        b = net.add_cell(
+        b = link.add_cell(
             length=2.0, lanes=2, lane_capacity=1800, free_flow_speed=90, jam_density=160
         )
-        c = net.add_cell(
+        c = link.add_cell(
             length=3.0,
             lanes=3,
             lane_capacity=2000,
@@ -52,22 +52,22 @@ class TestNetwork:
         assert c.upstream is b
         assert c.downstream is None
 
-        # verify network helpers
-        assert net.first_cell() is a
-        assert net.last_cell() is c
-        assert len(net) == 3
+        # verify motorway link helpers
+        assert link.first_cell() is a
+        assert link.last_cell() is c
+        assert len(link) == 3
 
         # verify iteration order
-        cells_list = list(net)
+        cells_list = list(link)
         assert cells_list == [a, b, c]
 
         # verify get_cell by index
-        assert net.get_cell(0) is a
-        assert net.get_cell(1) is b
-        assert net.get_cell(2) is c
+        assert link.get_cell(0) is a
+        assert link.get_cell(1) is b
+        assert link.get_cell(2) is c
 
     def test_add_cell_with_ramps_instances(self):
-        net = Network()
+        link = MotorwayLink()
         on = Onramp(lanes=2, lane_capacity=1600, free_flow_speed=70, jam_density=130)
         off = Offramp(
             lanes=1,
@@ -77,7 +77,7 @@ class TestNetwork:
             split_ratio=0.2,
         )
 
-        l = net.add_cell(
+        l = link.add_cell(
             length=1.5,
             lanes=2,
             lane_capacity=1800,
@@ -90,36 +90,37 @@ class TestNetwork:
         assert l.offramp is off
 
     def test_add_cell_with_wrong_ramp_type_raises(self):
-        net = Network()
+        link = MotorwayLink()
+
         # passing non-Onramp object should raise TypeError
         try:
-            net.add_cell(1.0, 1, 1500, 80, 140, onramp={})  # type: ignore
+            link.add_cell(1.0, 1, 1500, 80, 140, onramp={})  # type: ignore
             raised = False
         except TypeError:
             raised = True
         assert raised
 
         try:
-            net.add_cell(1.0, 1, 1500, 80, 140, offramp=123)  # type: ignore
+            link.add_cell(1.0, 1, 1500, 80, 140, offramp=123)  # type: ignore
             raised = False
         except TypeError:
             raised = True
         assert raised
 
     def test_add_onramp_and_offramp_methods_and_duplicates(self):
-        net = Network()
-        net.add_cell(1.0, 1, 1500, 80, 140)
+        link = MotorwayLink()
+        link.add_cell(1.0, 1, 1500, 80, 140)
 
         # attach via method
-        r = net.add_onramp(
+        r = link.add_onramp(
             0, lanes=2, lane_capacity=1600, free_flow_speed=70, jam_density=130
         )
         assert isinstance(r, Onramp)
-        assert net.get_onramp(0) is r
+        assert link.get_onramp(0) is r
 
         # duplicate attach should raise ValueError
         try:
-            net.add_onramp(
+            link.add_onramp(
                 0, lanes=1, lane_capacity=1400, free_flow_speed=60, jam_density=120
             )
             raised = False
@@ -128,7 +129,7 @@ class TestNetwork:
         assert raised
 
         # attach offramp similarly
-        of = net.add_offramp(
+        of = link.add_offramp(
             0,
             lanes=1,
             lane_capacity=1400,
@@ -137,10 +138,10 @@ class TestNetwork:
             split_ratio=0.3,
         )
         assert isinstance(of, Offramp)
-        assert net.get_offramp(0) is of
+        assert link.get_offramp(0) is of
 
         try:
-            net.add_offramp(
+            link.add_offramp(
                 0,
                 lanes=1,
                 lane_capacity=1400,
@@ -154,18 +155,18 @@ class TestNetwork:
         assert raised
 
     def test_get_and_remove_ramps(self):
-        net = Network()
-        net.add_cell(1.0, 1, 1500, 80, 140)
+        link = MotorwayLink()
+        link.add_cell(1.0, 1, 1500, 80, 140)
 
         # initially none
-        assert net.get_onramp(0) is None
-        assert net.get_offramp(0) is None
+        assert link.get_onramp(0) is None
+        assert link.get_offramp(0) is None
 
         # add and then remove
-        net.add_onramp(
+        link.add_onramp(
             0, lanes=2, lane_capacity=1600, free_flow_speed=70, jam_density=130
         )
-        net.add_offramp(
+        link.add_offramp(
             0,
             lanes=1,
             lane_capacity=1400,
@@ -174,31 +175,31 @@ class TestNetwork:
             split_ratio=0.1,
         )
 
-        assert net.get_onramp(0) is not None
-        assert net.get_offramp(0) is not None
+        assert link.get_onramp(0) is not None
+        assert link.get_offramp(0) is not None
 
-        net.remove_onramp(0)
-        net.remove_offramp(0)
+        link.remove_onramp(0)
+        link.remove_offramp(0)
 
-        assert net.get_onramp(0) is None
-        assert net.get_offramp(0) is None
+        assert link.get_onramp(0) is None
+        assert link.get_offramp(0) is None
 
         # removing again should be a no-op (no exception)
-        net.remove_onramp(0)
-        net.remove_offramp(0)
+        link.remove_onramp(0)
+        link.remove_offramp(0)
 
     def test_index_error_for_invalid_cell_index(self):
-        net = Network()
-        net.add_cell(1.0, 1, 1500, 80, 140)
+        link = MotorwayLink()
+        link.add_cell(1.0, 1, 1500, 80, 140)
 
         # out of bounds should raise IndexError from list access
         with pytest.raises(IndexError):
-            net.add_onramp(
+            link.add_onramp(
                 5, lanes=1, lane_capacity=1400, free_flow_speed=60, jam_density=120
             )
 
         with pytest.raises(IndexError):
-            net.add_offramp(
+            link.add_offramp(
                 5,
                 lanes=1,
                 lane_capacity=1400,
@@ -207,13 +208,13 @@ class TestNetwork:
                 split_ratio=0.2,
             )
 
-    def test_network_sizes_and_pointer_integrity(self):
-        # build networks of various sizes and check linked list pointers
+    def test_motorway_link_sizes_and_pointer_integrity(self):
+        # build motorway link of various sizes and check linked list pointers
         for n in (1, 2, 5, 10):
-            net = Network()
+            link = MotorwayLink()
             cells = []
             for i in range(n):
-                cell = net.add_cell(
+                cell = link.add_cell(
                     length=float(i + 1),
                     lanes=1 + i,
                     lane_capacity=1500 + i * 100,
@@ -222,12 +223,12 @@ class TestNetwork:
                 )
                 cells.append(cell)
 
-            # verify network size
-            assert len(net) == n
+            # verify motorway link size
+            assert len(link) == n
 
             # verify first and last cells
-            assert net.first_cell() is cells[0]
-            assert net.last_cell() is cells[-1]
+            assert link.first_cell() is cells[0]
+            assert link.last_cell() is cells[-1]
 
             # verify linked list integrity
             for i in range(n):
@@ -245,43 +246,43 @@ class TestNetwork:
                     assert cell.downstream is cells[i + 1]
 
             # verify iteration produces correct order
-            assert list(net) == cells
+            assert list(link) == cells
 
             # verify get_cell returns correct cells
             for i in range(n):
-                assert net.get_cell(i) is cells[i]
+                assert link.get_cell(i) is cells[i]
 
     def test_lane_drops(self):
-        net = Network()
-        c1 = net.add_cell(
+        link = MotorwayLink()
+        c1 = link.add_cell(
             length=2.0,
             lanes=5,
             lane_capacity=2000,
             free_flow_speed=100,
             jam_density=150,
         )
-        c2 = net.add_cell(
+        c2 = link.add_cell(
             length=2.0,
             lanes=2,
             lane_capacity=2000,
             free_flow_speed=100,
             jam_density=150,
         )
-        c3 = net.add_cell(
+        c3 = link.add_cell(
             length=2.0,
             lanes=2,
             lane_capacity=2000,
             free_flow_speed=100,
             jam_density=150,
         )
-        c4 = net.add_cell(
+        c4 = link.add_cell(
             length=2.0,
             lanes=3,
             lane_capacity=2000,
             free_flow_speed=100,
             jam_density=150,
         )
-        c4 = net.add_cell(
+        c4 = link.add_cell(
             length=2.0,
             lanes=5,
             lane_capacity=2000,
