@@ -1,6 +1,6 @@
 import pytest
 
-from traffic_flow_models import MotorwayLink, Cell, Onramp, Offramp
+from traffic_flow_models import MotorwayLink, Cell, Onramp, Offramp, Node
 
 
 class TestMotorwayLink:
@@ -74,7 +74,6 @@ class TestMotorwayLink:
             lane_capacity=1400,
             free_flow_speed=60,
             jam_density=120,
-            split_ratio=0.2,
         )
 
         l = link.add_cell(
@@ -135,7 +134,6 @@ class TestMotorwayLink:
             lane_capacity=1400,
             free_flow_speed=60,
             jam_density=120,
-            split_ratio=0.3,
         )
         assert isinstance(of, Offramp)
         assert link.get_offramp(0) is of
@@ -147,7 +145,6 @@ class TestMotorwayLink:
                 lane_capacity=1400,
                 free_flow_speed=60,
                 jam_density=120,
-                split_ratio=0.3,
             )
             raised = False
         except ValueError:
@@ -172,7 +169,6 @@ class TestMotorwayLink:
             lane_capacity=1400,
             free_flow_speed=60,
             jam_density=120,
-            split_ratio=0.1,
         )
 
         assert link.get_onramp(0) is not None
@@ -205,7 +201,6 @@ class TestMotorwayLink:
                 lane_capacity=1400,
                 free_flow_speed=60,
                 jam_density=120,
-                split_ratio=0.2,
             )
 
     def test_motorway_link_sizes_and_pointer_integrity(self):
@@ -294,3 +289,20 @@ class TestMotorwayLink:
         assert c2.upcoming_lane_drop == 0  # no lane drop
         assert c3.upcoming_lane_drop == 0  # -> 1 lane increase
         assert c4.upcoming_lane_drop == 0  # -> default: no lane drop
+
+    def test_node_connection_sets_node_ids(self):
+        link = MotorwayLink()
+
+        # precondition: node ids unset
+        assert getattr(link, "origin_node_id", None) is None
+        assert getattr(link, "destination_node_id", None) is None
+        n_in = Node(id="n-in")
+        n_out = Node(id="n-out")
+
+        # connecting as incoming should set destination_node_id
+        n_in.add_incoming(link)
+        assert link.destination_node_id == n_in.id
+
+        # connecting as outgoing should set origin_node_id
+        n_out.add_outgoing(link)
+        assert link.origin_node_id == n_out.id

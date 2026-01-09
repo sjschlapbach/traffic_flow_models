@@ -1,39 +1,35 @@
 import uuid
 
-from traffic_flow_models.network.destination import Destination
 
-
-class Offramp:
-    """A simple container for off-ramp physical parameters.
+class Origin:
+    """A simple container for origin link physical parameters.
 
     Attributes:
-        lanes: Number of lanes on the offramp.
+        id: Identifier for the origin link (for demand assignment).
+        lanes: Number of lanes on the origin link.
         lane_capacity: Capacity per lane in vehicles per hour.
         free_flow_speed: Free-flow speed in km/h.
         jam_density: Jam density in vehicles per km per lane.
-        destination: Optional linked `Destination` instance.
     """
 
     def __init__(
         self,
+        id: str | None,
         lanes: int,
         lane_capacity: float,
         free_flow_speed: float,
         jam_density: float,
-        id: str | None = None,
-        destination: Destination | None = None,
-        origin_node_id: str | None = None,
+        destination_node_id: str | None = None,
     ) -> None:
-        """Initialize the Offramp parameters.
+        """Initialize the Origin parameters.
 
         Args:
-            lanes: Number of lanes on the offramp.
+            id: Identifier for the origin link (for demand assignment).
+            lanes: Number of lanes on the origin link.
             lane_capacity: Vehicles per hour per lane capacity.
             free_flow_speed: Free-flow speed in km/h.
             jam_density: Jam density in vehicles per km per lane.
-            destination: Optional `Destination` instance to link the offramp to.
-            origin_node_id: Optional identifier for the origin node
-                to which this offramp is connected.
+            destination_node_id: Optional ID of the downstream node.
         """
 
         if lanes <= 0:
@@ -50,11 +46,10 @@ class Offramp:
 
         self.id: str = (
             id if id is not None else str(uuid.uuid4())
-        )  # identifier for the offramp link
+        )  # identifier for the origin link
         self.lanes: int = lanes  # number of lanes
         self.Qc_lane: float = lane_capacity  # in vehicles per hour per lane
         self.Qc: float = lane_capacity * lanes  # total cell capacity
         self.vf: float = free_flow_speed  # in kilometers per hour
         self.rho_jam: float = jam_density  # in vehicles per kilometer per lane
-        self.destination: Destination | None = destination
-        self.origin_node_id: str | None = origin_node_id
+        self.destination_node_id: str | None = destination_node_id

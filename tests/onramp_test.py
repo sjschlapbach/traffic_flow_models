@@ -1,4 +1,4 @@
-from traffic_flow_models import Onramp, Cell
+from traffic_flow_models import Onramp, Cell, Node
 
 
 class TestOnramp:
@@ -45,3 +45,9 @@ class TestOnramp:
         assert mainline.onramp.Qc_lane == 2000
         assert mainline.onramp.vf == 100
         assert mainline.onramp.rho_jam == 150
+
+        # onramp should not have destination node id until connected
+        assert getattr(mainline.onramp, "destination_node_id", None) is None
+        n = Node(id="n-on")
+        n.add_incoming(mainline.onramp)
+        assert mainline.onramp.destination_node_id == n.id

@@ -6,9 +6,13 @@ Expose commonly used symbols at package level so tests can do
 
 # re-export network components
 from .network.cell import Cell
+from .network.origin import Origin
+from .network.destination import Destination
 from .network.onramp import Onramp
 from .network.offramp import Offramp
 from .network.motorway_link import MotorwayLink
+from .network.node import Node
+from .network.network import Network
 
 # re-export model components
 from .model.ctm import CTM
@@ -24,9 +28,13 @@ from .simulator.sumo_pipeline import SUMOPipeline
 
 __all__ = [
     "Cell",
+    "Origin",
+    "Destination",
     "Onramp",
     "Offramp",
     "MotorwayLink",
+    "Node",
+    "Network",
     "CTM",
     "METANET",
     "AlineaController",

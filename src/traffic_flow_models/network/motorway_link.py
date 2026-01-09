@@ -1,4 +1,5 @@
-from typing import Callable, List, Optional, Tuple, TYPE_CHECKING, Union
+import uuid
+from typing import Callable, Optional, Tuple, TYPE_CHECKING, Union
 import matplotlib.pyplot as plt
 from matplotlib import patches
 from matplotlib.widgets import CheckButtons
@@ -28,15 +29,29 @@ class MotorwayLink:
         head (protected): Reference to the first (most upstream) cell in the motorway.
         tail (protected): Reference to the last (most downstream) cell in the motorway.
         cell_count (protected): Number of cells in the motorway.
+        origin_node_id: Optional ID of the upstream node.
+        destination_node_id: Optional ID of the downstream node.
     """
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        id: str | None = None,
+        origin_node_id: str | None = None,
+        destination_node_id: str | None = None,
+    ) -> None:
         """Initialize an empty motorway link.
 
         The created motorway link contains no cells initially. Cells can be
         added with `add_cell` which takes physical parameters and optionally
         attaches existing ramp objects.
         """
+        # identifier
+        self.id: str = id if id is not None else str(uuid.uuid4())
+
+        # optional start / end node identifiers to be set during connection
+        self.origin_node_id: str | None = origin_node_id
+        self.destination_node_id: str | None = destination_node_id
+
         # bidirectional linked list structure
         self._head: Optional[Cell] = None
         self._tail: Optional[Cell] = None
@@ -219,7 +234,6 @@ class MotorwayLink:
         lane_capacity: float,
         free_flow_speed: float,
         jam_density: float,
-        split_ratio: float,
     ) -> Offramp:
         """Attach a new `Offramp` to a cell by index.
 
@@ -230,7 +244,6 @@ class MotorwayLink:
             free_flow_speed: Free-flow speed in km/h for the offramp.
             jam_density: Jam density in vehicles per km per lane for the
                 offramp.
-            split_ratio: Portion of mainline flow exiting onto the offramp.
 
         Returns:
             The created `Offramp` instance.
@@ -249,7 +262,7 @@ class MotorwayLink:
             lane_capacity=lane_capacity,
             free_flow_speed=free_flow_speed,
             jam_density=jam_density,
-            split_ratio=split_ratio,
+            # split_ratio=split_ratio, # TODO: handle the split ratio in the offramps correctly
         )
         cell.offramp = ramp
         return ramp
