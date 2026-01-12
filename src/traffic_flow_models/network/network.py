@@ -1,18 +1,26 @@
-from typing import Iterator
-from collections import deque
+import numpy as np
+import warnings
+import casadi
+from typing import TYPE_CHECKING, Iterator, Callable, Union
+from numpy.typing import NDArray
 
 from traffic_flow_models.network.node import Node
 from traffic_flow_models.network.origin import Origin
 from traffic_flow_models.network.onramp import Onramp
 from traffic_flow_models.network.destination import Destination
 from traffic_flow_models.network.offramp import Offramp
+from traffic_flow_models.network.motorway_link import MotorwayLink
+
+if TYPE_CHECKING:
+    from traffic_flow_models.model.ctm import CTM
+    from traffic_flow_models.model.metanet import METANET
 
 
 class Network:
     """
     Network class representing the traffic network.
 
-    The network class is the main containeder for all network components,
+    The network class is the main container for all network components,
     keeping track of all nodes included in the network alongside their connected
     links. Additionally, it is responsible for validating the structure of a network
     before simulation and the initialization of all necessary parameters (including
@@ -59,7 +67,7 @@ class Network:
         Raises:
             ValueError: if no node with the given id is found.
         """
-        for n in list(self._nodes):
+        for n in self.list_nodes():
             if getattr(n, "id", None) == node_id:
                 self._nodes.remove(n)
                 return
@@ -68,7 +76,7 @@ class Network:
 
     def get_node(self, id: str) -> Node | None:
         """Return the node with the given id or None if absent."""
-        for n in self._nodes:
+        for n in self.list_nodes():
             if getattr(n, "id", None) == id:
                 return n
 
@@ -76,13 +84,13 @@ class Network:
 
     def list_nodes(self) -> list[Node]:
         """Return a shallow copy of the node list."""
-        return list(self._nodes)
+        return self._nodes
 
     def __len__(self) -> int:
         return len(self._nodes)
 
     def __iter__(self) -> Iterator[Node]:
-        for n in self._nodes:
+        for n in self.list_nodes():
             yield n
 
     def validate(self) -> bool:
@@ -105,7 +113,7 @@ class Network:
             raise ValueError("Network contains less than 2 nodes.")
 
         # call node-level validation (ensures at least one incoming & outgoing per node)
-        for node in self._nodes:
+        for node in self.list_nodes():
             if not isinstance(node, Node):
                 raise TypeError("Network contains non-Node object.")
 
@@ -118,7 +126,7 @@ class Network:
         # collect all destination instances present in network (to check offramp targets)
         dests: set[Destination] = set()
 
-        for node in self._nodes:
+        for node in self.list_nodes():
             for link in list(node.incoming) + list(node.outgoing):
                 if isinstance(link, (Origin, Onramp)):
                     has_origin_or_onramp = True
@@ -136,7 +144,7 @@ class Network:
             raise ValueError("Network must contain at least one destination.")
 
         # check that every offramp has a destination
-        for node in self._nodes:
+        for node in self.list_nodes():
             for link in list(node.incoming) + list(node.outgoing):
                 if isinstance(link, Offramp):
                     if link.destination is None:
@@ -150,7 +158,7 @@ class Network:
         # to this node's id, and each outgoing link has its origin_node_id set to
         # this node's id. This ensures the per-link origin/destination metadata is
         # consistent with the node topology.
-        for node in self._nodes:
+        for node in self.list_nodes():
             for link in node.incoming:
                 if hasattr(link, "destination_node_id"):
                     if link.destination_node_id is None:
@@ -182,11 +190,13 @@ class Network:
                     )
 
         # build a mapping from node id -> index for quick lookups
-        node_id_to_index: dict[str, int] = {n.id: i for i, n in enumerate(self._nodes)}
+        node_id_to_index: dict[str, int] = {
+            n.id: i for i, n in enumerate(self.list_nodes())
+        }
 
         # build directed adjacency using each outgoing link's destination id.
         adj_forward: dict[int, set[int]] = {i: set() for i in range(num_nodes)}
-        for i, node in enumerate(self._nodes):
+        for i, node in enumerate(self.list_nodes()):
             for link in node.outgoing:
                 dest_id = getattr(link, "destination_node_id", None)
                 if dest_id is None:
@@ -204,7 +214,6 @@ class Network:
 
         # choose a start node (index 0)
         start = 0
-
         vis1 = [False] * num_nodes
         vis2 = [False] * num_nodes
 
@@ -241,6 +250,896 @@ class Network:
         # all checks passed
         return True
 
-    # TODO: during simulation the network requires the passing of demands for origins and onramps, downstream densities for destinations, split ratios at each node, etc.
-    # TODO: we should also have a validation function that all these quantities are passed with the correct dimensions
-    #   (time and number of exiting indices, matching ids, split ratios add up to one (warning and renormalization?), etc.)
+    def network_dict_to_state_vec(
+        self,
+        flow_dict: dict[str, NDArray[np.float64]] | dict[str, casadi.SX],
+        density_dict: dict[str, NDArray[np.float64]] | dict[str, casadi.SX],
+        speed_dict: dict[str, NDArray[np.float64]] | dict[str, casadi.SX],
+        origin_queue_dict: dict[str, float] | dict[str, casadi.SX],
+        onramp_queue_dict: dict[str, float] | dict[str, casadi.SX],
+        offramp_queue_dict: dict[str, float] | dict[str, casadi.SX],
+    ):
+        """Convert dictionary-based network state to a packed 1-D state vector.
+
+        The network's per-link and per-origin/onramp state is provided as
+        dictionaries keyed by link/origin ids. This helper concatenates those
+        arrays/values into a single 1-D array in the deterministic node-
+        and link-ordering used by the simulator. The packing order is:
+        - For each node: incoming origin/onramp flows and queues (one value each)
+        - For each node: outgoing motorway link flows, densities, speeds (values for each cell)
+        - For each node: outgoing offramp flow and queue
+        - For each node: outgoing destination flow
+
+        Args:
+            flow_dict: Mapping link id -> per-cell flow array (veh/h).
+            density_dict: Mapping link id -> per-cell density array (veh/km/lane).
+            speed_dict: Mapping link id -> per-cell speed array (km/h).
+            origin_queue_dict: Mapping origin id -> scalar queue length (veh).
+            onramp_queue_dict: Mapping onramp id -> scalar queue length (veh).
+            offramp_queue_dict: Mapping offramp id -> scalar queue length (veh).
+
+        Returns:
+            System state containing all network variables for simluation
+
+        Raises:
+            ValueError: If required arrays/values are missing or have incorrect sizes.
+        """
+
+        # combine state from separate arrays into single state vector if required by model
+        # structure: [ flows | densities | speeds | origin_queues | onramp_queues ]
+        x = np.array([], dtype=np.float64)
+
+        # initialize the counters for all quantities contained in the system vectors
+        num_flows = 0
+        num_densities = 0
+        num_speeds = 0
+        num_origin = 0
+        num_onramp = 0
+        num_offramp = 0
+        num_splits = 0
+        num_destinations = 0
+
+        for node in self.list_nodes():
+            # initialize incoming links (only origins and onramps - only flow and queue)
+            for link in node.incoming:
+                if isinstance(link, Origin) or isinstance(link, Onramp):
+                    init_flow = flow_dict[link.id]
+                    if isinstance(init_flow, np.ndarray) and len(init_flow) == 1:
+                        x = np.concatenate((x, init_flow))
+                        num_flows += 1
+                    else:
+                        raise ValueError(
+                            f"Initial flow for network inflow {link.id} (type: {type(link)}) must be an array of length 1."
+                        )
+
+                    if link.id in onramp_queue_dict and isinstance(link, Onramp):
+                        x = np.concatenate((x, np.array([onramp_queue_dict[link.id]])))
+                        num_onramp += 1
+                    elif link.id in origin_queue_dict and isinstance(link, Origin):
+                        x = np.concatenate((x, np.array([origin_queue_dict[link.id]])))
+                        num_origin += 1
+                    else:
+                        raise ValueError(
+                            f"Initial queue for network inflow {link.id} (type: {type(link)}) must be provided."
+                        )
+
+            # initialize outgoing links (full for motorlinks, queue and flow for offramp, flow for destination)
+            for link in node.outgoing:
+                num_splits += len(node.outgoing)
+
+                if isinstance(link, MotorwayLink):
+                    num_cells = len(link)
+                    init_flow = flow_dict[link.id]
+                    if (
+                        isinstance(init_flow, np.ndarray)
+                        and len(init_flow) == num_cells
+                    ):
+                        x = np.concatenate((x, init_flow))
+                        num_flows += num_cells
+                    else:
+                        raise ValueError(
+                            f"Initial flow for motorway link {link.id} must be an array of length {num_cells}."
+                        )
+
+                    init_density = density_dict[link.id]
+                    if isinstance(init_density, np.ndarray) and link.id in density_dict:
+                        x = np.concatenate((x, init_density))
+                        num_densities += num_cells
+                    else:
+                        raise ValueError(
+                            f"Initial density for motorway link {link.id} must be an array of length {num_cells}."
+                        )
+
+                    init_speed = speed_dict[link.id]
+                    if isinstance(init_speed, np.ndarray) and link.id in speed_dict:
+                        x = np.concatenate((x, init_speed))
+                        num_speeds += num_cells
+                    else:
+                        raise ValueError(
+                            f"Initial speed for motorway link {link.id} must be an array of length {num_cells}."
+                        )
+
+                elif isinstance(link, Offramp):
+                    # offramp: store-and-forward model with single cell
+                    init_flow = flow_dict[link.id]
+                    if isinstance(init_flow, np.ndarray) and len(init_flow) == 1:
+                        x = np.concatenate((x, init_flow))
+                        num_flows += 1
+                    else:
+                        raise ValueError(
+                            f"Initial flow for offramp {link.id} must be an array of length 1."
+                        )
+
+                    init_queue = offramp_queue_dict[link.id]
+                    if (
+                        isinstance(init_queue, (int, float))
+                        and link.id in offramp_queue_dict
+                    ):
+                        x = np.concatenate((x, np.array([init_queue])))
+                        num_offramp += 1
+                    else:
+                        raise ValueError(
+                            f"Initial queue for offramp {link.id} must be a scalar."
+                        )
+
+                elif isinstance(link, Destination):
+                    init_flow = flow_dict[link.id]
+                    num_destinations += 1
+
+                    if isinstance(init_flow, np.ndarray) and len(init_flow) == 1:
+                        x = np.concatenate((x, init_flow))
+                        num_flows += 1
+                    else:
+                        raise ValueError(
+                            f"Initial flow for destination {link.id} must be an array of length 1."
+                        )
+
+        return (
+            x,
+            num_flows,
+            num_densities,
+            num_speeds,
+            num_origin,
+            num_onramp,
+            num_offramp,
+            num_splits,
+            num_destinations,
+        )
+
+    def network_dict_to_disturbance_vec(
+        self,
+        origin_demand_dict: dict[str, float],
+        onramp_demand_dict: dict[str, float],
+        turning_rate_dict: dict[str, dict[str, float]],
+        boundary_condition_dict: dict[str, float],
+    ):
+        """Pack origin/onramp demands and node turning rates into a vector.
+
+        The disturbance vector contains all exogenous inputs required by the
+        simulator: origin demands, onramp demands and per-node turning rates
+        for outgoing links. The function iterates nodes in the network and
+        concatenates the values in a deterministic order.
+
+        Args:
+            origin_demand_dict: Mapping origin id -> scalar demand (veh/h).
+            onramp_demand_dict: Mapping onramp id -> scalar demand (veh/h).
+            turning_rate_dict: Mapping node id -> mapping outgoing link id -> turn rate.
+            boundary_condition_dict: Mapping destination id -> downstream density (veh/km/lane).
+
+        Returns:
+            A tuple `(d, num_turning_rates)` where `d` is a 1-D NumPy array of
+            concatenated disturbances and `num_turning_rates` is the number of
+            turning-rate scalars included.
+
+        Raises:
+            ValueError: If required demand or turning-rate entries are missing
+                or inconsistent with the network topology.
+        """
+
+        # "disturbance" variables = network inflows and turning rates
+        # structure: [ origin_demands | onramp_demands | turning_rates ]
+        d = np.array([], dtype=np.float64)
+
+        for node in self.list_nodes():
+            # add turning rates for this node's outgoing links
+            node_rates = turning_rate_dict[node.id]
+            if node_rates is None:
+                raise ValueError(
+                    f"Turning rates for node {node.id} not provided in turning_rate_dict."
+                )
+
+            if len(node_rates) == 0 and len(node.outgoing) > 1:
+                raise ValueError(
+                    f"Node {node.id} has multiple outgoing links but no turning rates provided."
+                )
+
+            if any(link.id not in node_rates for link in node.outgoing):
+                raise ValueError(
+                    f"Turning rates for all outgoing links of node {node.id} must be provided."
+                )
+
+            for link in node.outgoing:
+                d = np.concatenate((d, np.array([node_rates[link.id]])))
+
+            # set values for incoming links (onramps or origins)
+            for link in node.incoming:
+                if isinstance(link, Onramp):
+                    if link.id in onramp_demand_dict:
+                        d = np.concatenate((d, np.array([onramp_demand_dict[link.id]])))
+                    else:
+                        raise ValueError(
+                            f"Demand for onramp {link.id} must be provided."
+                        )
+
+                # initialize origins (queues only)
+                elif isinstance(link, Origin):
+                    if link.id in origin_demand_dict:
+                        d = np.concatenate((d, np.array([origin_demand_dict[link.id]])))
+                    else:
+                        raise ValueError(
+                            f"Demand for origin {link.id} must be provided."
+                        )
+
+            # set values for outgoing links (destinations / destinations connected to offramps)
+            for link in node.outgoing:
+                if isinstance(link, Destination):
+                    if link.id in boundary_condition_dict:
+                        d = np.concatenate(
+                            (d, np.array([boundary_condition_dict[link.id]]))
+                        )
+                    else:
+                        raise ValueError(
+                            f"Boundary condition for destination {link.id} must be provided."
+                        )
+
+                if isinstance(link, Offramp):
+                    if link.destination is not None:
+                        dest_id = link.destination.id
+                        if dest_id in boundary_condition_dict:
+                            d = np.concatenate(
+                                (d, np.array([boundary_condition_dict[dest_id]]))
+                            )
+                        else:
+                            raise ValueError(
+                                f"Boundary condition for destination {dest_id} (connected to offramp {link.id}) must be provided."
+                            )
+                    else:
+                        raise ValueError(
+                            f"Offramp {link.id} has no destination assigned."
+                        )
+
+        return d
+
+    def state_vec_to_network_dict(
+        self,
+        x: NDArray[np.float64] | casadi.SX,
+    ):
+        """Unpack a packed state vector into structured dictionaries.
+
+        Reverses the packing performed by `network_dict_to_state_vec`. The
+        function accepts either a NumPy 1-D array or a CasADi SX column
+        vector and returns dictionaries with per-link and per-origin/onramp
+        entries keyed by their ids. The returned tuple has the form:
+        ``(flows, densities, speeds, origin_queues, onramp_queues, offramp_queues)``.
+
+        - ``flows``: mapping link id -> 1-D array or CasADi SX slice of per-cell flows
+        - ``densities``: mapping motorway link id -> 1-D array or CasADi SX slice
+        - ``speeds``: mapping motorway link id -> 1-D array or CasADi SX slice
+        - ``origin_queues``: mapping origin id -> scalar queue value
+        - ``onramp_queues``: mapping onramp id -> scalar queue value
+        - ``offramp_queues``: mapping offramp id -> scalar queue value
+
+        Args:
+            x: 1-D NumPy array or CasADi SX column vector containing the packed state.
+
+        Returns:
+            Tuple of dictionaries as described above.
+
+        Raises:
+            ValueError: If the provided state vector is too short to extract
+                the expected entries for the current network topology.
+        """
+
+        # initialize the structured dictionary containers for the state vector
+        flows = dict[str, NDArray[np.float64] | casadi.SX]()
+        densities = dict[str, NDArray[np.float64] | casadi.SX]()
+        speeds = dict[str, NDArray[np.float64] | casadi.SX]()
+        origin_queues = dict[str, float | casadi.SX]()
+        onramp_queues = dict[str, float | casadi.SX]()
+        offramp_queues = dict[str, float | casadi.SX]()
+        i_state = 0
+
+        # load the vector sizes depending on the data type
+        state_size = len(x) if isinstance(x, np.ndarray) else int(x.size1())
+
+        for node in self.list_nodes():
+            # split up the state vector entries corresponding to incoming link data (onramps and origins only)
+            for link in node.incoming:
+                if isinstance(link, Origin) or isinstance(link, Onramp):
+                    # verify that the state has enough values remaining (one value for flow and queue length each)
+                    # onramps / origins are modeled as single cell store and forward links
+                    if i_state + 2 > state_size:
+                        raise ValueError(
+                            "State vector too short to extract all link states (flow and queue length)."
+                        )
+
+                    flows[link.id] = x[i_state : i_state + 1]
+                    i_state += 1
+
+                    if isinstance(link, Onramp):
+                        onramp_queues[link.id] = x[i_state]
+                    else:
+                        origin_queues[link.id] = x[i_state]
+                    i_state += 1
+
+            # split up the state vector entries corresponding to outgoing link data (full for motorlinks, queue and flow for offramp, flow for destination)
+            for link in node.outgoing:
+                if isinstance(link, MotorwayLink):
+                    num_cells = len(link)
+
+                    # verify that the state has enough values remaining (number of cell values for flow, density, and speed each)
+                    if i_state + 3 * num_cells > state_size:
+                        raise ValueError(
+                            "State vector too short to extract all link states."
+                        )
+
+                    flows[link.id] = x[i_state : i_state + num_cells]
+                    i_state += num_cells
+
+                    densities[link.id] = x[i_state : i_state + num_cells]
+                    i_state += num_cells
+
+                    speeds[link.id] = x[i_state : i_state + num_cells]
+                    i_state += num_cells
+
+                elif isinstance(link, Offramp):
+                    # verify that the state has enough values remaining (one value for flow and queue length each)
+                    if i_state + 2 > state_size:
+                        raise ValueError(
+                            "State vector too short to extract all link states (flow and queue length for offramps)."
+                        )
+
+                    flows[link.id] = x[i_state : i_state + 1]
+                    i_state += 1
+
+                    offramp_queues[link.id] = x[i_state]
+                    i_state += 1
+
+                elif isinstance(link, Destination):
+                    # verify that the state has enough values remaining (one value for flow)
+                    if i_state + 1 > state_size:
+                        raise ValueError(
+                            "State vector too short to extract all link states (flow for destinations)."
+                        )
+
+                    flows[link.id] = x[i_state : i_state + 1]
+                    i_state += 1
+
+        return flows, densities, speeds, origin_queues, onramp_queues, offramp_queues
+
+    def disturbance_vec_to_network_dict(
+        self,
+        d: NDArray[np.float64] | casadi.SX,
+    ):
+        """Unpack a disturbance vector into structured disturbance dictionaries.
+
+        Reverses the packing performed by `network_dict_to_disturbance_vec`.
+        Accepts a NumPy 1-D array or a CasADi SX column vector and returns
+        four dictionaries keyed by ids:
+        - ``origin_demands``: mapping origin id -> scalar demand (veh/time)
+        - ``onramp_demands``: mapping onramp id -> scalar demand (veh/time)
+        - ``turning_rates``: mapping node id -> (outgoing link id -> rate)
+        - ``boundary_conditions``: mapping destination id -> downstream density
+
+        The unpacking follows the node-ordering used in the network and will
+        raise ValueError if the disturbance vector is too short or inconsistent
+        with the network topology.
+
+        Args:
+            d: 1-D NumPy array or CasADi SX column vector containing the packed disturbances.
+
+        Returns:
+            Tuple of four dictionaries: ``(origin_demands, onramp_demands, turning_rates, boundary_conditions)``.
+
+        Raises:
+            ValueError: If the disturbance vector is too short for the network
+                topology or cannot be parsed into the expected entries.
+        """
+
+        # initialize the structure dictionary containers for the disturbance vector
+        origin_demands = dict[str, float | casadi.SX]()
+        onramp_demands = dict[str, float | casadi.SX]()
+        turning_rates = dict[str, dict[str, float | casadi.SX]]()
+        boundary_conditions = dict[str, float | casadi.SX]()
+        i_disturbance = 0
+
+        # load the vector sizes depending on the data type
+        disturbance_size = len(d) if isinstance(d, np.ndarray) else int(d.size1())
+
+        for node in self.list_nodes():
+            # split up the disturbance vector entries corresponding to the turning rates of this node
+            node_turning_rates: dict[str, float | casadi.SX] = {}
+            if i_disturbance + len(node.outgoing) > disturbance_size:
+                raise ValueError(
+                    "Disturbance vector too short to extract all turning rates."
+                )
+
+            for link in node.outgoing:
+                node_turning_rates[link.id] = d[i_disturbance]
+                i_disturbance += 1
+
+            turning_rates[node.id] = node_turning_rates
+
+            # split up the state vector entries corresponding to incoming link data (onramps and origins only)
+            for link in node.incoming:
+                if isinstance(link, Onramp):
+                    if i_disturbance + 1 > disturbance_size:
+                        raise ValueError(
+                            "Disturbance vector too short to extract all onramp demands."
+                        )
+
+                    onramp_demands[link.id] = d[i_disturbance]
+                    i_disturbance += 1
+
+                # initialize origins (queues only)
+                elif isinstance(link, Origin):
+
+                    if i_disturbance + 1 > disturbance_size:
+                        raise ValueError(
+                            "Disturbance vector too short to extract all origin demands."
+                        )
+
+                    origin_demands[link.id] = d[i_disturbance]
+                    i_disturbance += 1
+
+            for link in node.outgoing:
+                if isinstance(link, Destination):
+                    if i_disturbance + 1 > disturbance_size:
+                        raise ValueError(
+                            "Disturbance vector too short to extract all destination boundary conditions."
+                        )
+
+                    boundary_conditions[link.id] = d[i_disturbance]
+                    i_disturbance += 1
+
+                if isinstance(link, Offramp):
+                    if link.destination is not None:
+                        if i_disturbance + 1 > disturbance_size:
+                            raise ValueError(
+                                "Disturbance vector too short to extract all destination boundary conditions."
+                            )
+
+                        boundary_conditions[link.destination.id] = d[i_disturbance]
+                        i_disturbance += 1
+                    else:
+                        raise ValueError(
+                            f"Offramp {link.id} has no destination assigned."
+                        )
+
+        return origin_demands, onramp_demands, turning_rates, boundary_conditions
+
+    def simulate(
+        self,
+        duration: float,
+        dt: float,
+        # model: Union["CTM", "METANET"], # TODO: re-introduce this union of models as soon as CTM supports the new network structure
+        model: METANET,
+        origin_demands: dict[
+            str, Callable[[float], float]
+        ],  # for each origin id, provide a callable function returning the demand at time t
+        onramp_demands: dict[
+            str, Callable[[float], float]
+        ],  # for each onramp id, provide a callable function returning the demand at time t
+        turning_rates: dict[
+            str, Callable[[float], dict[str, float]]
+        ],  # for each node id, provide a callable function returning a dict mapping outgoing link ids to split ratios at time t
+        destination_boundary_conditions: dict[
+            str, Callable[[float], float]
+        ],  # for each destination id, provide a callable function returning the downstream density at time t
+        initial_flows: (
+            dict[str, float | NDArray[np.float64]] | None
+        ) = None,  # for each link id, provide either a float (uniform initial flow) or an array of floats (per-cell initial flows; default: 0)
+        initial_densities: (
+            dict[str, float | NDArray[np.float64]] | None
+        ) = None,  # for each link id, provide either a float (uniform initial density) or an array of floats (per-cell initial densities; default: 0)
+        initial_speeds: (
+            dict[str, float | NDArray[np.float64]] | None
+        ) = None,  # for each link id, provide either a float (uniform initial speed) or an array of floats (per-cell initial speeds; default: free-flow speed)
+        initial_origin_queues: (
+            dict[str, float] | None
+        ) = None,  # for each origin id, provide the initial queue length (default: 0)
+        initial_onramp_queues: (
+            dict[str, float] | None
+        ) = None,  # for each onramp id, provide the initial queue length (default: 0)
+        initial_offramp_queues: (
+            dict[str, float] | None
+        ) = None,  # for each offramp id, provide the initial queue length (default: 0)
+        preferred_cell_size: float = 0.5,  # preferred size of link segments (subject to CFL condition and link length divisibility)
+        inflows_jam_density: float = 1800.0,  # jam density used for inflow links if initial densities not provided
+        inflows_free_flow_speed: float = 100.0,  # free-flow speed used for inflow links if initial speeds not provided
+        plot_results: bool = False,
+    ):
+        # ! 1 - validate all inputs as required
+        for node in self.list_nodes():
+            # validate node structure
+            node.validate()
+
+            # validate that origin demands for each origin are provided
+            for link in node.incoming:
+                if isinstance(link, Origin):
+                    if link.id not in origin_demands:
+                        raise ValueError(
+                            f"Origin demand function for origin {link.id} not provided."
+                        )
+
+            # validate that onramp demands for each onramp are provided
+            for link in node.incoming:
+                if isinstance(link, Onramp):
+                    if link.id not in onramp_demands:
+                        raise ValueError(
+                            f"Onramp demand function for onramp {link.id} not provided."
+                        )
+
+            # validate that turning rates for each node are provided
+            if node.id not in turning_rates and (
+                len(node.incoming) > 1 or len(node.outgoing) > 1
+            ):
+                raise ValueError(
+                    f"Turning rate function for node {node.id} with multiple incoming and/or outgoing links not provided."
+                )
+
+            # validate that destination boundary conditions for each destination are provided
+            for link in node.outgoing:
+                if isinstance(link, Destination):
+                    if link.id not in destination_boundary_conditions:
+                        raise ValueError(
+                            f"Destination boundary condition function for destination {link.id} not provided."
+                        )
+
+            # validate that initial flows are defined for all links if not None
+            if initial_flows is not None:
+                for link in list(node.incoming) + list(node.outgoing):
+                    if link.id not in initial_flows:
+                        raise ValueError(
+                            f"Initial flow for link {link.id} not provided (required for onramp, offramp, motorway links)."
+                        )
+
+            # validate that initial densities are defined for all links if not None
+            if initial_densities is not None:
+                for link in list(node.incoming) + list(node.outgoing):
+                    if (
+                        not isinstance(link, Origin)
+                        and not isinstance(link, Destination)
+                        and link.id not in initial_densities
+                    ):
+                        raise ValueError(
+                            f"Initial density for link {link.id} not provided (required for onramp, offramp, motorway links)."
+                        )
+
+            # validate that initial speeds are defined for all links if not None
+            if initial_speeds is not None:
+                for link in list(node.incoming) + list(node.outgoing):
+                    if (
+                        not isinstance(link, Origin)
+                        and not isinstance(link, Destination)
+                        and link.id not in initial_speeds
+                    ):
+                        raise ValueError(
+                            f"Initial speed for link {link.id} not provided (required for onramp, offramp, motorway links)."
+                        )
+
+        # ! 2 - discretize mainline motorway links according to preferred cell size and CFL condition -> create cells and link correctly
+        for node in self.list_nodes():
+            for link in node.outgoing:
+                if isinstance(link, MotorwayLink):
+                    if (
+                        link.destination_node_id is None
+                        or link.destination_node_id == ""
+                    ):
+                        raise ValueError(
+                            f"Motorway link {getattr(link,'id',repr(link))} has no destination_node_id set."
+                        )
+
+                    # if the node at the end of the current link represents a lane drop, set it accordingly
+                    upcoming_lane_drop = 0
+                    dest_node = self.get_node(link.destination_node_id)
+                    if (
+                        dest_node is not None
+                        and len(dest_node.incoming) == 1
+                        and len(dest_node.outgoing) == 1
+                        and (
+                            isinstance(dest_node.outgoing[0], MotorwayLink)
+                            or isinstance(dest_node.outgoing[0], Offramp)
+                        )
+                    ):
+                        downstream_link = dest_node.outgoing[0]
+                        if downstream_link.lanes < link.lanes:
+                            upcoming_lane_drop = link.lanes - downstream_link.lanes
+
+                    link.partition_link(
+                        preferred_cell_size=preferred_cell_size,
+                        dt=dt,
+                        upcoming_lane_drop=upcoming_lane_drop,
+                    )
+
+        # ! 3 - augment the node and link states such that complete information can be guaranteed
+        # states ordered according to node ordering and their incoming and outgoing links
+        # e.g. flows: [ node1.incoming[0].flows, node1.incoming[1].flows, ..., node1.outgoing[0].flows, ... , nodeN.outgoing[M].flows ]
+        # as incoming links, only onramps are considered (motorway links are outgoing from another node)
+        # stacking into state vector is done through dedicated helper function
+        link_flows_dict: dict[str, NDArray[np.float64]] = {}
+        link_densities_dict: dict[str, NDArray[np.float64]] = {}
+        link_speeds_dict: dict[str, NDArray[np.float64]] = {}
+        origin_queues_dict: dict[str, float] = {}
+        onramp_queues_dict: dict[str, float] = {}
+        offramp_queues_dict: dict[str, float] = {}
+
+        for node in self.list_nodes():
+            # split ratios should be defined for each node (add the ones that are missing for SISO nodes)
+            if (
+                node.id not in turning_rates
+                and len(node.incoming) == 1
+                and len(node.outgoing) == 1
+            ):
+                turning_rates[node.id] = lambda _: {node.outgoing[0].id: 1.0}
+
+            # initialize incoming links (only onramps - no motorway links / origins)
+            for link in node.incoming:
+                if isinstance(link, Origin) or isinstance(link, Onramp):
+                    if initial_flows is not None and link.id in initial_flows:
+                        init_flow = initial_flows[link.id]
+                        if isinstance(init_flow, np.ndarray):
+                            if init_flow.shape[0] == 0:
+                                raise ValueError(
+                                    f"Initial flow array for link {link.id} (type: {type(link)}) is empty."
+                                )
+
+                            if init_flow.shape[0] != 1:
+                                warnings.warn(
+                                    f"Initial flow array for link {link.id} (type: {type(link)}) has incorrect length. Using first value for origin / onramp flow."
+                                )
+                                link_flows_dict[link.id] = np.full(1, init_flow[0])
+                        else:
+                            link_flows_dict[link.id] = np.full(1, init_flow)
+                    else:
+                        link_flows_dict[link.id] = np.zeros(1)
+
+                    if isinstance(link, Origin) and (
+                        initial_origin_queues is None
+                        or link.id not in initial_origin_queues
+                    ):
+                        origin_queues_dict[link.id] = 0.0
+                    elif isinstance(link, Onramp) and (
+                        initial_onramp_queues is None
+                        or link.id not in initial_onramp_queues
+                    ):
+                        onramp_queues_dict[link.id] = 0.0
+
+            # initialize outgoing links (mainline links, offramps, and destinations)
+            for link in node.outgoing:
+                if isinstance(link, MotorwayLink):
+                    num_cells = len(link)
+
+                    if initial_flows is not None and link.id in initial_flows:
+                        init_flow = initial_flows[link.id]
+                        if isinstance(init_flow, np.ndarray):
+                            if init_flow.shape[0] == 0:
+                                raise ValueError(
+                                    f"Initial flow array for motorway link {link.id} is empty."
+                                )
+
+                            if init_flow.shape[0] != num_cells:
+                                warnings.warn(
+                                    f"Initial flow array for motorway link {link.id} has incorrect length. Using first value for all cells instead."
+                                )
+                                link_flows_dict[link.id] = np.full(
+                                    num_cells, init_flow[0]
+                                )
+                        else:
+                            link_flows_dict[link.id] = np.full(num_cells, init_flow)
+                    else:
+                        link_flows_dict[link.id] = np.zeros(num_cells)
+
+                    if initial_densities is not None and link.id in initial_densities:
+                        init_density = initial_densities[link.id]
+                        if isinstance(init_density, np.ndarray):
+                            if init_density.shape[0] == 0:
+                                raise ValueError(
+                                    f"Initial density array for motorway link {link.id} is empty."
+                                )
+
+                            if init_density.shape[0] != num_cells:
+                                warnings.warn(
+                                    f"Initial density array for motorway link {link.id} has incorrect length. Using first value for all cells instead."
+                                )
+                                link_densities_dict[link.id] = np.full(
+                                    num_cells, init_density[0]
+                                )
+                        else:
+                            link_densities_dict[link.id] = np.full(
+                                num_cells, init_density
+                            )
+                    else:
+                        link_densities_dict[link.id] = np.zeros(num_cells)
+
+                    if initial_speeds is not None and link.id in initial_speeds:
+                        init_speed = initial_speeds[link.id]
+                        if isinstance(init_speed, np.ndarray):
+                            if init_speed.shape[0] == 0:
+                                raise ValueError(
+                                    f"Initial speed array for motorway link {link.id} is empty."
+                                )
+
+                            if init_speed.shape[0] != num_cells:
+                                warnings.warn(
+                                    f"Initial speed array for motorway link {link.id} has incorrect length. Using first value for all cells instead."
+                                )
+                                link_speeds_dict[link.id] = np.full(
+                                    num_cells, init_speed[0]
+                                )
+                        else:
+                            link_speeds_dict[link.id] = np.full(num_cells, init_speed)
+                    else:
+                        link_speeds_dict[link.id] = np.full(num_cells, link.vf)
+
+                # for offramps, make sure a boundary condition is defined for the connected destination
+                # destinations with missing boundary conditions are assigned a constant zero function (downstream in free-flow)
+                # additionally, initialize offramp flows and queues
+                if isinstance(link, Offramp):
+                    if link.destination is not None:
+                        dest_id = link.destination.id
+                        if dest_id not in destination_boundary_conditions:
+                            warnings.warn(
+                                f"Destination boundary condition function for destination {dest_id} (connected to offramp {link.id}) not provided. Assuming downstream free flow conditions (zero density)."
+                            )
+                            destination_boundary_conditions[dest_id] = lambda _: 0.0
+                    else:
+                        raise ValueError(
+                            f"Offramp {link.id} has no destination assigned."
+                        )
+
+                    if initial_flows is not None and link.id in initial_flows:
+                        init_flow = initial_flows[link.id]
+                        if isinstance(init_flow, np.ndarray):
+                            if init_flow.shape[0] == 0:
+                                raise ValueError(
+                                    f"Initial flow array for offramp {link.id} is empty."
+                                )
+
+                            if init_flow.shape[0] != 1:
+                                warnings.warn(
+                                    f"Initial flow array for offramp {link.id} has incorrect length. Using first value instead."
+                                )
+                                link_flows_dict[link.id] = np.full(1, init_flow[0])
+                        else:
+                            link_flows_dict[link.id] = np.full(1, init_flow)
+                    else:
+                        link_flows_dict[link.id] = np.zeros(1)
+
+                    if (
+                        initial_offramp_queues is not None
+                        and link.id in initial_offramp_queues
+                    ):
+                        offramp_queues_dict[link.id] = initial_offramp_queues[link.id]
+                    else:
+                        offramp_queues_dict[link.id] = 0.0
+
+                elif isinstance(link, Destination):
+                    # for destinations with missing boundary conditions, assign a constant zero function (downstream in free-flow)
+                    if link.id not in destination_boundary_conditions:
+                        warnings.warn(
+                            f"Destination boundary condition function for destination {link.id} not provided. Assuming downstream free flow conditions (zero density)."
+                        )
+                        destination_boundary_conditions[link.id] = lambda _: 0.0
+
+                    if initial_flows is not None and link.id in initial_flows:
+                        init_flow = initial_flows[link.id]
+                        if isinstance(init_flow, np.ndarray):
+                            if init_flow.shape[0] == 0:
+                                raise ValueError(
+                                    f"Initial flow array for destination {link.id} is empty."
+                                )
+
+                            if init_flow.shape[0] != 1:
+                                warnings.warn(
+                                    f"Initial flow array for destination {link.id} has incorrect length. Using first value instead."
+                                )
+                                link_flows_dict[link.id] = np.full(1, init_flow[0])
+                        else:
+                            link_flows_dict[link.id] = np.full(1, init_flow)
+                    else:
+                        link_flows_dict[link.id] = np.zeros(1)
+
+        # combine state from separate arrays into single state vector if required by model
+        # disturbance = demands and split ratios will be computed with passed functions at simulation time
+        (
+            x0,
+            num_flows,
+            num_densities,
+            num_speeds,
+            num_origins,
+            num_onramps,
+            num_offramps,
+            num_splits,
+            num_destinations,
+        ) = self.network_dict_to_state_vec(
+            flow_dict=link_flows_dict,
+            density_dict=link_densities_dict,
+            speed_dict=link_speeds_dict,
+            origin_queue_dict=origin_queues_dict,
+            onramp_queue_dict=onramp_queues_dict,
+            offramp_queue_dict=offramp_queues_dict,
+        )
+
+        # ! 4 - generate the model udpate equations according to the selected model and the network structure
+        system = model.network_update_function(
+            network=self,
+            num_flows=num_flows,
+            num_densities=num_densities,
+            num_speeds=num_speeds,
+            num_origins=num_origins,
+            num_onramps=num_onramps,
+            num_offramps=num_offramps,
+            inflows_jam_density=inflows_jam_density,
+            inflows_free_flow_speed=inflows_free_flow_speed,
+            dt=dt,
+        )
+
+        # ! 6 - run the simulation loop, update all link states, and track outputs
+        time_array: NDArray[np.float64] = np.arange(
+            0, duration + dt, dt, dtype=np.float64
+        )
+
+        # initialize variables for state, input and disturbance tracking
+        state_history: NDArray[np.float64] = np.zeros(
+            (len(x0), len(time_array)), dtype=np.float64
+        )
+        state_history[:, 0] = x0
+        disturbance_history: NDArray[np.float64] = np.zeros(
+            (
+                num_origins + num_onramps + num_splits + num_destinations,
+                len(time_array) - 1,
+            ),
+            dtype=np.float64,
+        )
+
+        # run the simulation and store the results
+        for t in range(len(time_array) - 1):
+            time = time_array[t]
+
+            # get the ids of all components that contribute to the disturbance vector
+            origin_ids = origin_queues_dict.keys()
+            onramp_ids = onramp_queues_dict.keys()
+
+            # evaluate the demand functions, turning rates and boundary conditions at the current time
+            origin_demand_dict = {
+                origin_id: origin_demands[origin_id](time) for origin_id in origin_ids
+            }
+            onramp_demand_dict = {
+                onramp_id: onramp_demands[onramp_id](time) for onramp_id in onramp_ids
+            }
+            turning_rate_dict = {
+                node_id: turning_rates[node_id](time)
+                for node_id in turning_rates.keys()
+            }
+            boundary_condition_dict = {
+                destination_id: destination_boundary_conditions[destination_id](time)
+                for destination_id in destination_boundary_conditions.keys()
+            }
+
+            # combine the values into the disturbance vector for the state update
+            d = self.network_dict_to_disturbance_vec(
+                origin_demand_dict=origin_demand_dict,
+                onramp_demand_dict=onramp_demand_dict,
+                turning_rate_dict=turning_rate_dict,
+                boundary_condition_dict=boundary_condition_dict,
+            )
+
+            # perform the state update
+            x_next = system(x0, d)
+
+            # store the updated state and disturbance
+            state_history[:, t + 1] = x_next
+            disturbance_history[:, t] = d
+
+        # TODO: ! 7 - plotting of results, etc.

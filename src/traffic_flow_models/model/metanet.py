@@ -1,12 +1,19 @@
-from typing import Tuple
 import numpy as np
-from numpy.typing import NDArray
+import casadi
+import warnings
+from typing import Tuple
 
-from traffic_flow_models.network.motorway_link import MotorwayLink, Cell
+
+from traffic_flow_models.network.motorway_link import MotorwayLink
+from traffic_flow_models.network.onramp import Onramp
+from traffic_flow_models.network.origin import Origin
+from traffic_flow_models.network.offramp import Offramp
+from traffic_flow_models.network.destination import Destination
+from traffic_flow_models.network.network import Network
+from traffic_flow_models.network.node import Node
+from traffic_flow_models.network.cell import Cell
 from .helpers import (
-    calculate_segment_input_flow,
-    calculate_regulated_onramp_flow,
-    update_queue,
+    store_and_forward_update,
 )
 
 
@@ -15,19 +22,22 @@ class METANET:
         """Create a METANET model instance with given parameters.
 
         The METANET model is a second-order macroscopic traffic model that
-        includes dynamics for both density and speed. This constructor stores
-        the model parameters used in the speed update and flow computations.
+        includes dynamics for both density and speed. This constructor
+        stores the model parameters used in the speed update and flow
+        computations.
 
         Args:
-            tau: Relaxation time scale for speed dynamics (time units).
-            nu: Anticipation coefficient controlling sensitivity to downstream
-                density gradients.
-            kappa: Small positive constant added to densities to avoid
-                division-by-zero in speed/flow formulas.
-            delta: Weighting coefficient for onramp influence on speed.
-            phi: Coefficient for additional deceleration due to upcoming
-                 lane drops.
-            alpha: Shape parameter used in the stationary velocity function.
+            tau (float): Relaxation time scale for speed dynamics (time).
+            nu (float): Anticipation coefficient for downstream density
+                gradient sensitivity.
+            kappa (float): Small positive constant added to densities to
+                avoid division-by-zero in speed/flow expressions.
+            delta (float): Weighting coefficient for onramp influence on
+                speed dynamics.
+            phi (float): Coefficient for additional deceleration due to
+                upcoming lane drops.
+            alpha (float): Shape parameter used in the stationary velocity
+                function (must be > 0).
         """
 
         self.tau = tau
@@ -35,44 +45,70 @@ class METANET:
         self.kappa = kappa
         self.delta = delta
         self.phi = phi
-        self.alpha = alpha
+        self.alpha = (
+            alpha  # TODO: make this parameter link-specific -> relevant for fitting
+        )
 
-    def critical_density(self, cell: Cell) -> float:
-        """Return the critical density for a given cell.
+    def critical_density(self, lane_capacity: float, free_flow_speed: float) -> float:
+        """
+        Compute and return the critical density for a given lane capacity and free-flow speed.
 
-        The METANET implementation uses an adjusted definition of the
-        critical density that depends on the model parameter ``alpha`` and the
-        cell's free-flow speed. The returned value has units of vehicles per
-        length per lane.
+        The METANET critical density is defined as
+            rho_crit = lane_capacity / (free_flow_speed * exp(-1 / self.alpha))
+        where self.alpha is the model shape parameter. Units: vehicles per length
+        per lane. Requires self.alpha > 0.
 
         Args:
-            cell: The `Cell` instance for which to compute the critical
-                density.
+            lane_capacity: Lane capacity (vehicles per time).
+            free_flow_speed: Free-flow speed (length per time).
 
         Returns:
-            The critical density (vehicles per length per lane).
+            Critical density (vehicles per length per lane).
         """
 
-        return cell.Qc_lane / (cell.vf * np.exp(-1 / self.alpha))
+        return lane_capacity / (free_flow_speed * np.exp(-1 / self.alpha))
 
-    def backward_wave_speed(self, cell: Cell) -> float:
-        """Return the backward (congestion) wave speed for a given cell.
+    def backward_wave_speed(
+        self,
+        capacity: float,
+        lane_capacity: float,
+        jam_density: float,
+        free_flow_speed: float,
+    ) -> float:
+        """
+        Return the backward (congestion) wave speed for given fundamental parameters.
 
-        The backward wave speed is computed from the cell capacity and the
-        difference between jam density and critical density. This value is
-        typically used to compute how congestion propagates upstream.
+        The backward wave speed is computed as capacity / (jam_density - rho_crit)
+        where rho_crit is the critical density computed from lane_capacity and
+        free_flow_speed. This speed describes how congestion propagates upstream
+        (length per time).
 
         Args:
-            cell: The `Cell` instance for which to compute the backward wave
-                speed.
+            capacity: Cell capacity (vehicles per time).
+            lane_capacity: Capacity per lane (vehicles per time).
+            jam_density: Jam density (vehicles per length per lane).
+            free_flow_speed: Free-flow speed (length per time).
 
         Returns:
-            The backward wave speed (length per time).
+            Backward wave speed (length per time).
+
+        Raises:
+            ValueError: If jam_density is less than or equal to the critical density.
         """
 
-        return cell.Qc / (cell.rho_jam - self.critical_density(cell=cell))
+        rho_crit = self.critical_density(
+            lane_capacity=lane_capacity, free_flow_speed=free_flow_speed
+        )
+        if jam_density <= rho_crit:
+            raise ValueError(
+                "jam_density must be greater than the critical density to compute backward wave speed"
+            )
 
-    def stationary_velocity(self, cell: Cell, density: float) -> float:
+        return capacity / (jam_density - rho_crit)
+
+    def stationary_velocity(
+        self, lane_capacity: float, free_flow_speed: float, density: float | casadi.SX
+    ) -> float:
         """Compute the stationary (equilibrium) velocity for a cell.
 
         The stationary velocity is the speed that the traffic on the cell would
@@ -81,96 +117,518 @@ class METANET:
         cell's free-flow speed (fundamental diagram).
 
         Args:
-            cell: The `Cell` instance providing the free-flow speed and
-                critical density information.
-            density: The density at which to evaluate the stationary
-                velocity (vehicles per length per lane).
+            lane_capacity (float): Capacity per lane used to compute the
+                critical density.
+            free_flow_speed (float): Free-flow speed for the link.
+            density (float | casadi.SX): The density at which to evaluate the
+                stationary velocity (vehicles per length per lane).
 
         Returns:
             The stationary velocity (length per time unit).
         """
 
-        return cell.vf * np.exp(
-            -1 / self.alpha * (density / self.critical_density(cell=cell)) ** self.alpha
+        return free_flow_speed * np.exp(
+            -1
+            / self.alpha
+            * (
+                density
+                / self.critical_density(
+                    lane_capacity=lane_capacity, free_flow_speed=free_flow_speed
+                )
+            )
+            ** self.alpha
         )
+
+    def _compute_virtual_downstream_density(
+        self,
+        node: Node,
+        densities: dict[str, casadi.SX],
+        boundary_conditions: dict[str, casadi.SX],
+    ) -> casadi.SX:
+        """Determine a node's virtual downstream density for METANET updates.
+
+        The virtual downstream density is used when computing boundary and
+        anticipation terms at nodes with multiple outgoing links. For each
+        outgoing link the method selects an appropriate downstream density
+        representation:
+        - For a `MotorwayLink`: the density of its first cell is used.
+        - For an `Offramp`: the connected destination's boundary condition
+          is used (offramps do not carry internal density in the
+          store-and-forward representation).
+        - For a `Destination`: the provided boundary condition is used.
+
+        If multiple motorway or destination densities are present they are
+        combined using a weighted quadratic mean implemented as
+        ``sum(d**2)/sum(d)`` (CasADi symbolic expression).
+
+        Args:
+            node (Node): Network node for which to compute the downstream
+                density.
+            densities (dict[str, casadi.SX]): Mapping link id -> vector of
+                cell densities (CasADi SX) for motorway links.
+            boundary_conditions (dict[str, casadi.SX]): Mapping of link or
+                destination id to boundary density (CasADi SX).
+
+        Returns:
+            casadi.SX: Virtual downstream density to be used in downstream
+            anticipation and supply computations.
+
+        Raises:
+            ValueError: If the node has no outgoing links or an offramp has
+                no destination defined.
+            TypeError: If an outgoing link has an unexpected type.
+        """
+        # determine the virtual downstream density of the node based on the outgoing links = q_m,N_m+1(k)
+        node_downstream_density = None
+        if len(node.outgoing) > 1:
+            out_densities: list[casadi.SX] = []
+            for out_link in node.outgoing:
+                if isinstance(out_link, MotorwayLink):
+                    # motorway link: use the density of the first cell as downstream density
+                    out_densities.append(densities[out_link.id][0])
+                elif isinstance(out_link, Offramp):
+                    # offramp link: the store-and-forward model does not model density / speed on offramps
+                    # -> directly use the boundary condition of the connected destination as downstream density
+                    if out_link.destination is None:
+                        raise ValueError(
+                            f"Offramp {out_link.id} does not have a destination defined."
+                        )
+
+                    out_densities.append(boundary_conditions[out_link.destination.id])
+                elif isinstance(out_link, Destination):
+                    # destination link: density is provided as boundary condition
+                    out_densities.append(boundary_conditions[out_link.id])
+                else:
+                    raise TypeError(f"Unknown outgoing link type {type(out_link)}")
+
+            # combine the different downstream densities (e.g., weighted average)
+            node_downstream_density = casadi.sum(
+                [d**2 for d in out_densities]
+            ) / casadi.sum(out_densities)
+
+        elif len(node.outgoing) == 1:
+            out_link = node.outgoing[0]
+
+            if isinstance(out_link, MotorwayLink):
+                # motorway link: use the density of the first cell as downstream density
+                node_downstream_density = densities[out_link.id][0]
+            elif isinstance(out_link, Offramp):
+                # offramp link: the store-and-forward model does not model density / speed on offramps
+                # -> directly use the boundary condition of the connected destination as downstream density
+                if out_link.destination is None:
+                    raise ValueError(
+                        f"Offramp {out_link.id} does not have a destination defined."
+                    )
+
+                node_downstream_density = boundary_conditions[out_link.destination.id]
+            elif isinstance(out_link, Destination):
+                # destination link: density is provided as boundary condition
+                node_downstream_density = boundary_conditions[out_link.id]
+            else:
+                raise TypeError(f"Unknown outgoing link type {type(out_link)}")
+        else:
+            raise ValueError(f"No outgoing links defined for node {node.id}")
+
+        return node_downstream_density
+
+    # TODO: split up this update into multiple helper functions to improve readability
+    def network_update_function(
+        self,
+        network: Network,
+        num_flows: int,
+        num_densities: int,
+        num_speeds: int,
+        num_origins: int,
+        num_onramps: int,
+        num_offramps: int,
+        inflows_jam_density: float,
+        inflows_free_flow_speed: float,
+        dt: float,
+    ) -> casadi.Function:
+        """Build a CasADi function implementing one METANET network step.
+
+        The returned CasADi `Function` (named ``metanet_network_step``) maps
+        the current state vector ``x`` and disturbance vector ``d`` to the
+        next-step state vector ``x_next`` according to the METANET update
+        rules combined with store-and-forward updates for origins, onramps
+        and offramps.
+
+        State and disturbance vector layouts are those used by
+        `Network.state_vec_to_network_dict` and
+        `Network.disturbance_vec_to_network_dict` and include flows,
+        densities, speeds, origin/onramp queues, origin demands, onramp
+        demands, split ratios and boundary conditions.
+
+        Args:
+            network (Network): Network object containing links, nodes and
+                helper methods to convert between vectors and dictionaries.
+            num_flows (int): Length of the flow portion of the state vector.
+            num_densities (int): Length of the density portion of the state
+                vector.
+            num_speeds (int): Length of the speed portion of the state vector.
+            num_origins (int): Number of origins.
+            num_onramp (int): Number of onramps.
+            num_offramp (int): Number of offramps.
+            inflows_jam_density (float): Jam density to use for origin
+                inflows when modeling external inputs.
+            inflows_free_flow_speed (float): Free-flow speed to use for
+                origin inflows.
+            dt (float): Simulation timestep.
+
+        Returns:
+            casadi.Function: A CasADi function `f(x,d) -> x_next` implementing
+            the full network update for one timestep.
+        """
+
+        # set up state and disturbance vectors
+        # state: flows, densities, speeds, origin, onramp
+        # disturbances: origin_demands, onramp_demands, offramp_split_ratios
+        x = casadi.SX(
+            "x",
+            num_flows
+            + num_densities
+            + num_speeds
+            + num_origins
+            + num_onramps
+            + num_offramps,
+            1,
+        )
+        d = casadi.SX("d", num_origins + num_onramps + len(network), 1)
+
+        # split up the state and disturbance vectors to obtain a dictionary for
+        # efficient access of the relevant quantities during the state update
+        flows, densities, speeds, origin_queues, onramp_queues, offramp_queues = (
+            network.state_vec_to_network_dict(x=x)
+        )
+        origin_demands, onramp_demands, splits, boundary_conditions = (
+            network.disturbance_vec_to_network_dict(d=d)
+        )
+
+        # typecast values of the dictionaries to casadi SX for symbolic computation
+        flows = {k: casadi.SX(v) for k, v in flows.items()}
+        densities = {k: casadi.SX(v) for k, v in densities.items()}
+        speeds = {k: casadi.SX(v) for k, v in speeds.items()}
+        origin_queues = {k: casadi.SX(v) for k, v in origin_queues.items()}
+        onramp_queues = {k: casadi.SX(v) for k, v in onramp_queues.items()}
+        offramp_queues = {k: casadi.SX(v) for k, v in offramp_queues.items()}
+        origin_demands = {k: casadi.SX(v) for k, v in origin_demands.items()}
+        onramp_demands = {k: casadi.SX(v) for k, v in onramp_demands.items()}
+        splits = {
+            k: {kk: casadi.SX(vv) for kk, vv in v.items()} for k, v in splits.items()
+        }
+        boundary_conditions = {k: casadi.SX(v) for k, v in boundary_conditions.items()}
+
+        # initialize next-step state dictionaries
+        next_flows: dict[str, casadi.SX] = {}
+        next_densities: dict[str, casadi.SX] = {}
+        next_speeds: dict[str, casadi.SX] = {}
+        next_origin_queues: dict[str, casadi.SX] = {}
+        next_onramp_queues: dict[str, casadi.SX] = {}
+        next_offramp_queues: dict[str, casadi.SX] = {}
+
+        # formulate the individual update equations for each node and update the overall system equation and the next step state
+        # iterate through all nodes and update the corrresponding quantities of incoming and outgoing links
+        for node in network.list_nodes():
+            # ! 1) update the flows and queues for origins and onramps connected to this node
+            node_downstream_density = self._compute_virtual_downstream_density(
+                node=node,
+                densities=densities,
+                boundary_conditions=boundary_conditions,
+            )
+            for inc in node.incoming:
+                if isinstance(inc, Origin):
+                    next_inflow, next_queue = store_and_forward_update(
+                        capacity=casadi.inf,
+                        jam_density=inflows_jam_density,
+                        backward_wave_speed=self.backward_wave_speed(
+                            capacity=casadi.inf,
+                            lane_capacity=casadi.inf,
+                            jam_density=inflows_jam_density,
+                            free_flow_speed=inflows_free_flow_speed,
+                        ),
+                        density=node_downstream_density,
+                        demand=origin_demands[inc.id],
+                        queue=origin_queues[inc.id],
+                        dt=dt,
+                    )
+
+                    next_flows[inc.id] = next_inflow
+                    next_origin_queues[inc.id] = next_queue
+
+                elif isinstance(inc, Onramp):
+                    # TODO: include possibility here for ramp metering controller (e.g. through ramp metering rate input)
+                    next_inflow, next_queue = store_and_forward_update(
+                        capacity=inc.Qc,
+                        jam_density=inc.rho_jam,
+                        backward_wave_speed=self.backward_wave_speed(
+                            capacity=inc.Qc,
+                            lane_capacity=casadi.inf,
+                            jam_density=inc.rho_jam,
+                            free_flow_speed=inc.vf,
+                        ),
+                        density=node_downstream_density,
+                        demand=onramp_demands[inc.id],
+                        queue=onramp_queues[inc.id],
+                        dt=dt,
+                    )
+
+                    next_flows[inc.id] = next_inflow
+                    next_onramp_queues[inc.id] = next_queue
+
+            # ! 2) compute the required boundary conditions based on the combined incoming / outgoing quantities
+            # -> this includes the upstream speed, downstream density, etc. that are required by the model udpate
+            # sum up the last cell flows of all incoming links, onramps and origins
+            Qn = casadi.SX(0)
+            for inc in node.incoming:
+                node_inflow = None
+
+                if isinstance(inc, MotorwayLink):
+                    # motorway link: use the last cell flow as upstream flow
+                    node_inflow += flows[inc.id][-1]
+                elif isinstance(inc, Origin):
+                    # origin link: use the flow entering the origin (from state vector) - demand -> flow update separate
+                    node_inflow += flows[inc.id][0]
+                elif isinstance(inc, Onramp):
+                    # onramp link: use the flow entering the onramp (from state vector) - demand -> flow update separate
+                    node_inflow += flows[inc.id][0]
+                else:
+                    raise TypeError("Unknown incoming link type")
+
+                if node_inflow is not None:
+                    Qn += node_inflow
+                else:
+                    raise ValueError(
+                        f"No valid inflow computed for incoming link {inc.id} (type: {type(inc)})"
+                    )
+
+            # compute the node outflows based on the total available flow and the splits
+            # node outflows = q_m,0(k) - dictionary with one value per outgoing edge
+            node_outflows = {}
+            node_splits = splits[node.id]
+
+            if node_splits is None:
+                raise ValueError(f"No split ratios defined for node {node.id}")
+
+            for out in node.outgoing:
+                out_split = node_splits[out.id]
+                if out_split is None:
+                    raise ValueError(
+                        f"No split ratio defined for outgoing link {out.id} (type: {type(out)}) at node {node.id}"
+                    )
+
+                if sum(node_splits.values()) > 1.0 + 1e-6:
+                    warnings.warn(
+                        f"Sum of split ratios at node {node.id} exceeds 1.0, renormalizing splits."
+                    )
+                    out_split = out_split / sum(node_splits.values())
+
+                node_outflows[out.id] = Qn * out_split
+
+            # determine the virtual upstream speed of the node (for outgoing motorway links) = v_m,0(k)
+            # since a speed parameter is required, only incoming motorway links are considered
+            node_upstream_speed = None
+            if len(node.incoming) > 0:
+                # if all incoming links are onramps / origins, assume free flow conditions upstream
+                if all(not isinstance(inc, MotorwayLink) for inc in node.incoming):
+                    node_upstream_speed = min(
+                        out.vf for out in node.outgoing if isinstance(out, MotorwayLink)
+                    )
+
+                nom_terms = []
+                denom_terms = []
+                for inc in node.incoming:
+                    if isinstance(inc, MotorwayLink):
+                        # motorway link: use the last cell speed and flow for upstream speed
+                        nom_terms.append(speeds[inc.id][-1] * flows[inc.id][-1])
+                        denom_terms.append(flows[inc.id][-1])
+
+                node_upstream_speed = sum(nom_terms) / sum(denom_terms)
+
+            else:
+                raise ValueError(f"No outgoing links defined for node {node.id}")
+
+            for out in node.outgoing:
+                # ! 3) update the offramp flows (& density/speed) for destinations connected to this node
+                if isinstance(out, Destination):
+                    # destinations are assumed to consume all incoming flow
+                    # (only impact the mainstream through the density boundary condition)
+                    next_flows[out.id] = node_outflows[out.id]
+                elif isinstance(out, Offramp):
+                    # offramps are modeled as store and forward links with finite capacity, meaning that the entire
+                    # outflow is assumed to go into the offramp, where a queue might then form if the urban network
+                    # boundary condition does not support the required outflow (spillbacks not considered /
+                    # free flow boundary condition is applied to the relevant mainline highway segment!)
+                    if out.destination is None:
+                        raise ValueError(
+                            f"Offramp {out.id} does not have a destination defined."
+                        )
+
+                    mainline_outflow = node_outflows[
+                        out.id
+                    ]  # desired offramp flow based on splits = flow onto offramp (queue on offramp itself)
+                    offramp_demand = mainline_outflow + offramp_queues[out.id] / dt
+
+                    # update the offramp flow and queue based on the store-and-forward model
+                    next_outflow, next_queue = store_and_forward_update(
+                        capacity=out.Qc,
+                        jam_density=out.rho_jam,
+                        backward_wave_speed=self.backward_wave_speed(
+                            capacity=out.Qc,
+                            lane_capacity=casadi.inf,
+                            jam_density=out.rho_jam,
+                            free_flow_speed=out.vf,
+                        ),
+                        density=boundary_conditions[out.destination.id],
+                        demand=offramp_demand,
+                        queue=offramp_queues[out.id],
+                        dt=dt,
+                    )
+
+                    # set the offramp flow and the queue on the offramp (part of store-and-forward link)
+                    next_flows[out.id] = next_outflow
+                    next_offramp_queues[out.id] = next_queue
+
+                    # the flow of the connected destination is equal to the offramp outflow
+                    next_flows[out.destination.id] = next_outflow
+
+                # ! 4) update the outgoing motorway links connected to this node (including all cells)
+                elif isinstance(out, MotorwayLink):
+                    if node_outflows[out.id] is None:
+                        raise ValueError(
+                            f"No outflow computed for outgoing motorway link {out.id} at node {node.id}"
+                        )
+
+                    link_flows = flows[out.id]
+                    link_densities = densities[out.id]
+                    link_speeds = speeds[out.id]
+
+                    next_densities_list: list[casadi.SX] = []
+                    next_speeds_list: list[casadi.SX] = []
+                    next_flows_list: list[casadi.SX] = []
+
+                    for i, cell in out.enumerate_cells():
+                        # compute updates for this cell and append to lists
+                        d_next, s_next, f_next = self.cell_update(
+                            link=out,
+                            cell=cell,
+                            upstream_flow=(
+                                node_outflows[out.id]
+                                if cell.upstream is None
+                                else link_flows[i - 1]
+                            ),
+                            previous_flow=link_flows[i],
+                            previous_density=link_densities[i],
+                            downstream_density=(
+                                link_densities[i + 1]
+                                if cell.downstream is not None
+                                else link_densities[i]
+                            ),
+                            upstream_speed=(
+                                link_speeds[i]
+                                if cell.upstream is None
+                                else link_speeds[i - 1]
+                            ),
+                            previous_speed=link_speeds[i],
+                            dt=dt,
+                        )
+
+                        next_densities_list.append(d_next)
+                        next_speeds_list.append(s_next)
+                        next_flows_list.append(f_next)
+
+                    next_densities[out.id] = casadi.SX(next_densities_list)
+                    next_speeds[out.id] = casadi.SX(next_speeds_list)
+                    next_flows[out.id] = casadi.SX(next_flows_list)
+
+                else:
+                    raise TypeError(f"Unknown outgoing link type {type(out)}")
+
+        # combine the network dictionary values for the next step into a single state vector
+        x_next = network.network_dict_to_state_vec(
+            flow_dict=next_flows,
+            density_dict=next_densities,
+            speed_dict=next_speeds,
+            origin_queue_dict=next_origin_queues,
+            onramp_queue_dict=next_onramp_queues,
+            offramp_queue_dict=next_offramp_queues,
+        )
+
+        # wrap the state update in a nonlinear casadi function
+        return casadi.Function("metanet_network_step", [x, d], [x_next])
 
     def cell_update(
         self,
-        cell,
-        upstream_flow,
-        previous_flow,
-        onramp_flow,
-        offramp_flow,
-        previous_density,
-        downstream_density,
-        upstream_speed,
-        previous_speed,
-        dt,
-    ) -> Tuple[float, float, float]:
-        """Compute density, speed and flow updates for a single METANET cell.
+        link: MotorwayLink,
+        cell: Cell,
+        upstream_flow: casadi.SX,
+        previous_flow: casadi.SX,
+        previous_density: casadi.SX,
+        downstream_density: casadi.SX,
+        upstream_speed: casadi.SX,
+        previous_speed: casadi.SX,
+        dt: float,
+    ) -> Tuple[casadi.SX, casadi.SX, casadi.SX]:
+        """Compute one-step updates for density, speed and flow of a METANET cell.
 
-        Implements the METANET discrete-time update for a homogeneous cell.
-        The method updates the density using conservation of vehicles and
-        updates the speed using the METANET second-order dynamics which
-        include relaxation towards a stationary velocity, convection from
-        upstream speed differences, anticipation of downstream density
-        gradients, and onramp-induced effects. An extra deceleration term is
-        added when a lane drop is present in the subsequent downstream cell.
-
-        Note: Off-ramps in this implementation split the flow inside the cell
-        into a mainline outflow component (q) and an offramp flow component.
-        The computation of an offramp flow through the split ratio always needs
-        to be based on the total cell flow (not only the mainline cell outflow)
+        Implements the METANET discrete-time update for a homogeneous motorway
+        cell. Density is updated by vehicle conservation using the provided
+        upstream and previous outflow. Speed evolves according to METANET's
+        second-order dynamics: relaxation toward the stationary velocity,
+        convective coupling with upstream speed, anticipation of downstream
+        density gradients, and additional deceleration for upcoming lane
+        drops. The updated flow is computed from the updated density and
+        speed.
 
         Args:
-            cell: The `Cell` instance describing geometry and lane-drop info.
-            upstream_flow: Flow entering the cell from upstream (vehicles per
-                time unit).
-            previous_flow: Flow leaving the cell at the previous time step
-                (vehicles per time unit).
-            onramp_flow: Flow entering from an onramp attached to the cell
-                (vehicles per time unit).
-            offramp_flow: Flow leaving via an offramp attached to the cell
-                (vehicles per time unit).
-            previous_density: Density at the previous time step
-                (vehicles per length per lane).
-            downstream_density: Density in the downstream cell used for
-                anticipation terms (vehicles per length per lane).
-            upstream_speed: Speed in the upstream cell used for convective
-                coupling (length per time).
-            previous_speed: Speed at the previous time step in this cell
-                (length per time).
-            dt: Time step length (same time units as flows).
+            link (MotorwayLink): Parent motorway link containing geometric
+                and lane information.
+            cell (Cell): Cell object with geometry and lane-drop info.
+            upstream_flow (casadi.SX): Flow entering the cell from upstream
+                (vehicles / time).
+            previous_flow (casadi.SX): Flow leaving the cell at the previous
+                time step (vehicles / time).
+            previous_density (casadi.SX): Density at the previous time step
+                (vehicles / length per lane).
+            downstream_density (casadi.SX): Density in the downstream cell
+                used for anticipation terms (vehicles / length per lane).
+            upstream_speed (casadi.SX): Speed in the upstream cell used for
+                convective coupling (length / time).
+            previous_speed (casadi.SX): Speed at the previous time step in
+                this cell (length / time).
+            dt (float): Simulation timestep.
 
         Returns:
-            A tuple ``(density, speed, flow)`` where:
-            - density: Updated density after one time step (vehicles per
-              length per lane).
-            - speed: Updated speed after one time step (length per time).
-            - flow: Updated flow leaving the cell (vehicles per time).
+            Tuple[casadi.SX, casadi.SX, casadi.SX]: ``(density, speed, flow)``
+            updated for one timestep where:
+            - ``density``: Updated density (vehicles / length per lane).
+            - ``speed``: Updated speed (length / time).
+            - ``flow``: Updated outflow from the cell (vehicles / time).
         """
 
         # compute the new density based on the flows at the previous timestep
         # Note: off-ramps are modeled as splitting the outflow and do not
         # directly reduce the density update term (matches MATLAB METANET).
-        density = previous_density + dt * (
-            upstream_flow + onramp_flow - offramp_flow - previous_flow
-        ) / (cell.length * cell.lanes)
+        density = previous_density + dt * (upstream_flow - previous_flow) / (
+            cell.length * link.lanes
+        )
 
         # compute the new speed based on the previous timestep
         speed = (
             previous_speed
             + dt
             / self.tau
-            * (self.stationary_velocity(cell, previous_density) - previous_speed)
+            * (
+                self.stationary_velocity(
+                    lane_capacity=link.lane_capacity,
+                    free_flow_speed=link.vf,
+                    density=previous_density,
+                )
+                - previous_speed
+            )
             + dt / cell.length * previous_speed * (upstream_speed - previous_speed)
             - (dt * self.nu)
             / (self.tau * cell.length)
             * (downstream_density - previous_density)
-            / (previous_density + self.kappa)
-            - (dt * self.delta)
-            / (cell.length * cell.lanes)
-            * (onramp_flow * previous_speed)
             / (previous_density + self.kappa)
         )
 
@@ -183,226 +641,19 @@ class METANET:
                 * cell.upcoming_lane_drop
                 * previous_density
                 * previous_speed**2
-            ) / (cell.length * cell.lanes * self.critical_density(cell))
+            ) / (
+                cell.length
+                * link.lanes
+                * self.critical_density(
+                    lane_capacity=link.lane_capacity,
+                    free_flow_speed=link.vf,
+                )
+            )
 
         # ensure that the speed values remain non-negative
-        speed = max(speed, 0)
+        speed = casadi.fmax(speed, 0)
 
         # compute the flow update of the cell based on the speed and density
-        flow = density * speed * cell.lanes
+        flow = density * speed * link.lanes
 
         return density, speed, flow
-
-    def step(
-        self,
-        link: MotorwayLink,
-        density: NDArray[np.float64],
-        speed: NDArray[np.float64],
-        flow: NDArray[np.float64],
-        mainline_demand: float,
-        input_queue: float,
-        input_flow: float,
-        onramp_demand: NDArray[np.float64],
-        onramp_queue: NDArray[np.float64],
-        onramp_flow: NDArray[np.float64],
-        offramp_flow: NDArray[np.float64],
-        dt: float,
-    ) -> Tuple[
-        NDArray[np.float64],
-        NDArray[np.float64],
-        NDArray[np.float64],
-        float,
-        float,
-        NDArray[np.float64],
-        NDArray[np.float64],
-        NDArray[np.float64],
-    ]:
-        """Advance the METANET model by a single time step for the whole network.
-
-        This method computes the mainline cell flows, onramp flows and the
-        resulting next-step densities and speeds for every cell in the provided
-        `network` using the METANET discretization implemented in
-        :meth:`cell_update`.
-
-        Args:
-            network: The `Network` object describing the cells, their
-                fundamental diagram parameters and ramp connectivity.
-            density: 1-D array of current densities for each cell
-                (vehicles per length per lane), shape `(num_cells,)`.
-            speed: 1-D array of current speeds for each cell (length per time),
-                shape `(num_cells,)`.
-            flow: 1-D array of current outflows for each cell (vehicles per
-                time), shape `(num_cells,)`.
-            mainline_demand: Demand (flow) entering the first cell of the
-                segment (vehicles per time unit).
-            input_queue: Float queue length at the segment input (vehicles).
-            input_flow: Flow that entered the first cell during the previous
-            onramp_demand: 1-D array with onramp demands for each cell
-                (vehicles per time unit), shape `(num_cells,)`.
-            onramp_queue: 1-D integer array with current onramp queue lengths
-                for each cell (vehicles), shape `(num_cells,)`.
-            onramp_flow: 1-D array with the previous time-step onramp flows for
-                each cell (vehicles per time unit), shape `(num_cells,)`.
-            offramp_flow: 1-D array with the previous time-step offramp flows for
-                each cell (vehicles per time unit), shape `(num_cells,)`.
-            dt: Time step length (same time units as flows).
-
-        Returns:
-            A tuple with the following values:
-            - flow: ndarray, mainline outflow from each cell (vehicles per
-              time unit), shape `(num_cells,)`.
-            - density: ndarray, densities after advancing one time step
-              (vehicles per length per lane), shape `(num_cells,)`.
-            - speed: ndarray, speeds after advancing one time step (length
-              per time unit), shape `(num_cells,)`.
-            - input_flow: float, flow that actually entered the first cell
-              during this step (vehicles per time unit).
-            - next_input_queue: float, updated queue length at the segment
-              input (vehicles) after this time step.
-            - onramp_flow: ndarray, onramp flows applied to each cell
-              (vehicles per time unit), shape `(num_cells,)`.
-            - offramp_flow: ndarray, offramp flows applied to each cell
-              (vehicles per time unit), shape `(num_cells,)`.
-            - next_onramp_queue: ndarray, updated onramp queue lengths for
-              each cell (vehicles), shape `(num_cells,)`.
-
-        Notes:
-            - Units must be consistent across `density`, `flow` and `dt`.
-            - The function enforces physical capacity constraints by relying
-              on regulated onramp flows (via controllers) and using
-              look-ahead checks for downstream onramps.
-        """
-
-        # initialize model quantities for current iteration
-        # Note: array indices 0..num_cells-1 correspond to cell traversal order
-        # (upstream to downstream). This ensures state arrays align with network topology.
-        num_cells = len(link)
-        next_flow = np.zeros(num_cells)
-        next_speed = np.zeros(num_cells)
-        next_density = np.zeros(num_cells)
-        next_onramp_flow = np.zeros(num_cells)
-        next_onramp_queue = np.zeros(num_cells)
-        next_offramp_flow = np.zeros(num_cells)
-
-        # compute the input flow and queue simulating congestion at
-        # the beginning of the currently considered highway segment
-        first_cell = link.first_cell()
-        if first_cell is None:
-            raise ValueError("Motorway link has no cells")
-
-        next_input_flow, next_input_queue = calculate_segment_input_flow(
-            first_cell=first_cell,
-            backward_wave_speed=self.backward_wave_speed(cell=first_cell),
-            density=density[0],
-            input_demand=mainline_demand,
-            input_queue=input_queue,
-            dt=dt,
-        )
-
-        # if a ramp controller is defined and an onramp is present in the
-        # first cell, compute the regulated onramp flow
-        if first_cell.onramp is not None:
-            next_onramp_flow[0] = calculate_regulated_onramp_flow(
-                cell=first_cell,
-                cell_ix=0,
-                backward_wave_speed=self.backward_wave_speed(cell=first_cell),
-                density=density,
-                previous_onramp_flow=onramp_flow[0],
-                onramp_demand=onramp_demand[0],
-                onramp_queue=onramp_queue[0],
-                controller=first_cell.onramp.controller,
-                dt=dt,
-            )
-
-            # update the queue length on the onramp
-            next_onramp_queue[0] = update_queue(
-                queue_length=onramp_queue[0],
-                demand=onramp_demand[0],
-                flow=next_onramp_flow[0],
-                dt=dt,
-            )
-
-            # update the queue length at the input of the segment
-            next_input_queue = update_queue(
-                queue_length=input_queue,
-                demand=mainline_demand,
-                flow=next_input_flow,
-                dt=dt,
-            )
-
-        # iterate over all intermediate cells and update the onramp and
-        # cell flows according to the physically possible values
-        for i, current_cell in link.enumerate_cells():
-            # if an offramp is present in the current cell, determine the
-            # offramp flow based on the total cell outflow at the previous
-            # time step and the split ratio. Note that this does not correspond
-            # to the previous offramp flow, since the mainline cell outflow is
-            # updated in between through the cell update function
-
-            # boundary conditions using linked list structure:
-            # - first cell (upstream is None): assume v_0 = v_1 to eliminate convection term
-            # - last cell (downstream is None): assume rho_{n+1} = rho_n
-            next_density[i], next_speed[i], next_flow[i] = self.cell_update(
-                cell=current_cell,
-                upstream_flow=(
-                    input_flow if current_cell.upstream is None else flow[i - 1]
-                ),
-                previous_flow=flow[i],
-                onramp_flow=onramp_flow[i],
-                offramp_flow=offramp_flow[i],
-                previous_density=density[i],
-                downstream_density=(
-                    density[i + 1]
-                    if current_cell.downstream is not None
-                    else density[i]
-                ),
-                upstream_speed=(
-                    speed[i] if current_cell.upstream is None else speed[i - 1]
-                ),
-                previous_speed=speed[i],
-                dt=dt,
-            )
-
-            # in case the current cell has an offramp, update the offramp flow accordingly
-            if current_cell.offramp is not None:
-                split = current_cell.offramp.split_ratio  # type: ignore
-                next_offramp_flow[i] = split / (1 - split) * next_flow[i]
-
-            # LOOKAHEAD: if the next downstream cell has an onramp, compute the regulated
-            # onramp flow and update the corresponding queue (if not the entire flow can be served)
-            if (
-                current_cell.downstream is not None
-                and current_cell.downstream.onramp is not None
-            ):
-                downstream_cell = current_cell.downstream
-                next_onramp_flow[i + 1] = calculate_regulated_onramp_flow(
-                    cell=downstream_cell,
-                    cell_ix=i + 1,
-                    backward_wave_speed=self.backward_wave_speed(cell=downstream_cell),
-                    density=density,
-                    previous_onramp_flow=onramp_flow[i + 1],
-                    onramp_demand=onramp_demand[i + 1],
-                    onramp_queue=onramp_queue[i + 1],
-                    controller=downstream_cell.onramp.controller,  # pyright: ignore[reportOptionalMemberAccess]
-                    dt=dt,
-                )
-
-                # update the queue length on the onramp
-                next_onramp_queue[i + 1] = update_queue(
-                    queue_length=onramp_queue[i + 1],
-                    demand=onramp_demand[i + 1],
-                    flow=next_onramp_flow[i + 1],
-                    dt=dt,
-                )
-
-        # return all updated quantities for the network
-        return (
-            next_flow,
-            next_density,
-            next_speed,
-            next_input_flow,
-            next_input_queue,
-            next_onramp_flow,
-            next_offramp_flow,
-            next_onramp_queue,
-        )
