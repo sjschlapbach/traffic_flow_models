@@ -1,46 +1,34 @@
 from typing import Optional, TYPE_CHECKING
 
-if TYPE_CHECKING:
-    from .onramp import Onramp  # pragma: no cover - typing only
-    from .offramp import Offramp  # pragma: no cover - typing only
-
 
 class Cell:
     """Represents a single highway mainline cell.
 
-    A Cell stores the physical parameters required for simple traffic
-    modelling (length, lanes, capacity, speeds, densities) and optional
-    references to neighboring cells and a single onramp/offramp. The class
-    intentionally contains only data; network topology and validation are
-    handled by the `Network` container.
+    This class stores the minimal physical and topological attributes owned
+    by a cell. Higher-level link properties (e.g. lane capacity, free-flow
+    speed, jam density) are stored on the parent link objects (e.g.
+    `MotorwayLink`) or are provided by the model when needed. The
+    `Network` container is responsible for assembling cells into links and
+    connecting onramps/offramps.
 
     Attributes:
-        length: Cell length in kilometers.
-        lanes: Number of lanes on the cell.
-        lane_capacity: Capacity per lane in vehicles per hour.
-        free_flow_speed: Free-flow speed in km/h.
-        jam_density: Jam density in vehicles per km per lane.
-        upstream: Optional reference to upstream cell in linked list.
-        downstream: Optional reference to downstream cell in linked list.
-        onramp: Optional attached `Onramp` instance.
-        offramp: Optional attached `Offramp` instance.
+        length (float): Cell length in kilometers (must be positive).
+        upcoming_lane_drop (int): Number of lanes dropping downstream of
+            this cell (0 if no lane drop).
+        upstream (Optional[Cell]): Reference to the upstream cell in the
+            linked list (set by the network builder).
+        downstream (Optional[Cell]): Reference to the downstream cell in
+            the linked list (set by the network builder).
     """
 
     # type annotations for static tools: instances will have these attributes
     upstream: Optional["Cell"]
     downstream: Optional["Cell"]
-    onramp: Optional["Onramp"]
-    offramp: Optional["Offramp"]
 
     def __init__(
         self,
         length: float,
-        lanes: int,
-        lane_capacity: float,
-        free_flow_speed: float,
-        jam_density: float,
-        onramp: Optional["Onramp"] = None,
-        offramp: Optional["Offramp"] = None,
+        upcoming_lane_drop: int = 0,
     ) -> None:
         """Create a new Cell with physical parameters.
 
@@ -51,35 +39,16 @@ class Cell:
 
         Args:
             length: Cell length in kilometers.
-            lanes: Number of lanes on the cell.
-            lane_capacity: Capacity per lane in vehicles per hour.
-            free_flow_speed: Free-flow speed in km/h.
-            jam_density: Jam density in vehicles per km per lane.
-            onramp: Optional `Onramp` instance to attach to this cell.
-            offramp: Optional `Offramp` instance to attach to this cell.
+            upcoming_lane_drop: Number of lanes dropping downstream of this cell.
+
+        Raises:
+            ValueError: If any of the physical parameters are non-positive.
         """
 
         if length <= 0:
             raise ValueError("Cell length must be positive.")
 
-        if lanes <= 0:
-            raise ValueError("Number of lanes must be positive.")
-
-        if lane_capacity <= 0:
-            raise ValueError("Lane capacity must be positive.")
-
-        if free_flow_speed <= 0:
-            raise ValueError("Free-flow speed must be positive.")
-
-        if jam_density <= 0:
-            raise ValueError("Jam density must be positive.")
-
         self.length: float = length  # in kilometers
-        self.lanes: int = lanes  # number of lanes
-        self.Qc_lane: float = lane_capacity  # in vehicles per hour per lane
-        self.Qc: float = lane_capacity * lanes  # total cell capacity
-        self.vf: float = free_flow_speed  # in kilometers per hour
-        self.rho_jam: float = jam_density  # in vehicles per kilometer per lane
 
         # bidirectional linked list pointers for network topology
         self.upstream: Optional["Cell"] = None
@@ -87,9 +56,4 @@ class Cell:
 
         # store if there is a lane drop coming up between this and the next downstream cell
         # if set, the number of dropped lanes is stored
-        self.upcoming_lane_drop: int = 0
-
-        # at most one ramp of each type may attach to a cell (optional)
-        # allow passing ramps via constructor for convenience
-        self.onramp = onramp
-        self.offramp = offramp
+        self.upcoming_lane_drop: int = upcoming_lane_drop
