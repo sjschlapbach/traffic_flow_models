@@ -19,6 +19,7 @@ dependencies = [
   "matplotlib==3.10.7",
   "osmnx==2.0.7",
   "casadi==3.7.2",
+  "networkx==3.5",
 ]
 
 # Development / testing dependencies

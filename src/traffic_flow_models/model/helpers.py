@@ -43,7 +43,7 @@ def store_and_forward_update(
     """
     qin_demand: casadi.SX = demand + queue / dt
     qin_supply: casadi.SX = backward_wave_speed * (jam_density - density)
-    inflow: casadi.SX = min(capacity, qin_demand, qin_supply)
+    inflow: casadi.SX = casadi.fmin(casadi.fmin(capacity, qin_demand), qin_supply)
     updated_queue: casadi.SX = update_inflow_queue(
         queue_length=queue, demand=demand, flow=inflow, dt=dt
     )

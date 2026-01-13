@@ -1,4 +1,6 @@
 import argparse
+from typing import Callable
+
 from traffic_flow_models import METANET
 from demo.scenarios import (
     mainline_demand_a,
@@ -65,36 +67,53 @@ if __name__ == "__main__":
     metanet = METANET(tau=tau, nu=nu, kappa=kappa, delta=delta, phi=phi, alpha=alpha)
 
     # initialize the network with the correct structure (optionally with ALINEA ramp metering)
-    network = setup_network(
-        get_critical_density=metanet.critical_density,
-        ramp_control=alinea_ramp_control,
-        alinea_gain=alinea_gain,
-        alinea_setpoint=None,  # for METANET, directly obtain the ALINEA setpoint as the critical density of the cell
-    )
+    network, metadata = setup_network()
+
+    # build disturbance dictionaries expected by the new simulate signature
+    origin_ids = metadata.get("origin_ids", [])
+    onramp_ids = metadata.get("onramp_ids", [])
+    destination_ids = metadata.get("destination_ids", [])
+    splits = metadata.get("splits", {})
+
+    origin_demands: dict[str, Callable[[float], float]] = {
+        oid: mainline_demand for oid in origin_ids
+    }
+    onramp_demands: dict[str, Callable[[float], float]] = {
+        rid: onramp_demand for rid in onramp_ids
+    }
+    destination_boundary_conditions: dict[str, Callable[[float], float]] = {
+        did: (lambda _: 0.0) for did in destination_ids
+    }
+
+    # turning rates: create callables that return the provided split mapping (time-invariant here)
+    turning_rates: dict[str, Callable[[float], dict[str, float]]] = {
+        nid: (lambda _t, s=splits[nid]: s) for nid in splits.keys()
+    }
     network.plot()
 
     # run a simulation of the network using the METANET model
-    density, flow, speed, input_flow, input_queue, onramp_flow, onramp_queue = (
-        network.simulate(
-            duration=duration,
-            dt=dt,
-            model=metanet,
-            mainline_demand=mainline_demand,
-            onramp_demand=onramp_demand,
-            plot_results=plot_enabled,
-        )
+    time, states, disturbances = network.simulate(
+        duration=duration,
+        dt=dt,
+        model=metanet,
+        origin_demands=origin_demands,
+        onramp_demands=onramp_demands,
+        turning_rates=turning_rates,
+        destination_boundary_conditions=destination_boundary_conditions,
+        plot_results=plot_enabled,
     )
 
+    # TODO: re-introduce performance metrics and illustrate them through appropriate plots
     # compute performance metrics and illustrate them
-    VKT, VHT, avg_speed = network.compute_performance_metrics(
-        density=density,
-        flow=flow,
-        speed=speed,
-        input_queue=input_queue,
-        onramp_queues=onramp_queue,
-        dt=dt,
-        plotting=plot_enabled,
-    )
-    print(f"Total VKT: {VKT:.2f} veh-km")
-    print(f"Total VHT: {VHT:.2f} veh-h")
-    print(f"Overall Average Speed: {avg_speed:.2f} km/h")
+    # VKT, VHT, avg_speed = network.compute_performance_metrics(
+    #     density=density,
+    #     flow=flow,
+    #     speed=speed,
+    #     input_queue=input_queue,
+    #     onramp_queues=onramp_queue,
+    #     dt=dt,
+    #     plotting=plot_enabled,
+    # )
+    # print(f"Total VKT: {VKT:.2f} veh-km")
+    # print(f"Total VHT: {VHT:.2f} veh-h")
+    # print(f"Overall Average Speed: {avg_speed:.2f} km/h")

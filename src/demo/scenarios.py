@@ -1,9 +1,23 @@
-from traffic_flow_models import MotorwayLink, Cell, Onramp, Offramp, AlineaController
-import numpy as np
-from typing import Callable
-from numpy.typing import NDArray
+from traffic_flow_models import (
+    MotorwayLink,
+    Onramp,
+    Offramp,
+    Destination,
+    Origin,
+    Node,
+    Network,
+)
 
-from .demand import demand
+
+def demand(time: float, t1: float, t2: float, end: float, max: float) -> float:
+    if time < t1:
+        return time * max / t1
+    elif time > end:
+        return 0.0
+    elif time > t2:
+        return max - max * (time - t2) / (end - t2)
+    else:
+        return max
 
 
 def mainline_demand_a(time: float) -> float:
@@ -18,87 +32,69 @@ def mainline_demand_c(time: float) -> float:
     return demand(time, 450 / 3600, 3150 / 3600, 3600 / 3600, 1500)
 
 
-def onramp_demand_a(time: float, network_length: int) -> NDArray[np.float64]:
-    ramp_demands = np.zeros(network_length)
-    ramp_demands[2] = demand(time, 900 / 3600, 2700 / 3600, 3600 / 3600, 2000)
-    return ramp_demands
+def onramp_demand_a(time: float) -> float:
+    return demand(time, 900 / 3600, 2700 / 3600, 3600 / 3600, 2000)
 
 
-def onramp_demand_b(time: float, network_length: int) -> NDArray[np.float64]:
-    ramp_demands = np.zeros(network_length)
-    ramp_demands[2] = demand(time, 900 / 3600, 2700 / 3600, 3600 / 3600, 2500)
-    return ramp_demands
+def onramp_demand_b(time: float) -> float:
+    return demand(time, 900 / 3600, 2700 / 3600, 3600 / 3600, 2500)
 
 
-def onramp_demand_c(time: float, network_length: int) -> NDArray[np.float64]:
-    ramp_demands = np.zeros(network_length)
-    ramp_demands[2] = demand(time, 900 / 3600, 2700 / 3600, 3600 / 3600, 1500)
-    return ramp_demands
+def onramp_demand_c(time: float) -> float:
+    return demand(time, 900 / 3600, 2700 / 3600, 3600 / 3600, 1500)
 
 
-def setup_network_ab(
-    get_critical_density: Callable[[Cell], float],
-    ramp_control: bool = False,
-    alinea_gain: float = 5.0,
-    alinea_setpoint: float | None = None,
-) -> MotorwayLink:
-    """Create a simple network with a single onramp in the middle."""
+def setup_network_ab() -> tuple[Network, dict]:
+    """Create a simple linear `Network` with an onramp attached to the middle link.
 
-    link = MotorwayLink()
-    link.add_cell(
-        length=0.5, lanes=3, lane_capacity=2000, free_flow_speed=100, jam_density=180
+    Returns `(network, metadata)` where `metadata` contains the ids of
+    origins, onramps and destinations and a `splits` mapping for nodes.
+    """
+
+    # three motorway segments approximating the original 6 cells (0.5 km each)
+    m1 = MotorwayLink(
+        length=1.0, lanes=3, lane_capacity=2000, free_flow_speed=100, jam_density=180
     )
-    link.add_cell(
-        length=0.5, lanes=3, lane_capacity=2000, free_flow_speed=100, jam_density=180
+    m2 = MotorwayLink(
+        length=2.0, lanes=3, lane_capacity=2000, free_flow_speed=100, jam_density=180
     )
 
-    onramp_cell = link.add_cell(
-        length=0.5,
-        lanes=3,
-        lane_capacity=2000,
-        free_flow_speed=100,
-        jam_density=180,
+    # add origin, destination and onramp
+    origin = Origin(
+        id=None, lanes=3, lane_capacity=2000, free_flow_speed=100, jam_density=180
     )
-    onramp_cell.onramp = Onramp(
+    destination = Destination(id=None)
+    onr = Onramp(
         lanes=1,
         lane_capacity=2000,
         free_flow_speed=100,
         jam_density=180,
-        controller=(
-            AlineaController(
-                gain=alinea_gain,
-                # set the ALINEA setpoint to the critical density of the cell (fallback if no static setpoint is provided)
-                setpoint=(
-                    alinea_setpoint
-                    if alinea_setpoint is not None
-                    else get_critical_density(onramp_cell)
-                ),
-                measurement_cell=3,
-            )
-            if ramp_control is True
-            else None
-        ),
+        controller=None,
     )
 
-    link.add_cell(
-        length=0.5, lanes=3, lane_capacity=2000, free_flow_speed=100, jam_density=180
-    )
-    link.add_cell(
-        length=0.5, lanes=3, lane_capacity=2000, free_flow_speed=100, jam_density=180
-    )
-    link.add_cell(
-        length=0.5, lanes=3, lane_capacity=2000, free_flow_speed=100, jam_density=180
-    )
+    # connect the links through nodes and build the network structure
+    n0 = Node(incoming=[origin], outgoing=[m1])
+    n1 = Node(incoming=[m1, onr], outgoing=[m2])
+    n2 = Node(incoming=[m2], outgoing=[destination])
+    net = Network(nodes=[n0, n1, n2])
 
-    return link
+    splits = {
+        n0.id: {m1.id: 1.0},
+        n1.id: {m2.id: 1.0},
+        n2.id: {destination.id: 1.0},
+    }
+
+    metadata = {
+        "origin_ids": [origin.id],
+        "onramp_ids": [onr.id],
+        "destination_ids": [destination.id],
+        "splits": splits,
+    }
+
+    return net, metadata
 
 
-def setup_network_c(
-    get_critical_density: Callable[[Cell], float],
-    ramp_control: bool = False,
-    alinea_gain: float = 5.0,
-    alinea_setpoint: float | None = None,
-) -> MotorwayLink:
+def setup_network_c() -> tuple[Network, dict]:
     """
     Create a simple network with a single onramp in the middle and a
     bottleneck with lane drop downstream.
@@ -108,53 +104,56 @@ def setup_network_c(
     that propagates upstream and interacts with the onramp / virtual input queue.
     """
 
-    link = MotorwayLink()
-    link.add_cell(
+    # motorway segments with a lane drop downstream
+    m1 = MotorwayLink(
+        length=1.0, lanes=3, lane_capacity=2000, free_flow_speed=100, jam_density=180
+    )
+    m2 = MotorwayLink(
         length=0.5, lanes=3, lane_capacity=2000, free_flow_speed=100, jam_density=180
     )
-    link.add_cell(
+    m3 = MotorwayLink(
+        length=0.5, lanes=1, lane_capacity=2000, free_flow_speed=100, jam_density=180
+    )
+    m4 = MotorwayLink(
         length=0.5, lanes=3, lane_capacity=2000, free_flow_speed=100, jam_density=180
     )
 
-    onramp_cell = link.add_cell(
-        length=0.5,
-        lanes=3,
-        lane_capacity=2000,
-        free_flow_speed=100,
-        jam_density=180,
+    # add origin, destination and onramp
+    origin = Origin(
+        id=None, lanes=3, lane_capacity=2000, free_flow_speed=100, jam_density=180
     )
-    onramp_cell.onramp = Onramp(
+    destination = Destination(id=None)
+    onr = Onramp(
         lanes=1,
         lane_capacity=2000,
         free_flow_speed=100,
         jam_density=180,
-        controller=(
-            AlineaController(
-                gain=alinea_gain,
-                # set the ALINEA setpoint to the critical density of the cell (fallback if no static setpoint is provided)
-                setpoint=(
-                    alinea_setpoint
-                    if alinea_setpoint is not None
-                    else get_critical_density(onramp_cell)
-                ),
-                measurement_cell=3,
-            )
-            if ramp_control is True
-            else None
-        ),
+        controller=None,
     )
 
-    link.add_cell(
-        length=0.5, lanes=3, lane_capacity=2000, free_flow_speed=100, jam_density=180
-    )
-    link.add_cell(
-        length=0.5, lanes=1, lane_capacity=2000, free_flow_speed=100, jam_density=180
-    )
-    link.add_cell(
-        length=0.5, lanes=3, lane_capacity=2000, free_flow_speed=100, jam_density=180
-    )
+    # connect the links through nodes and build the network structure
+    n0 = Node(incoming=[origin], outgoing=[m1])
+    n1 = Node(incoming=[m1, onr], outgoing=[m2])
+    n2 = Node(incoming=[m2], outgoing=[m3])
+    n3 = Node(incoming=[m3], outgoing=[m4])
+    n4 = Node(incoming=[m4], outgoing=[destination])
+    net = Network(nodes=[n0, n1, n2, n3, n4])
 
-    return link
+    splits = {
+        n0.id: {m1.id: 1.0},
+        n1.id: {m2.id: 1.0},
+        n2.id: {m3.id: 1.0},
+        n3.id: {destination.id: 1.0},
+    }
+
+    metadata = {
+        "origin_ids": [origin.id],
+        "onramp_ids": [onr.id],
+        "destination_ids": [destination.id],
+        "splits": splits,
+    }
+
+    return net, metadata
 
 
 def mainline_demand_d(time: float) -> float:
@@ -162,20 +161,11 @@ def mainline_demand_d(time: float) -> float:
     return demand(time, 300 / 3600, 1800 / 3600, 3600 / 3600, 3500)
 
 
-def onramp_demand_d(time: float, network_length: int) -> NDArray[np.float64]:
-    # single onramp feeding into the middle of the network with a peak
-    ramp_demands = np.zeros(network_length)
-    # attach to the third cell (index 2) to interact with a downstream offramp
-    ramp_demands[2] = demand(time, 300 / 3600, 1500 / 3600, 3600 / 3600, 2000)
-    return ramp_demands
+def onramp_demand_d(time: float) -> float:
+    return demand(time, 300 / 3600, 1500 / 3600, 3600 / 3600, 2000)
 
 
-def setup_network_d(
-    get_critical_density: Callable[[Cell], float],
-    ramp_control: bool = False,
-    alinea_gain: float = 5.0,
-    alinea_setpoint: float | None = None,
-) -> MotorwayLink:
+def setup_network_d() -> tuple[Network, dict]:
     """Create a network with a mid-network onramp and a downstream offramp.
 
     The layout is designed so the onramp merges upstream of an offramp
@@ -184,63 +174,57 @@ def setup_network_d(
     recovery downstream) clearly visible in the results and plots.
     """
 
-    link = MotorwayLink()
-    link.add_cell(
-        length=0.5, lanes=3, lane_capacity=2000, free_flow_speed=100, jam_density=180
+    # create segments: upstream 2 cells, middle (onramp), downstream with offramp
+    m1 = MotorwayLink(
+        length=1.0, lanes=3, lane_capacity=2000, free_flow_speed=100, jam_density=180
     )
-    link.add_cell(
-        length=0.5, lanes=3, lane_capacity=2000, free_flow_speed=100, jam_density=180
+    m2 = MotorwayLink(
+        length=1.0, lanes=3, lane_capacity=2000, free_flow_speed=100, jam_density=180
+    )
+    m3 = MotorwayLink(
+        length=1.5, lanes=2, lane_capacity=2000, free_flow_speed=100, jam_density=180
     )
 
-    # cell with onramp attached (third cell)
-    onramp_cell = link.add_cell(
-        length=0.5,
-        lanes=3,
-        lane_capacity=2000,
-        free_flow_speed=100,
-        jam_density=180,
+    # add origin, destination, onramp and offramp
+    origin = Origin(
+        id=None, lanes=3, lane_capacity=2000, free_flow_speed=100, jam_density=180
     )
-    onramp_cell.onramp = Onramp(
+    destination = Destination(id=None)
+    onr = Onramp(
         lanes=1,
         lane_capacity=2000,
         free_flow_speed=100,
         jam_density=180,
-        controller=(
-            AlineaController(
-                gain=alinea_gain,
-                # set the ALINEA setpoint to the critical density of the cell (fallback if no static setpoint is provided)
-                setpoint=(
-                    alinea_setpoint
-                    if alinea_setpoint is not None
-                    else get_critical_density(onramp_cell)
-                ),
-                measurement_cell=3,
-            )
-            if ramp_control is True
-            else None
-        ),
+        controller=None,
     )
-
-    # downstream cells - attach an offramp to the 5th cell to create a split
-    link.add_cell(
-        length=0.5, lanes=2, lane_capacity=2000, free_flow_speed=100, jam_density=180
-    )
-    link.add_cell(
-        length=0.5,
-        lanes=2,
+    offr = Offramp(
+        lanes=1,
         lane_capacity=2000,
         free_flow_speed=100,
         jam_density=180,
-        offramp=Offramp(
-            lanes=1,
-            split_ratio=0.2,
-            lane_capacity=2000,
-            free_flow_speed=100,
-            jam_density=180,
-        ),
-    )
-    link.add_cell(
-        length=0.5, lanes=2, lane_capacity=2000, free_flow_speed=100, jam_density=180
+        destination=destination,
     )
 
-    return link
+    # connect the links through nodes and build the network structure
+    n0 = Node(incoming=[origin], outgoing=[m1])
+    n1 = Node(incoming=[m1, onr], outgoing=[m2])
+    n2 = Node(incoming=[m2], outgoing=[m3, offr])
+    n3 = Node(incoming=[m3], outgoing=[destination])
+    net = Network(nodes=[n0, n1, n2, n3])
+
+    # splits at node2: motorway keeps 0.8, offramp 0.2
+    splits = {
+        n0.id: {m1.id: 1.0},
+        n1.id: {m2.id: 1.0},
+        n2.id: {m3.id: 0.8, offr.id: 0.2},
+        n3.id: {destination.id: 1.0},
+    }
+
+    metadata = {
+        "origin_ids": [origin.id],
+        "onramp_ids": [onr.id],
+        "destination_ids": [destination.id],
+        "splits": splits,
+    }
+
+    return net, metadata

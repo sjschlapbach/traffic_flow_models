@@ -101,7 +101,7 @@ class METANET:
         )
         if jam_density <= rho_crit:
             raise ValueError(
-                "jam_density must be greater than the critical density to compute backward wave speed"
+                f"jam_density must be greater than the critical density to compute backward wave speed: {jam_density} <= {rho_crit}"
             )
 
         return capacity / (jam_density - rho_crit)
@@ -202,9 +202,9 @@ class METANET:
                     raise TypeError(f"Unknown outgoing link type {type(out_link)}")
 
             # combine the different downstream densities (e.g., weighted average)
-            node_downstream_density = casadi.sum(
-                [d**2 for d in out_densities]
-            ) / casadi.sum(out_densities)
+            numer = casadi.vertcat(*[d**2 for d in out_densities])
+            denom = casadi.vertcat(*out_densities)
+            node_downstream_density = casadi.sum(numer) / casadi.sum(denom)
 
         elif len(node.outgoing) == 1:
             out_link = node.outgoing[0]
@@ -241,6 +241,8 @@ class METANET:
         num_origins: int,
         num_onramps: int,
         num_offramps: int,
+        num_splits: int,
+        num_destinations: int,
         inflows_jam_density: float,
         inflows_free_flow_speed: float,
         dt: float,
@@ -269,6 +271,8 @@ class METANET:
             num_origins (int): Number of origins.
             num_onramp (int): Number of onramps.
             num_offramp (int): Number of offramps.
+            num_turning_rates (int): Number of turning rate disturbance entries.
+            num_boundary_conditions (int): Number of boundary condition entries.
             inflows_jam_density (float): Jam density to use for origin
                 inflows when modeling external inputs.
             inflows_free_flow_speed (float): Free-flow speed to use for
@@ -284,7 +288,6 @@ class METANET:
         # state: flows, densities, speeds, origin, onramp
         # disturbances: origin_demands, onramp_demands, offramp_split_ratios
         x = casadi.SX(
-            "x",
             num_flows
             + num_densities
             + num_speeds
@@ -293,7 +296,7 @@ class METANET:
             + num_offramps,
             1,
         )
-        d = casadi.SX("d", num_origins + num_onramps + len(network), 1)
+        d = casadi.SX(num_origins + num_onramps + num_splits + num_destinations, 1)
 
         # split up the state and disturbance vectors to obtain a dictionary for
         # efficient access of the relevant quantities during the state update
@@ -340,12 +343,7 @@ class METANET:
                     next_inflow, next_queue = store_and_forward_update(
                         capacity=casadi.inf,
                         jam_density=inflows_jam_density,
-                        backward_wave_speed=self.backward_wave_speed(
-                            capacity=casadi.inf,
-                            lane_capacity=casadi.inf,
-                            jam_density=inflows_jam_density,
-                            free_flow_speed=inflows_free_flow_speed,
-                        ),
+                        backward_wave_speed=casadi.inf,
                         density=node_downstream_density,
                         demand=origin_demands[inc.id],
                         queue=origin_queues[inc.id],
@@ -362,7 +360,7 @@ class METANET:
                         jam_density=inc.rho_jam,
                         backward_wave_speed=self.backward_wave_speed(
                             capacity=inc.Qc,
-                            lane_capacity=casadi.inf,
+                            lane_capacity=inc.Qc_lane,
                             jam_density=inc.rho_jam,
                             free_flow_speed=inc.vf,
                         ),
@@ -380,26 +378,17 @@ class METANET:
             # sum up the last cell flows of all incoming links, onramps and origins
             Qn = casadi.SX(0)
             for inc in node.incoming:
-                node_inflow = None
-
                 if isinstance(inc, MotorwayLink):
                     # motorway link: use the last cell flow as upstream flow
-                    node_inflow += flows[inc.id][-1]
+                    Qn += flows[inc.id][-1]
                 elif isinstance(inc, Origin):
                     # origin link: use the flow entering the origin (from state vector) - demand -> flow update separate
-                    node_inflow += flows[inc.id][0]
+                    Qn += flows[inc.id][0]
                 elif isinstance(inc, Onramp):
                     # onramp link: use the flow entering the onramp (from state vector) - demand -> flow update separate
-                    node_inflow += flows[inc.id][0]
+                    Qn += flows[inc.id][0]
                 else:
                     raise TypeError("Unknown incoming link type")
-
-                if node_inflow is not None:
-                    Qn += node_inflow
-                else:
-                    raise ValueError(
-                        f"No valid inflow computed for incoming link {inc.id} (type: {type(inc)})"
-                    )
 
             # compute the node outflows based on the total available flow and the splits
             # node outflows = q_m,0(k) - dictionary with one value per outgoing edge
@@ -416,36 +405,29 @@ class METANET:
                         f"No split ratio defined for outgoing link {out.id} (type: {type(out)}) at node {node.id}"
                     )
 
-                if sum(node_splits.values()) > 1.0 + 1e-6:
-                    warnings.warn(
-                        f"Sum of split ratios at node {node.id} exceeds 1.0, renormalizing splits."
-                    )
-                    out_split = out_split / sum(node_splits.values())
-
-                node_outflows[out.id] = Qn * out_split
+                # re-normalize turning rates to make sure that they properly sum up to 1
+                total_splits = casadi.sum(casadi.vertcat(*list(node_splits.values())))
+                node_outflows[out.id] = Qn * out_split / casadi.fmax(total_splits, 1.0)
 
             # determine the virtual upstream speed of the node (for outgoing motorway links) = v_m,0(k)
             # since a speed parameter is required, only incoming motorway links are considered
-            node_upstream_speed = None
-            if len(node.incoming) > 0:
-                # if all incoming links are onramps / origins, assume free flow conditions upstream
-                if all(not isinstance(inc, MotorwayLink) for inc in node.incoming):
-                    node_upstream_speed = min(
-                        out.vf for out in node.outgoing if isinstance(out, MotorwayLink)
-                    )
+            # if all incoming links are onramps / origins, assume free flow conditions upstream
+            if all(not isinstance(inc, MotorwayLink) for inc in node.incoming):
+                node_upstream_speed = min(
+                    out.vf for out in node.outgoing if isinstance(out, MotorwayLink)
+                )
 
-                nom_terms = []
-                denom_terms = []
-                for inc in node.incoming:
-                    if isinstance(inc, MotorwayLink):
-                        # motorway link: use the last cell speed and flow for upstream speed
-                        nom_terms.append(speeds[inc.id][-1] * flows[inc.id][-1])
-                        denom_terms.append(flows[inc.id][-1])
+            nom_terms = []
+            denom_terms = []
+            for inc in node.incoming:
+                if isinstance(inc, MotorwayLink):
+                    # motorway link: use the last cell speed and flow for upstream speed
+                    nom_terms.append(speeds[inc.id][-1] * flows[inc.id][-1])
+                    denom_terms.append(flows[inc.id][-1])
 
-                node_upstream_speed = sum(nom_terms) / sum(denom_terms)
-
-            else:
-                raise ValueError(f"No outgoing links defined for node {node.id}")
+            node_upstream_speed = casadi.sum(casadi.vertcat(*nom_terms)) / casadi.sum(
+                casadi.vertcat(*denom_terms)
+            )
 
             for out in node.outgoing:
                 # ! 3) update the offramp flows (& density/speed) for destinations connected to this node
@@ -474,7 +456,7 @@ class METANET:
                         jam_density=out.rho_jam,
                         backward_wave_speed=self.backward_wave_speed(
                             capacity=out.Qc,
-                            lane_capacity=casadi.inf,
+                            lane_capacity=out.Qc_lane,
                             jam_density=out.rho_jam,
                             free_flow_speed=out.vf,
                         ),
@@ -502,9 +484,9 @@ class METANET:
                     link_densities = densities[out.id]
                     link_speeds = speeds[out.id]
 
-                    next_densities_list: list[casadi.SX] = []
-                    next_speeds_list: list[casadi.SX] = []
-                    next_flows_list: list[casadi.SX] = []
+                    next_densities_list = casadi.SX(len(out), 1)
+                    next_speeds_list = casadi.SX(len(out), 1)
+                    next_flows_list = casadi.SX(len(out), 1)
 
                     for i, cell in out.enumerate_cells():
                         # compute updates for this cell and append to lists
@@ -521,10 +503,10 @@ class METANET:
                             downstream_density=(
                                 link_densities[i + 1]
                                 if cell.downstream is not None
-                                else link_densities[i]
+                                else node_downstream_density
                             ),
                             upstream_speed=(
-                                link_speeds[i]
+                                node_upstream_speed
                                 if cell.upstream is None
                                 else link_speeds[i - 1]
                             ),
@@ -532,9 +514,9 @@ class METANET:
                             dt=dt,
                         )
 
-                        next_densities_list.append(d_next)
-                        next_speeds_list.append(s_next)
-                        next_flows_list.append(f_next)
+                        next_densities_list[i] = d_next
+                        next_speeds_list[i] = s_next
+                        next_flows_list[i] = f_next
 
                     next_densities[out.id] = casadi.SX(next_densities_list)
                     next_speeds[out.id] = casadi.SX(next_speeds_list)
@@ -544,7 +526,7 @@ class METANET:
                     raise TypeError(f"Unknown outgoing link type {type(out)}")
 
         # combine the network dictionary values for the next step into a single state vector
-        x_next = network.network_dict_to_state_vec(
+        x_next, _, _, _, _, _, _, _, _ = network.network_dict_to_state_vec(
             flow_dict=next_flows,
             density_dict=next_densities,
             speed_dict=next_speeds,

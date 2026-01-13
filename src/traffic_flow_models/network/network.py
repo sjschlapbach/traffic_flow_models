@@ -1,7 +1,12 @@
+from __future__ import annotations
+
 import numpy as np
 import warnings
 import casadi
-from typing import TYPE_CHECKING, Iterator, Callable, Union
+import networkx as nx
+import matplotlib.pyplot as plt
+from matplotlib.lines import Line2D
+from typing import TYPE_CHECKING, Iterator, Callable, Mapping, Optional
 from numpy.typing import NDArray
 
 from traffic_flow_models.network.node import Node
@@ -35,9 +40,12 @@ class Network:
         - All nodes in the network must be connected through links (no unconnected components)
     """
 
-    def __init__(self) -> None:
+    def __init__(self, nodes: list[Node] = []) -> None:
         """Initialize the Network object."""
         self._nodes: list[Node] = []
+
+        for n in nodes:
+            self.add_node(n)
 
     def add_node(self, node: Node) -> None:
         """
@@ -287,7 +295,11 @@ class Network:
 
         # combine state from separate arrays into single state vector if required by model
         # structure: [ flows | densities | speeds | origin_queues | onramp_queues ]
-        x = np.array([], dtype=np.float64)
+        x = (
+            np.array([], dtype=np.float64)
+            if isinstance(next(iter(flow_dict.values())), np.ndarray)
+            else casadi.SX()
+        )
 
         # initialize the counters for all quantities contained in the system vectors
         num_flows = 0
@@ -307,17 +319,39 @@ class Network:
                     if isinstance(init_flow, np.ndarray) and len(init_flow) == 1:
                         x = np.concatenate((x, init_flow))
                         num_flows += 1
+                    elif isinstance(init_flow, casadi.SX) and init_flow.size1() == 1:
+                        x = casadi.vertcat(x, init_flow)
+                        num_flows += 1
                     else:
                         raise ValueError(
                             f"Initial flow for network inflow {link.id} (type: {type(link)}) must be an array of length 1."
                         )
 
                     if link.id in onramp_queue_dict and isinstance(link, Onramp):
-                        x = np.concatenate((x, np.array([onramp_queue_dict[link.id]])))
                         num_onramp += 1
+                        if isinstance(onramp_queue_dict[link.id], float):
+                            x = np.concatenate(
+                                (x, np.array([onramp_queue_dict[link.id]]))
+                            )
+                        elif isinstance(onramp_queue_dict[link.id], casadi.SX):
+                            x = casadi.vertcat(x, onramp_queue_dict[link.id])
+                        else:
+                            raise ValueError(
+                                f"Initial queue for onramp {link.id} must be a scalar."
+                            )
+
                     elif link.id in origin_queue_dict and isinstance(link, Origin):
-                        x = np.concatenate((x, np.array([origin_queue_dict[link.id]])))
                         num_origin += 1
+                        if isinstance(origin_queue_dict[link.id], float):
+                            x = np.concatenate(
+                                (x, np.array([origin_queue_dict[link.id]]))
+                            )
+                        elif isinstance(origin_queue_dict[link.id], casadi.SX):
+                            x = casadi.vertcat(x, origin_queue_dict[link.id])
+                        else:
+                            raise ValueError(
+                                f"Initial queue for origin {link.id} must be a scalar."
+                            )
                     else:
                         raise ValueError(
                             f"Initial queue for network inflow {link.id} (type: {type(link)}) must be provided."
@@ -336,6 +370,12 @@ class Network:
                     ):
                         x = np.concatenate((x, init_flow))
                         num_flows += num_cells
+                    elif (
+                        isinstance(init_flow, casadi.SX)
+                        and init_flow.size1() == num_cells
+                    ):
+                        x = casadi.vertcat(x, init_flow)
+                        num_flows += num_cells
                     else:
                         raise ValueError(
                             f"Initial flow for motorway link {link.id} must be an array of length {num_cells}."
@@ -345,6 +385,12 @@ class Network:
                     if isinstance(init_density, np.ndarray) and link.id in density_dict:
                         x = np.concatenate((x, init_density))
                         num_densities += num_cells
+                    elif (
+                        isinstance(init_density, casadi.SX)
+                        and init_density.size1() == num_cells
+                    ):
+                        x = casadi.vertcat(x, init_density)
+                        num_densities += num_cells
                     else:
                         raise ValueError(
                             f"Initial density for motorway link {link.id} must be an array of length {num_cells}."
@@ -353,6 +399,12 @@ class Network:
                     init_speed = speed_dict[link.id]
                     if isinstance(init_speed, np.ndarray) and link.id in speed_dict:
                         x = np.concatenate((x, init_speed))
+                        num_speeds += num_cells
+                    elif (
+                        isinstance(init_speed, casadi.SX)
+                        and init_speed.size1() == num_cells
+                    ):
+                        x = casadi.vertcat(x, init_speed)
                         num_speeds += num_cells
                     else:
                         raise ValueError(
@@ -364,6 +416,9 @@ class Network:
                     init_flow = flow_dict[link.id]
                     if isinstance(init_flow, np.ndarray) and len(init_flow) == 1:
                         x = np.concatenate((x, init_flow))
+                        num_flows += 1
+                    elif isinstance(init_flow, casadi.SX) and init_flow.size1() == 1:
+                        x = casadi.vertcat(x, init_flow)
                         num_flows += 1
                     else:
                         raise ValueError(
@@ -377,6 +432,12 @@ class Network:
                     ):
                         x = np.concatenate((x, np.array([init_queue])))
                         num_offramp += 1
+                    elif (
+                        isinstance(init_queue, casadi.SX)
+                        and link.id in offramp_queue_dict
+                    ):
+                        x = casadi.vertcat(x, init_queue)
+                        num_offramp += 1
                     else:
                         raise ValueError(
                             f"Initial queue for offramp {link.id} must be a scalar."
@@ -388,6 +449,9 @@ class Network:
 
                     if isinstance(init_flow, np.ndarray) and len(init_flow) == 1:
                         x = np.concatenate((x, init_flow))
+                        num_flows += 1
+                    elif isinstance(init_flow, casadi.SX) and init_flow.size1() == 1:
+                        x = casadi.vertcat(x, init_flow)
                         num_flows += 1
                     else:
                         raise ValueError(
@@ -1072,7 +1136,7 @@ class Network:
         )
 
         # ! 4 - generate the model udpate equations according to the selected model and the network structure
-        system = model.network_update_function(
+        system: casadi.Function = model.network_update_function(
             network=self,
             num_flows=num_flows,
             num_densities=num_densities,
@@ -1080,6 +1144,8 @@ class Network:
             num_origins=num_origins,
             num_onramps=num_onramps,
             num_offramps=num_offramps,
+            num_splits=num_splits,
+            num_destinations=num_destinations,
             inflows_jam_density=inflows_jam_density,
             inflows_free_flow_speed=inflows_free_flow_speed,
             dt=dt,
@@ -1092,7 +1158,8 @@ class Network:
 
         # initialize variables for state, input and disturbance tracking
         state_history: NDArray[np.float64] = np.zeros(
-            (len(x0), len(time_array)), dtype=np.float64
+            (len(x0) if isinstance(x0, np.ndarray) else x0.size1(), len(time_array)),
+            dtype=np.float64,
         )
         state_history[:, 0] = x0
         disturbance_history: NDArray[np.float64] = np.zeros(
@@ -1136,10 +1203,362 @@ class Network:
             )
 
             # perform the state update
-            x_next = system(x0, d)
+            x_next = system(state_history[:, t], d)
 
             # store the updated state and disturbance
-            state_history[:, t + 1] = x_next
+            state_history[:, t + 1] = np.array(x_next).flatten()
             disturbance_history[:, t] = d
 
         # TODO: ! 7 - plotting of results, etc.
+
+        return time_array, state_history, disturbance_history
+
+    def plot(
+        self,
+        layout: str = "spring",
+        pos: Optional[Mapping[str, tuple[float, float] | NDArray[np.float64]]] = None,
+        figsize: tuple[int, int] = (10, 8),
+        show: bool = True,
+        save_path: str | None = None,
+        flows: dict[str, float | NDArray[np.float64]] | None = None,
+        densities: dict[str, float | NDArray[np.float64]] | None = None,
+        speeds: dict[str, float | NDArray[np.float64]] | None = None,
+        origin_queues: dict[str, float] | None = None,
+        onramp_queues: dict[str, float] | None = None,
+        offramp_queues: dict[str, float] | None = None,
+    ):
+        """Plot the network topology using the plotting helper.
+
+        Args:
+            layout: Layout algorithm for NetworkX ('spring','shell','circular',...)
+            pos: Optional precomputed positions mapping node id -> (x, y)
+            figsize: Figure size for Matplotlib
+            show: Whether to call `plt.show()`
+            save_path: Optional path to save the figure
+        """
+
+        # simplified plotting: draw static network topology only
+        def _link_style(link):
+            if isinstance(link, MotorwayLink):
+                return "#222222", max(1.0, 0.6 * getattr(link, "lanes", 1)), "Motorway"
+            if isinstance(link, Onramp):
+                return "#2ca02c", 1.6, "Onramp"
+            if isinstance(link, Offramp):
+                return "#d62728", 1.6, "Offramp"
+            if isinstance(link, Origin):
+                return "#9467bd", 1.2, "Origin"
+            if isinstance(link, Destination):
+                return "#1f77b4", 1.2, "Destination"
+            return "#888888", 1.0, "Other"
+
+        G = nx.DiGraph()
+
+        # add node objects
+        for node in self.list_nodes():
+            G.add_node(node.id, label=node.id, type="junction")
+
+        def _ensure(node_id: str):
+            if node_id not in G:
+                G.add_node(node_id, label=node_id, type="external")
+
+        # build edges from node.outgoing and represent origins/onramps as SRC:... nodes
+        for node in self.list_nodes():
+            for link in node.outgoing:
+                src = node.id
+                dst = getattr(link, "destination_node_id", None)
+                if dst is None:
+                    dst = f"DEST:{getattr(link, 'id', repr(link))}"
+                    _ensure(dst)
+                _ensure(src)
+
+                color, width, ltype = _link_style(link)
+                link_id = getattr(link, "id", "")
+                G.add_edge(
+                    src,
+                    dst,
+                    color=color,
+                    width=width,
+                    _link_obj=link,
+                    link_id=link_id,
+                    ltype=ltype,
+                )
+
+            for link in node.incoming:
+                if isinstance(link, (Origin, Onramp)):
+                    src = f"SRC:{getattr(link, 'id', repr(link))}"
+                    _ensure(src)
+                    dst = node.id
+                    color, width, ltype = _link_style(link)
+                    link_id = getattr(link, "id", "")
+                    G.add_edge(
+                        src,
+                        dst,
+                        color=color,
+                        width=width,
+                        _link_obj=link,
+                        link_id=link_id,
+                        ltype=ltype,
+                    )
+
+        # compute positions
+        if pos is None:
+            # attempt an orthogonal/cartesian layout along motorway chains
+            pos = {}
+
+            # build motorway adjacency (u -> list of (v, link))
+            motor_adj: dict[str, list[tuple[str, object]]] = {}
+            in_deg: dict[str, int] = {n.id: 0 for n in self.list_nodes()}
+            for u, v, d in G.edges(data=True):
+                if d.get("ltype") == "Motorway":
+                    motor_adj.setdefault(u, []).append((v, d.get("_link_obj")))
+                    in_deg[v] = in_deg.get(v, 0) + 1
+
+            # find motorway sources (nodes with zero incoming motorway links)
+            sources = [n for n, deg in in_deg.items() if deg == 0]
+
+            # simple layout: traverse each motorway chain and place nodes along x axis
+            visited = set()
+            y_offset = 0
+
+            def place_chain(src, y):
+                stack = [(src, 0.0)]
+                while stack:
+                    node_id, x = stack.pop(0)
+                    if node_id in pos:
+                        # keep smallest x
+                        pos[node_id] = (min(pos[node_id][0], x), pos[node_id][1])
+                    else:
+                        pos[node_id] = (x, y)
+
+                    visited.add(node_id)
+                    for v, link_obj in motor_adj.get(node_id, []):
+                        length = (
+                            getattr(link_obj, "length", 1.0)
+                            if link_obj is not None
+                            else 1.0
+                        )
+                        next_x = x + float(length)
+                        if v not in visited:
+                            stack.append((v, next_x))
+
+            if sources:
+                for s in sources:
+                    place_chain(s, y_offset)
+                    y_offset -= 1.0
+            else:
+                # fallback to spring layout if no motorway structure
+                pos = nx.spring_layout(G, seed=42)
+
+            # place externals (SRC:/DEST:) very close to junctions for compact layout
+            for n in G.nodes():
+                if n in pos:
+                    continue
+                s = str(n)
+                placed = False
+                # incoming source nodes (SRC:...) -> place just above their destination
+                if s.startswith("SRC:"):
+                    neighbors = list(G.successors(n)) if n in G else []
+                    if neighbors and neighbors[0] in pos:
+                        dst_pos = pos[neighbors[0]]
+                        pos[n] = (dst_pos[0] - 0.08, dst_pos[1] + 0.25)
+                        placed = True
+
+                # destination placeholders (DEST:...) -> place just above their source
+                if not placed and s.startswith("DEST:"):
+                    preds = list(G.predecessors(n)) if n in G else []
+                    if preds and preds[0] in pos:
+                        src_pos = pos[preds[0]]
+                        pos[n] = (src_pos[0] + 0.08, src_pos[1] + 0.25)
+                        placed = True
+
+                # fallback placement
+                if not placed:
+                    pos[n] = (0.0, y_offset)
+                    y_offset -= 0.6
+
+        fig, ax = plt.subplots(figsize=figsize)
+
+        # draw nodes without IDs (IDs will be shown on hover if mplcursors available)
+        junctions = [n for n, d in G.nodes(data=True) if d.get("type") == "junction"]
+        externals = [n for n, d in G.nodes(data=True) if d.get("type") != "junction"]
+
+        nx.draw_networkx_nodes(
+            G,
+            pos,
+            nodelist=junctions,
+            node_color="#ffffff",
+            edgecolors="#111111",
+            node_size=520,
+            ax=ax,
+        )
+
+        # split externals into sources (SRC:), destinations (DEST:) and others
+        externals_src = [n for n in externals if str(n).startswith("SRC:")]
+        externals_dest = [n for n in externals if str(n).startswith("DEST:")]
+        externals_other = [
+            n for n in externals if n not in externals_src and n not in externals_dest
+        ]
+
+        nodes_src = nx.draw_networkx_nodes(
+            G,
+            pos,
+            nodelist=externals_src,
+            node_color="#e7d4f5",
+            edgecolors="#9467bd",
+            linewidths=2.5,
+            node_size=300,
+            node_shape="^",
+            ax=ax,
+        )
+        nodes_dest = nx.draw_networkx_nodes(
+            G,
+            pos,
+            nodelist=externals_dest,
+            node_color="#b3d9ff",
+            edgecolors="#1f77b4",
+            linewidths=2.5,
+            node_size=300,
+            node_shape="s",
+            ax=ax,
+        )
+        nodes_other = nx.draw_networkx_nodes(
+            G,
+            pos,
+            nodelist=externals_other,
+            node_color="#f0f0f0",
+            edgecolors="#444444",
+            linewidths=1.5,
+            node_size=200,
+            ax=ax,
+        )
+
+        # draw edges plainly and capture artist
+        edges = list(G.edges(data=True))
+
+        # group edges by type to draw with distinct styles
+        motorway_edges = []
+        onramp_edges = []
+        offramp_edges = []
+        origin_edges = []
+        destination_edges = []
+        other_edges = []
+
+        for u, v, d in edges:
+            ltype = d.get("ltype", "Other")
+            if ltype == "Motorway":
+                motorway_edges.append((u, v, d))
+            elif ltype == "Onramp":
+                onramp_edges.append((u, v, d))
+            elif ltype == "Offramp":
+                offramp_edges.append((u, v, d))
+            elif ltype == "Origin":
+                origin_edges.append((u, v, d))
+            elif ltype == "Destination":
+                destination_edges.append((u, v, d))
+            else:
+                other_edges.append((u, v, d))
+
+        edge_artists = []
+
+        def _draw_group(edge_list, style, base_width, alpha=1.0):
+            if not edge_list:
+                return None
+            et = [(u, v) for u, v, _ in edge_list]
+            colors = [d.get("color", "#333333") for _, _, d in edge_list]
+            widths = [
+                max(
+                    0.8,
+                    base_width
+                    * (
+                        float(getattr(d.get("_link_obj"), "lanes", 1))
+                        if d.get("_link_obj")
+                        else d.get("width", 1.0)
+                    ),
+                )
+                for _, _, d in edge_list
+            ]
+            return (
+                nx.draw_networkx_edges(
+                    G,
+                    pos,
+                    edgelist=et,
+                    edge_color=colors,
+                    style=style,
+                    width=widths,
+                    alpha=alpha,
+                    arrowsize=18,
+                    ax=ax,
+                ),
+                edge_list,
+            )
+
+        # draw edge groups and collect artists
+        for result in [
+            _draw_group(motorway_edges, "solid", 2.5),
+            _draw_group(onramp_edges, "dashed", 2.0, 0.85),
+            _draw_group(offramp_edges, "dashdot", 2.0, 0.85),
+            _draw_group(origin_edges, "dotted", 1.8, 0.8),
+            _draw_group(destination_edges, "dotted", 1.8, 0.8),
+            _draw_group(other_edges, "solid", 1.0, 0.7),
+        ]:
+            if result:
+                edge_artists.append(result)
+
+        # create legend with visual style consistent with plot
+        legend_elements = []
+        type_order = ["Motorway", "Onramp", "Offramp", "Origin", "Destination", "Other"]
+
+        for ltype in type_order:
+            for _, _, d in edges:
+                if d.get("ltype") == ltype:
+                    color = d.get("color", "#333333")
+                    width = d.get("width", 1.0)
+
+                    # determine line style
+                    if ltype == "Motorway":
+                        style = "solid"
+                        lw = 2.5
+                    elif ltype == "Onramp":
+                        style = "dashed"
+                        lw = 2.0
+                    elif ltype == "Offramp":
+                        style = "dashdot"
+                        lw = 2.0
+                    elif ltype in ["Origin", "Destination"]:
+                        style = "dotted"
+                        lw = 1.8
+                    else:
+                        style = "solid"
+                        lw = 1.0
+
+                    legend_elements.append(
+                        Line2D(
+                            [0], [0], color=color, lw=lw, linestyle=style, label=ltype
+                        )
+                    )
+                    break
+
+        ax.legend(
+            handles=legend_elements,
+            title="Link Types",
+            loc="upper right",
+            framealpha=0.95,
+            edgecolor="gray",
+            fontsize=9,
+        )
+
+        ax.set_title("Traffic Network Topology", fontsize=14, fontweight="bold", pad=15)
+        ax.set_axis_off()
+
+        # add subtle grid for better readability
+        ax.grid(True, alpha=0.15, linestyle=":", linewidth=0.5)
+        ax.set_axis_off()
+        plt.tight_layout()
+
+        if save_path is not None:
+            plt.savefig(save_path, dpi=200, bbox_inches="tight")
+
+        if show:
+            plt.show()
+
+        return ax
