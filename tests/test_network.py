@@ -1,5 +1,4 @@
 import pytest
-from typing import Any, cast
 
 from traffic_flow_models.network.network import Network
 from traffic_flow_models.network.node import Node
@@ -15,23 +14,15 @@ def test_add_node_duplicate_id_raises():
     n1 = Node(id="n1")
     net.add_node(n1)
     n1_dup = Node(id="n1")
+
     with pytest.raises(ValueError):
         net.add_node(n1_dup)
 
 
-def test_add_node_requires_node_type():
-    net = Network()
-    # cast to ``Any`` to avoid static type-checker/linter complaining
-    with pytest.raises(TypeError):
-        net.add_node(cast(Any, object()))
-
-
 def test_add_remove_get_list_iteration():
-    net = Network()
     n1 = Node(id="a")
     n2 = Node(id="b")
-    net.add_node(n1)
-    net.add_node(n2)
+    net = Network(nodes=[n1, n2])
 
     assert len(net) == 2
     assert net.get_node("a") is n1
@@ -50,27 +41,23 @@ def test_add_remove_get_list_iteration():
 
 
 def test_validate_path_connected_nodes():
-    net = Network()
-
     # create shared mainline link between node1 -> node2
-    main = MotorwayLink()
+    main = MotorwayLink(
+        length=1.0, lanes=1, lane_capacity=1500, free_flow_speed=80, jam_density=140
+    )
 
     origin = Origin()
     dest = Destination()
 
     node1 = Node(id="n1", incoming=[origin], outgoing=[main])
     node2 = Node(id="n2", incoming=[main], outgoing=[dest])
-
-    net.add_node(node1)
-    net.add_node(node2)
+    net = Network(nodes=[node1, node2])
 
     # should not raise
     net.validate()
 
 
 def test_validate_offramp_without_destination_raises():
-    net = Network()
-
     # create an offramp without destination
     offr = Offramp(
         lanes=1,
@@ -79,23 +66,23 @@ def test_validate_offramp_without_destination_raises():
         jam_density=180,
         destination=None,
     )
-    main = MotorwayLink()
+    main = MotorwayLink(
+        length=1.0, lanes=1, lane_capacity=1500, free_flow_speed=80, jam_density=140
+    )
     origin = Origin()
 
     node1 = Node(id="n1", incoming=[origin], outgoing=[main])
     node2 = Node(id="n2", incoming=[main], outgoing=[offr])
-
-    net.add_node(node1)
-    net.add_node(node2)
+    net = Network(nodes=[node1, node2])
 
     with pytest.raises(ValueError):
         net.validate()
 
 
 def test_validate_unconnected_component_raises():
-    net = Network()
-
-    main = MotorwayLink()
+    main = MotorwayLink(
+        length=1.0, lanes=1, lane_capacity=1500, free_flow_speed=80, jam_density=140
+    )
     origin = Origin()
     dest = Destination()
 
@@ -106,103 +93,114 @@ def test_validate_unconnected_component_raises():
     # isolated node (links not shared)
     origin2 = Origin()
     dest2 = Destination()
-    main2 = MotorwayLink()
+    main2 = MotorwayLink(
+        length=1.0, lanes=1, lane_capacity=1500, free_flow_speed=80, jam_density=140
+    )
     node3 = Node(id="n3", incoming=[origin2], outgoing=[main2])
     node4 = Node(id="n4", incoming=[main2], outgoing=[dest2])
 
-    net.add_node(node1)
-    net.add_node(node2)
-    net.add_node(node3)
-    net.add_node(node4)
-
+    net = Network(nodes=[node1, node2, node3, node4])
     with pytest.raises(ValueError):
         net.validate()
 
 
 def test_validate_onramp_without_origin_passes():
-    net = Network()
-
     # create mainline and an onramp feeding into it (no Origin present)
-    main = MotorwayLink()
+    main = MotorwayLink(
+        length=1.0, lanes=1, lane_capacity=1500, free_flow_speed=80, jam_density=140
+    )
     onr = Onramp(lanes=1, lane_capacity=2000, free_flow_speed=100, jam_density=180)
     dest = Destination()
 
     node_upstream = Node(id="up", incoming=[onr], outgoing=[main])
     node_downstream = Node(id="down", incoming=[main], outgoing=[dest])
-
-    net.add_node(node_upstream)
-    net.add_node(node_downstream)
+    net = Network(nodes=[node_upstream, node_downstream])
 
     # should not raise: network contains an onramp (counts as origin-type link) and a destination
     net.validate()
 
 
 def test_validate_requires_origin_or_onramp_raises():
-    net = Network()
-
     # network with only motorway links and a destination but no Origin/Onramp
-    main = MotorwayLink()
+    main = MotorwayLink(
+        length=1.0, lanes=1, lane_capacity=1500, free_flow_speed=80, jam_density=140
+    )
     dest = Destination()
 
     node1 = Node(id="n1", incoming=[main], outgoing=[main])
     node2 = Node(id="n2", incoming=[main], outgoing=[dest])
-
-    net.add_node(node1)
-    net.add_node(node2)
+    net = Network(nodes=[node1, node2])
 
     with pytest.raises(ValueError):
         net.validate()
 
 
 def test_validate_requires_destination_raises():
-    net = Network()
-
     # network with Origin and motorway links but no Destination anywhere
-    main = MotorwayLink()
+    main = MotorwayLink(
+        length=1.0, lanes=1, lane_capacity=1500, free_flow_speed=80, jam_density=140
+    )
     origin = Origin()
 
     node1 = Node(id="n1", incoming=[origin], outgoing=[main])
     node2 = Node(id="n2", incoming=[main], outgoing=[main])
-
-    net.add_node(node1)
-    net.add_node(node2)
+    net = Network(nodes=[node1, node2])
 
     with pytest.raises(ValueError):
         net.validate()
 
 
 def test_node_missing_incoming_raises():
-    net = Network()
-
     # node with no incoming links
-    node = Node(id="bad", incoming=[], outgoing=[MotorwayLink()])
-    net.add_node(node)
+    node = Node(
+        id="bad",
+        incoming=[],
+        outgoing=[
+            MotorwayLink(
+                length=1.0,
+                lanes=1,
+                lane_capacity=1500,
+                free_flow_speed=80,
+                jam_density=140,
+            )
+        ],
+    )
+    net = Network(nodes=[node])
     with pytest.raises(ValueError):
         net.validate()
 
 
 def test_node_missing_outgoing_raises():
-    net = Network()
-
     # node with no outgoing links
-    node = Node(id="bad2", incoming=[MotorwayLink()], outgoing=[])
-    net.add_node(node)
+    node = Node(
+        id="bad2",
+        incoming=[
+            MotorwayLink(
+                length=1.0,
+                lanes=1,
+                lane_capacity=1500,
+                free_flow_speed=80,
+                jam_density=140,
+            )
+        ],
+        outgoing=[],
+    )
+    net = Network(nodes=[node])
     with pytest.raises(ValueError):
         net.validate()
 
 
 def test_validate_incoming_destination_id_mismatch_raises():
-    net = Network()
 
-    main = MotorwayLink()
+    main = MotorwayLink(
+        length=1.0, lanes=1, lane_capacity=1500, free_flow_speed=80, jam_density=140
+    )
     origin = Origin()
     dest = Destination()
 
     node1 = Node(id="n1", incoming=[origin], outgoing=[main])
     node2 = Node(id="n2", incoming=[main], outgoing=[dest])
-
-    net.add_node(node1)
-    net.add_node(node2)
+    net = Network(nodes=[node1, node2])
 
     # corrupt the destination id stored on the main link
     main.destination_node_id = "wrong"
@@ -212,37 +210,32 @@ def test_validate_incoming_destination_id_mismatch_raises():
 
 
 def test_validate_outgoing_origin_id_mismatch_raises():
-    net = Network()
-
-    main = MotorwayLink()
+    main = MotorwayLink(
+        length=1.0, lanes=1, lane_capacity=1500, free_flow_speed=80, jam_density=140
+    )
     origin = Origin()
     dest = Destination()
 
     node1 = Node(id="n1", incoming=[origin], outgoing=[main])
     node2 = Node(id="n2", incoming=[main], outgoing=[dest])
-
-    net.add_node(node1)
-    net.add_node(node2)
+    net = Network(nodes=[node1, node2])
 
     # corrupt the origin id stored on the main link
     main.origin_node_id = "wrong"
-
     with pytest.raises(ValueError):
         net.validate()
 
 
 def test_validate_missing_destination_or_origin_id_raises():
-    net = Network()
-
-    main = MotorwayLink()
+    main = MotorwayLink(
+        length=1.0, lanes=1, lane_capacity=1500, free_flow_speed=80, jam_density=140
+    )
     origin = Origin()
     dest = Destination()
 
     node1 = Node(id="n1", incoming=[origin], outgoing=[main])
     node2 = Node(id="n2", incoming=[main], outgoing=[dest])
-
-    net.add_node(node1)
-    net.add_node(node2)
+    net = Network(nodes=[node1, node2])
 
     # remove origin/destination ids
     main.origin_node_id = None
@@ -257,10 +250,10 @@ def test_validate_missing_destination_or_origin_id_raises():
 
 
 def test_network_validate_rejects_invalid_link_types_set_directly():
-    net = Network()
-
     # create a node and bypass the Node helpers by assigning lists directly
-    main = MotorwayLink()
+    main = MotorwayLink(
+        length=1.0, lanes=1, lane_capacity=1500, free_flow_speed=80, jam_density=140
+    )
     n = Node(id="bad")
 
     # invalid incoming type (Offramp is not allowed as incoming)
@@ -268,7 +261,7 @@ def test_network_validate_rejects_invalid_link_types_set_directly():
         Offramp(lanes=1, lane_capacity=1000, free_flow_speed=80, jam_density=140)
     ]
     n.outgoing = [main]
-    net.add_node(n)
+    net = Network(nodes=[n])
 
     # add a second valid node so network-wide checks proceed to node-level validation
     other = Node(

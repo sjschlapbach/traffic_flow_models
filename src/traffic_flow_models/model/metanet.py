@@ -291,16 +291,18 @@ class METANET:
         # set up state and disturbance vectors
         # state: flows, densities, speeds, origin, onramp
         # disturbances: origin_demands, onramp_demands, offramp_split_ratios
-        x = casadi.SX(
+        # CasADi type stubs are incorrect - sym() does accept string as first arg
+        x = casadi.SX.sym(  # type: ignore
+            "x",  # type: ignore
             num_flows
             + num_densities
             + num_speeds
             + num_origins
             + num_onramps
-            + num_offramps,
-            1,
+            + num_offramps,  # type: ignore
+            1,  # type: ignore
         )
-        d = casadi.SX(num_origins + num_onramps + num_splits + num_destinations, 1)
+        d = casadi.SX.sym("d", num_origins + num_onramps + num_splits + num_destinations, 1)  # type: ignore
 
         # split up the state and disturbance vectors to obtain a dictionary for
         # efficient access of the relevant quantities during the state update

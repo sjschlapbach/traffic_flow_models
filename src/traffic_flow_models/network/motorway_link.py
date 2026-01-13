@@ -160,11 +160,13 @@ class MotorwayLink:
         valid_cell_size = max(preferred_cell_size, min_cell_length + 0.001)
         num_cells = int(self.length // valid_cell_size)
 
+        if num_cells == 0:
+            raise ValueError(
+                f"Motorway link too short to fit a single segment. Segment length: {self.length} km, minimum cell size: {valid_cell_size} km"
+            )
+
         # compute the homogeneous cell size (as close as possible to the preferred one; rounded to meters)
         balanced_cell_size = round(self.length / num_cells, 3)
-
-        if num_cells == 0:
-            raise ValueError("Motorway link too short to fit a single segment.")
 
         # add cells of the preferred length (or as close as possible to satisfy CFL condition)
         for _ in range(num_cells - 1):

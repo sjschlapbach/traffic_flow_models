@@ -98,9 +98,19 @@ class Network:
         return self._nodes
 
     def __len__(self) -> int:
+        """Return the number of nodes in the network.
+
+        Returns:
+            int: Number of nodes contained in the network.
+        """
         return len(self._nodes)
 
     def __iter__(self) -> Iterator[Node]:
+        """Iterate over nodes in insertion order.
+
+        Yields:
+            Node: Next node in the network.
+        """
         for n in self.list_nodes():
             yield n
 
@@ -822,11 +832,49 @@ class Network:
             dict[str, float] | None
         ) = None,  # for each offramp id, provide the initial queue length (default: 0)
         preferred_cell_size: float = 0.5,  # preferred size of link segments (subject to CFL condition and link length divisibility)
-        plot_results: bool = False,
+        plot_results: bool = True,
+        show_plots: bool = False,
         results_dir: (
             str | None
         ) = None,  # directory for saving results; if None and plot_results=True, uses timestamped folder in results/
     ):
+        """Simulate the network over a time horizon using the provided model.
+
+        Runs a forward simulation using the provided traffic `model` (which
+        must expose `network_update_function`) and the per-component callable
+        inputs for demands, turning rates and boundary conditions. The
+        routine will discretize motorway links, initialize state and
+        disturbance vectors, perform time-stepping to update the state, and
+        optionally plot and save results.
+
+        Args:
+            duration: Total simulation time (same units as demand functions, e.g. hours).
+            dt: Simulation time step (same units as `duration`).
+            model: Traffic model instance providing `network_update_function`.
+            origin_demands: Mapping origin id -> callable(time) -> demand (veh/h).
+            onramp_demands: Mapping onramp id -> callable(time) -> demand (veh/h).
+            turning_rates: Mapping node id -> callable(time) -> dict[outgoing_link_id -> split rate].
+            destination_boundary_conditions: Mapping destination id -> callable(time) -> downstream density (veh/km/lane).
+            initial_flows: Optional mapping link id -> scalar or per-cell array for initial flows (default: zeros).
+            initial_densities: Optional mapping link id -> scalar or per-cell array for initial densities (default: zeros for mainline links).
+            initial_speeds: Optional mapping link id -> scalar or per-cell array for initial speeds (default: free-flow speed for motorway links).
+            initial_origin_queues: Optional mapping origin id -> initial queue length (veh).
+            initial_onramp_queues: Optional mapping onramp id -> initial queue length (veh).
+            initial_offramp_queues: Optional mapping offramp id -> initial queue length (veh).
+            preferred_cell_size: Preferred link segmentation size (km) used when partitioning motorway links.
+            plot_results: If True, generate plots and save results to `results_dir`.
+            show_plots: If True, display plots interactively.
+            results_dir: Directory for saving results; if None a timestamped folder under `results/` is used when `plot_results` is True.
+
+        Returns:
+            tuple: `(time_array, state_history, disturbance_history)` where
+                - `time_array` is a 1-D NumPy array of time points,
+                - `state_history` is a 2-D NumPy array of packed states over time (state_size x timesteps),
+                - `disturbance_history` is a 2-D NumPy array of packed disturbances over time (disturbance_size x timesteps-1).
+
+        Raises:
+            ValueError: If required inputs are missing or inconsistent with the network topology.
+        """
         # ! 1 - validate all inputs as required
         for node in self.list_nodes():
             # validate node structure
@@ -849,9 +897,7 @@ class Network:
                         )
 
             # validate that turning rates for each node are provided
-            if node.id not in turning_rates and (
-                len(node.incoming) > 1 or len(node.outgoing) > 1
-            ):
+            if node.id not in turning_rates and len(node.outgoing) > 1:
                 raise ValueError(
                     f"Turning rate function for node {node.id} with multiple incoming and/or outgoing links not provided."
                 )
@@ -869,7 +915,7 @@ class Network:
                 for link in list(node.incoming) + list(node.outgoing):
                     if link.id not in initial_flows:
                         raise ValueError(
-                            f"Initial flow for link {link.id} not provided (required for onramp, offramp, motorway links)."
+                            f"Initial flow for link {link.id} not provided (required for origins, onramp, offramp, destinations, and motorway links)."
                         )
 
             # validate that initial densities are defined for all links if not None
@@ -941,15 +987,17 @@ class Network:
         origin_queues_dict: dict[str, float] = {}
         onramp_queues_dict: dict[str, float] = {}
         offramp_queues_dict: dict[str, float] = {}
+        turning_rates_dict: dict[str, Callable[[float], dict[str, float]]] = {}
+        dest_boundary_conditions_dict: dict[str, Callable[[float], float]] = {}
 
         for node in self.list_nodes():
             # split ratios should be defined for each node (add the ones that are missing for SISO nodes)
-            if (
-                node.id not in turning_rates
-                and len(node.incoming) == 1
-                and len(node.outgoing) == 1
-            ):
-                turning_rates[node.id] = lambda _: {node.outgoing[0].id: 1.0}
+            if node.id not in turning_rates and len(node.outgoing) == 1:
+                # capture the current outgoing link id in a default argument to avoid late-binding
+                link_id = node.outgoing[0].id
+                turning_rates_dict[node.id] = lambda _, link_id=link_id: {link_id: 1.0}
+            else:
+                turning_rates_dict[node.id] = turning_rates[node.id]
 
             # initialize incoming links (only onramps - no motorway links / origins)
             for link in node.incoming:
@@ -962,11 +1010,14 @@ class Network:
                                     f"Initial flow array for link {link.id} (type: {type(link)}) is empty."
                                 )
 
-                            if init_flow.shape[0] != 1:
+                            elif init_flow.shape[0] != 1:
                                 warnings.warn(
                                     f"Initial flow array for link {link.id} (type: {type(link)}) has incorrect length. Using first value for origin / onramp flow."
                                 )
                                 link_flows_dict[link.id] = np.full(1, init_flow[0])
+
+                            else:
+                                link_flows_dict[link.id] = init_flow
                         else:
                             link_flows_dict[link.id] = np.full(1, init_flow)
                     else:
@@ -996,13 +1047,16 @@ class Network:
                                     f"Initial flow array for motorway link {link.id} is empty."
                                 )
 
-                            if init_flow.shape[0] != num_cells:
+                            elif init_flow.shape[0] != num_cells:
                                 warnings.warn(
                                     f"Initial flow array for motorway link {link.id} has incorrect length. Using first value for all cells instead."
                                 )
                                 link_flows_dict[link.id] = np.full(
                                     num_cells, init_flow[0]
                                 )
+
+                            else:
+                                link_flows_dict[link.id] = init_flow
                         else:
                             link_flows_dict[link.id] = np.full(num_cells, init_flow)
                     else:
@@ -1023,6 +1077,9 @@ class Network:
                                 link_densities_dict[link.id] = np.full(
                                     num_cells, init_density[0]
                                 )
+
+                            else:
+                                link_densities_dict[link.id] = init_density
                         else:
                             link_densities_dict[link.id] = np.full(
                                 num_cells, init_density
@@ -1038,13 +1095,16 @@ class Network:
                                     f"Initial speed array for motorway link {link.id} is empty."
                                 )
 
-                            if init_speed.shape[0] != num_cells:
+                            elif init_speed.shape[0] != num_cells:
                                 warnings.warn(
                                     f"Initial speed array for motorway link {link.id} has incorrect length. Using first value for all cells instead."
                                 )
                                 link_speeds_dict[link.id] = np.full(
                                     num_cells, init_speed[0]
                                 )
+
+                            else:
+                                link_speeds_dict[link.id] = init_speed
                         else:
                             link_speeds_dict[link.id] = np.full(num_cells, init_speed)
                     else:
@@ -1060,7 +1120,14 @@ class Network:
                             warnings.warn(
                                 f"Destination boundary condition function for destination {dest_id} (connected to offramp {link.id}) not provided. Assuming downstream free flow conditions (zero density)."
                             )
-                            destination_boundary_conditions[dest_id] = lambda _: 0.0
+                            # capture dest_id to avoid late-binding (if lambda ever uses it)
+                            dest_boundary_conditions_dict[dest_id] = (
+                                lambda _, dest_id=dest_id: 0.0
+                            )
+                        else:
+                            dest_boundary_conditions_dict[dest_id] = (
+                                destination_boundary_conditions[dest_id]
+                            )
                     else:
                         raise ValueError(
                             f"Offramp {link.id} has no destination assigned."
@@ -1074,11 +1141,14 @@ class Network:
                                     f"Initial flow array for offramp {link.id} is empty."
                                 )
 
-                            if init_flow.shape[0] != 1:
+                            elif init_flow.shape[0] != 1:
                                 warnings.warn(
                                     f"Initial flow array for offramp {link.id} has incorrect length. Using first value instead."
                                 )
                                 link_flows_dict[link.id] = np.full(1, init_flow[0])
+
+                            else:
+                                link_flows_dict[link.id] = init_flow
                         else:
                             link_flows_dict[link.id] = np.full(1, init_flow)
                     else:
@@ -1098,7 +1168,14 @@ class Network:
                         warnings.warn(
                             f"Destination boundary condition function for destination {link.id} not provided. Assuming downstream free flow conditions (zero density)."
                         )
-                        destination_boundary_conditions[link.id] = lambda _: 0.0
+                        # capture link.id to avoid late-binding
+                        dest_boundary_conditions_dict[link.id] = (
+                            lambda _, dest_id=link.id: 0.0
+                        )
+                    else:
+                        dest_boundary_conditions_dict[link.id] = (
+                            destination_boundary_conditions[link.id]
+                        )
 
                     if initial_flows is not None and link.id in initial_flows:
                         init_flow = initial_flows[link.id]
@@ -1108,11 +1185,14 @@ class Network:
                                     f"Initial flow array for destination {link.id} is empty."
                                 )
 
-                            if init_flow.shape[0] != 1:
+                            elif init_flow.shape[0] != 1:
                                 warnings.warn(
                                     f"Initial flow array for destination {link.id} has incorrect length. Using first value instead."
                                 )
                                 link_flows_dict[link.id] = np.full(1, init_flow[0])
+
+                            else:
+                                link_flows_dict[link.id] = init_flow
                         else:
                             link_flows_dict[link.id] = np.full(1, init_flow)
                     else:
@@ -1188,12 +1268,12 @@ class Network:
                 onramp_id: onramp_demands[onramp_id](time) for onramp_id in onramp_ids
             }
             turning_rate_dict = {
-                node_id: turning_rates[node_id](time)
-                for node_id in turning_rates.keys()
+                node_id: turning_rates_dict[node_id](time)
+                for node_id in turning_rates_dict.keys()
             }
             boundary_condition_dict = {
-                destination_id: destination_boundary_conditions[destination_id](time)
-                for destination_id in destination_boundary_conditions.keys()
+                destination_id: dest_boundary_conditions_dict[destination_id](time)
+                for destination_id in dest_boundary_conditions_dict.keys()
             }
 
             # combine the values into the disturbance vector for the state update
@@ -1212,31 +1292,34 @@ class Network:
             disturbance_history[:, t] = d
 
         # ! 7 - plotting of simulation results, network structure and saving to results directory
-        # create timestamped results directory if not specified
-        if results_dir is None:
-            timestamp = datetime.now().strftime("simulation_results_%Y-%m-%d_%H%M%S")
-            results_dir = f"results/{timestamp}"
+        if plot_results:
+            # create timestamped results directory if not specified
+            if results_dir is None:
+                timestamp = datetime.now().strftime(
+                    "simulation_results_%Y-%m-%d_%H%M%S"
+                )
+                results_dir = f"results/{timestamp}"
 
-        os.makedirs(results_dir, exist_ok=True)
-        print(f"Saving simulation results to {results_dir}")
+            os.makedirs(results_dir, exist_ok=True)
+            print(f"Saving simulation results to {results_dir}")
 
-        # save network topology plot
-        topology_path = os.path.join(results_dir, "network_topology.png")
-        self.plot(show=plot_results, save_path=topology_path)
-        print(f"  Network topology saved to {topology_path}")
+            # save network topology plot
+            topology_path = os.path.join(results_dir, "network_topology.png")
+            self.plot(show=show_plots, save_path=topology_path)
+            print(f"  Network topology saved to {topology_path}")
 
-        # save network structure as text file
-        structure_path = os.path.join(results_dir, "network_structure.txt")
-        self.save_network_structure_txt(structure_path)
-        print(f"  Network structure saved to {structure_path}")
+            # save network structure as text file
+            structure_path = os.path.join(results_dir, "network_structure.txt")
+            self.save_network_structure_txt(structure_path)
+            print(f"  Network structure saved to {structure_path}")
 
-        # plot simulation results
-        self.plot_simulation_results(
-            time_array=time_array,
-            state_history=state_history,
-            disturbance_history=disturbance_history,
-            save_dir=results_dir,
-        )
+            # plot simulation results
+            self.plot_simulation_results(
+                time_array=time_array,
+                state_history=state_history,
+                disturbance_history=disturbance_history,
+                save_dir=results_dir,
+            )
 
         return time_array, state_history, disturbance_history
 
@@ -2218,6 +2301,11 @@ class Network:
                 if not placed:
                     pos[n] = np.array([0.0, float(y_offset)], dtype=np.float64)
                     y_offset -= 0.6
+
+        # avoid automatic display in interactive backends when `show` is False
+        prev_interactive = plt.isinteractive()
+        if not show and prev_interactive:
+            plt.ioff()
 
         fig, ax = plt.subplots(figsize=figsize)
 

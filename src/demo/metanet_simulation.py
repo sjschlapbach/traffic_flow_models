@@ -89,7 +89,6 @@ if __name__ == "__main__":
     turning_rates: dict[str, Callable[[float], dict[str, float]]] = {
         nid: (lambda _t, s=splits[nid]: s) for nid in splits.keys()
     }
-    network.plot()
 
     # run a simulation of the network using the METANET model
     time, states, disturbances = network.simulate(
@@ -100,7 +99,8 @@ if __name__ == "__main__":
         onramp_demands=onramp_demands,
         turning_rates=turning_rates,
         destination_boundary_conditions=destination_boundary_conditions,
-        plot_results=plot_enabled,
+        plot_results=True,
+        show_plots=plot_enabled,
     )
 
     # TODO: re-introduce performance metrics and illustrate them through appropriate plots
