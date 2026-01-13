@@ -55,9 +55,7 @@ def test_validate_path_connected_nodes():
     # create shared mainline link between node1 -> node2
     main = MotorwayLink()
 
-    origin = Origin(
-        None, lanes=1, lane_capacity=2000, free_flow_speed=100, jam_density=180
-    )
+    origin = Origin()
     dest = Destination()
 
     node1 = Node(id="n1", incoming=[origin], outgoing=[main])
@@ -82,9 +80,7 @@ def test_validate_offramp_without_destination_raises():
         destination=None,
     )
     main = MotorwayLink()
-    origin = Origin(
-        None, lanes=1, lane_capacity=2000, free_flow_speed=100, jam_density=180
-    )
+    origin = Origin()
 
     node1 = Node(id="n1", incoming=[origin], outgoing=[main])
     node2 = Node(id="n2", incoming=[main], outgoing=[offr])
@@ -100,9 +96,7 @@ def test_validate_unconnected_component_raises():
     net = Network()
 
     main = MotorwayLink()
-    origin = Origin(
-        None, lanes=1, lane_capacity=2000, free_flow_speed=100, jam_density=180
-    )
+    origin = Origin()
     dest = Destination()
 
     # connected pair
@@ -110,9 +104,7 @@ def test_validate_unconnected_component_raises():
     node2 = Node(id="n2", incoming=[main], outgoing=[dest])
 
     # isolated node (links not shared)
-    origin2 = Origin(
-        None, lanes=1, lane_capacity=2000, free_flow_speed=100, jam_density=180
-    )
+    origin2 = Origin()
     dest2 = Destination()
     main2 = MotorwayLink()
     node3 = Node(id="n3", incoming=[origin2], outgoing=[main2])
@@ -167,9 +159,7 @@ def test_validate_requires_destination_raises():
 
     # network with Origin and motorway links but no Destination anywhere
     main = MotorwayLink()
-    origin = Origin(
-        None, lanes=1, lane_capacity=2000, free_flow_speed=100, jam_density=180
-    )
+    origin = Origin()
 
     node1 = Node(id="n1", incoming=[origin], outgoing=[main])
     node2 = Node(id="n2", incoming=[main], outgoing=[main])
@@ -205,9 +195,7 @@ def test_validate_incoming_destination_id_mismatch_raises():
     net = Network()
 
     main = MotorwayLink()
-    origin = Origin(
-        None, lanes=1, lane_capacity=2000, free_flow_speed=100, jam_density=180
-    )
+    origin = Origin()
     dest = Destination()
 
     node1 = Node(id="n1", incoming=[origin], outgoing=[main])
@@ -227,9 +215,7 @@ def test_validate_outgoing_origin_id_mismatch_raises():
     net = Network()
 
     main = MotorwayLink()
-    origin = Origin(
-        None, lanes=1, lane_capacity=2000, free_flow_speed=100, jam_density=180
-    )
+    origin = Origin()
     dest = Destination()
 
     node1 = Node(id="n1", incoming=[origin], outgoing=[main])
@@ -249,9 +235,7 @@ def test_validate_missing_destination_or_origin_id_raises():
     net = Network()
 
     main = MotorwayLink()
-    origin = Origin(
-        None, lanes=1, lane_capacity=2000, free_flow_speed=100, jam_density=180
-    )
+    origin = Origin()
     dest = Destination()
 
     node1 = Node(id="n1", incoming=[origin], outgoing=[main])
@@ -289,11 +273,7 @@ def test_network_validate_rejects_invalid_link_types_set_directly():
     # add a second valid node so network-wide checks proceed to node-level validation
     other = Node(
         id="other",
-        incoming=[
-            Origin(
-                None, lanes=1, lane_capacity=1000, free_flow_speed=80, jam_density=150
-            )
-        ],
+        incoming=[Origin()],
         outgoing=[Destination()],
     )
     net.add_node(other)
@@ -305,19 +285,13 @@ def test_network_validate_rejects_invalid_link_types_set_directly():
     net = Network()
     n2 = Node(id="bad2")
     n2.incoming = [main]
-    n2.outgoing = [
-        Origin(None, lanes=1, lane_capacity=1000, free_flow_speed=80, jam_density=150)
-    ]
+    n2.outgoing = [Origin()]
     net.add_node(n2)
 
     # add a valid node so network.validate advances to node-level type checks
     other2 = Node(
         id="other2",
-        incoming=[
-            Origin(
-                None, lanes=1, lane_capacity=1000, free_flow_speed=80, jam_density=150
-            )
-        ],
+        incoming=[Origin()],
         outgoing=[Destination()],
     )
     net.add_node(other2)

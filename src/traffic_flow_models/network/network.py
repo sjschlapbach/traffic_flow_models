@@ -8,6 +8,9 @@ import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
 from typing import TYPE_CHECKING, Iterator, Callable, Mapping, Optional
 from numpy.typing import NDArray
+import math
+import os
+from datetime import datetime
 
 from traffic_flow_models.network.node import Node
 from traffic_flow_models.network.origin import Origin
@@ -819,9 +822,10 @@ class Network:
             dict[str, float] | None
         ) = None,  # for each offramp id, provide the initial queue length (default: 0)
         preferred_cell_size: float = 0.5,  # preferred size of link segments (subject to CFL condition and link length divisibility)
-        inflows_jam_density: float = 1800.0,  # jam density used for inflow links if initial densities not provided
-        inflows_free_flow_speed: float = 100.0,  # free-flow speed used for inflow links if initial speeds not provided
         plot_results: bool = False,
+        results_dir: (
+            str | None
+        ) = None,  # directory for saving results; if None and plot_results=True, uses timestamped folder in results/
     ):
         # ! 1 - validate all inputs as required
         for node in self.list_nodes():
@@ -1146,8 +1150,6 @@ class Network:
             num_offramps=num_offramps,
             num_splits=num_splits,
             num_destinations=num_destinations,
-            inflows_jam_density=inflows_jam_density,
-            inflows_free_flow_speed=inflows_free_flow_speed,
             dt=dt,
         )
 
@@ -1209,23 +1211,852 @@ class Network:
             state_history[:, t + 1] = np.array(x_next).flatten()
             disturbance_history[:, t] = d
 
-        # TODO: ! 7 - plotting of results, etc.
+        # ! 7 - plotting of simulation results, network structure and saving to results directory
+        # create timestamped results directory if not specified
+        if results_dir is None:
+            timestamp = datetime.now().strftime("simulation_results_%Y-%m-%d_%H%M%S")
+            results_dir = f"results/{timestamp}"
+
+        os.makedirs(results_dir, exist_ok=True)
+        print(f"Saving simulation results to {results_dir}")
+
+        # save network topology plot
+        topology_path = os.path.join(results_dir, "network_topology.png")
+        self.plot(show=plot_results, save_path=topology_path)
+        print(f"  Network topology saved to {topology_path}")
+
+        # save network structure as text file
+        structure_path = os.path.join(results_dir, "network_structure.txt")
+        self.save_network_structure_txt(structure_path)
+        print(f"  Network structure saved to {structure_path}")
+
+        # plot simulation results
+        self.plot_simulation_results(
+            time_array=time_array,
+            state_history=state_history,
+            disturbance_history=disturbance_history,
+            save_dir=results_dir,
+        )
 
         return time_array, state_history, disturbance_history
 
+    def save_network_structure_txt(self, filepath: str) -> None:
+        """Save network structure to a text file for reference.
+
+        Writes a human-readable representation of the network topology showing
+        nodes, their IDs, connected links with IDs, and the connections between
+        them. The structure is written in a way that starts from origins/onramps
+        and follows the flow through the network.
+
+        Args:
+            filepath: Path where the text file should be saved.
+        """
+        with open(filepath, "w") as f:
+            f.write("=" * 80 + "\n")
+            f.write("NETWORK STRUCTURE\n")
+            f.write("=" * 80 + "\n\n")
+
+            # list all nodes with their IDs
+            f.write(f"Total Nodes: {len(self._nodes)}\n")
+            f.write("-" * 80 + "\n\n")
+
+            # iterate through all nodes and document their connections
+            for node in self.list_nodes():
+                f.write(f"NODE: {node.id}\n")
+                f.write(f"  {'=' * 76}\n")
+
+                # list incoming links
+                if node.incoming:
+                    f.write(f"  Incoming Links ({len(node.incoming)}):\n")
+                    for link in node.incoming:
+                        link_type = type(link).__name__
+                        link_id = getattr(link, "id", "N/A")
+                        origin_node = getattr(link, "origin_node_id", "N/A")
+
+                        f.write(f"    - {link_type} [ID: {link_id}]\n")
+                        f.write(f"      Origin Node: {origin_node}\n")
+
+                        # add type-specific information
+                        if isinstance(link, MotorwayLink):
+                            f.write(
+                                f"      Length: {link.length} km, Lanes: {link.lanes}, Cells: {len(link)}\n"
+                            )
+                        elif isinstance(link, (Onramp)):
+                            f.write(
+                                f"      Lanes: {link.lanes}, Capacity: {link.Qc} veh/h\n"
+                            )
+                else:
+                    f.write(f"  Incoming Links: None\n")
+
+                # list outgoing links
+                if node.outgoing:
+                    f.write(f"  Outgoing Links ({len(node.outgoing)}):\n")
+                    for link in node.outgoing:
+                        link_type = type(link).__name__
+                        link_id = getattr(link, "id", "N/A")
+                        dest_node = getattr(link, "destination_node_id", "N/A")
+
+                        f.write(f"    - {link_type} [ID: {link_id}]\n")
+                        f.write(f"      Destination Node: {dest_node}\n")
+
+                        # add type-specific information
+                        if isinstance(link, MotorwayLink):
+                            f.write(
+                                f"      Length: {link.length} km, Lanes: {link.lanes}, Cells: {len(link)}\n"
+                            )
+                        elif isinstance(link, Offramp):
+                            f.write(
+                                f"      Lanes: {link.lanes}, Capacity: {link.Qc} veh/h\n"
+                            )
+                            if link.destination is not None:
+                                f.write(
+                                    f"      Connected Destination: {link.destination.id}\n"
+                                )
+                        elif isinstance(link, Destination):
+                            f.write(f"      (Network exit point)\n")
+                else:
+                    f.write(f"  Outgoing Links: None\n")
+
+                f.write("\n")
+
+            f.write("=" * 80 + "\n")
+            f.write("END OF NETWORK STRUCTURE\n")
+            f.write("=" * 80 + "\n")
+
+    def plot_simulation_results(
+        self,
+        time_array: NDArray[np.float64],
+        state_history: NDArray[np.float64],
+        disturbance_history: NDArray[np.float64],
+        save_dir: str = "results",
+    ) -> None:
+        """Plot comprehensive simulation results for the network.
+
+        Creates multiple figures showing density, flow, speed for all mainline
+        links, demand/flow/queue plots for origins and onramps, flow plots for
+        offramps and destinations, 3D surface plots for each motorway link, and
+        summary plots per node showing all inflows and outflows.
+
+        Args:
+            time_array: 1-D array of time points (hours).
+            state_history: 2-D array of state vectors over time, shape (state_size, timesteps).
+            disturbance_history: 2-D array of disturbances over time, shape (disturbance_size, timesteps-1).
+            save_dir: Directory where plots should be saved (default: "results").
+        """
+        # create results directory if it doesn't exist
+        os.makedirs(save_dir, exist_ok=True)
+
+        # convert time to seconds for plotting
+        time_seconds = time_array * 3600.0
+        num_timesteps = len(time_array)
+        print(f"Generating simulation result plots in {save_dir}...")
+
+        # build dictionaries mapping link_id -> array of values over time
+        flows_over_time: dict[str, np.ndarray] = {}
+        densities_over_time: dict[str, np.ndarray] = {}
+        speeds_over_time: dict[str, np.ndarray] = {}
+        origin_queues_over_time: dict[str, np.ndarray] = {}
+        onramp_queues_over_time: dict[str, np.ndarray] = {}
+        offramp_queues_over_time: dict[str, np.ndarray] = {}
+
+        for t in range(num_timesteps):
+            (
+                flows_t,
+                densities_t,
+                speeds_t,
+                origin_queues_t,
+                onramp_queues_t,
+                offramp_queues_t,
+            ) = self.state_vec_to_network_dict(state_history[:, t])
+
+            # make sure that the history values are numerical
+            if (
+                not all(
+                    isinstance(val, (float, np.floating, np.ndarray))
+                    for val in flows_t.values()
+                )
+                or not all(
+                    isinstance(val, (float, np.floating, np.ndarray))
+                    for val in densities_t.values()
+                )
+                or not all(
+                    isinstance(val, (float, np.floating, np.ndarray))
+                    for val in speeds_t.values()
+                )
+                or not all(
+                    isinstance(val, (float, np.floating, np.ndarray))
+                    for val in origin_queues_t.values()
+                )
+                or not all(
+                    isinstance(val, (float, np.floating, np.ndarray))
+                    for val in onramp_queues_t.values()
+                )
+                or not all(
+                    isinstance(val, (float, np.floating, np.ndarray))
+                    for val in offramp_queues_t.values()
+                )
+            ):
+                raise ValueError("Non-numerical values found in state history.")
+
+            # typecast to np.ndarray to ensure type safety
+            flows_t = {k: np.asarray(v) for k, v in flows_t.items()}
+            densities_t = {k: np.asarray(v) for k, v in densities_t.items()}
+            speeds_t = {k: np.asarray(v) for k, v in speeds_t.items()}
+            origin_queues_t = {k: np.asarray(v) for k, v in origin_queues_t.items()}
+            onramp_queues_t = {k: np.asarray(v) for k, v in onramp_queues_t.items()}
+            offramp_queues_t = {k: np.asarray(v) for k, v in offramp_queues_t.items()}
+
+            # initialize dictionaries on first iteration
+            if t == 0:
+                for link_id in flows_t.keys():
+                    flows_over_time[link_id] = np.zeros(
+                        (len(flows_t[link_id]), num_timesteps)
+                    )
+
+                for link_id in densities_t.keys():
+                    densities_over_time[link_id] = np.zeros(
+                        (len(densities_t[link_id]), num_timesteps)
+                    )
+
+                for link_id in speeds_t.keys():
+                    speeds_over_time[link_id] = np.zeros(
+                        (len(speeds_t[link_id]), num_timesteps)
+                    )
+
+                for origin_id in origin_queues_t.keys():
+                    origin_queues_over_time[origin_id] = np.zeros(num_timesteps)
+
+                for onramp_id in onramp_queues_t.keys():
+                    onramp_queues_over_time[onramp_id] = np.zeros(num_timesteps)
+
+                for offramp_id in offramp_queues_t.keys():
+                    offramp_queues_over_time[offramp_id] = np.zeros(num_timesteps)
+
+            # store values for the current timestep
+            for link_id, val in flows_t.items():
+                flows_over_time[link_id][:, t] = val
+
+            for link_id, val in densities_t.items():
+                densities_over_time[link_id][:, t] = val
+
+            for link_id, val in speeds_t.items():
+                speeds_over_time[link_id][:, t] = val
+
+            for origin_id, val in origin_queues_t.items():
+                origin_queues_over_time[origin_id][t] = float(val)
+
+            for onramp_id, val in onramp_queues_t.items():
+                onramp_queues_over_time[onramp_id][t] = float(val)
+
+            for offramp_id, val in offramp_queues_t.items():
+                offramp_queues_over_time[offramp_id][t] = float(val)
+
+        # extract demands from disturbance_history
+        origin_demands_over_time = {}
+        onramp_demands_over_time = {}
+
+        for t in range(num_timesteps - 1):
+            origin_demands_t, onramp_demands_t, _, _ = (
+                self.disturbance_vec_to_network_dict(disturbance_history[:, t])
+            )
+
+            if t == 0:
+                for origin_id in origin_demands_t.keys():
+                    origin_demands_over_time[origin_id] = np.zeros(num_timesteps - 1)
+                for onramp_id in onramp_demands_t.keys():
+                    onramp_demands_over_time[onramp_id] = np.zeros(num_timesteps - 1)
+
+            for origin_id, val in origin_demands_t.items():
+                origin_demands_over_time[origin_id][t] = float(val)
+
+            for onramp_id, val in onramp_demands_t.items():
+                onramp_demands_over_time[onramp_id][t] = float(val)
+
+        # ===== PART 1: Per-Link Plots for MotorwayLinks =====
+        print("  Creating per-link density/flow/speed plots...")
+        for node in self.list_nodes():
+            for link in node.outgoing:
+                if isinstance(link, MotorwayLink):
+                    self._plot_motorway_link_results(
+                        link=link,
+                        time_seconds=time_seconds,
+                        densities=densities_over_time[link.id],
+                        flows=flows_over_time[link.id],
+                        speeds=speeds_over_time[link.id],
+                        save_dir=save_dir,
+                    )
+
+        # ===== PART 2: Per-Node Inflow Plots (Origins & Onramps) =====
+        print("  Creating per-node inflow plots (origins & onramps)...")
+        for node in self.list_nodes():
+            inflow_components = [
+                link for link in node.incoming if isinstance(link, (Origin, Onramp))
+            ]
+            if inflow_components:
+                self._plot_node_inflows(
+                    node=node,
+                    inflow_components=inflow_components,
+                    time_seconds=time_seconds,
+                    flows_over_time=flows_over_time,
+                    origin_queues_over_time=origin_queues_over_time,
+                    onramp_queues_over_time=onramp_queues_over_time,
+                    origin_demands_over_time=origin_demands_over_time,
+                    onramp_demands_over_time=onramp_demands_over_time,
+                    save_dir=save_dir,
+                )
+
+        # ===== PART 3: Per-Node Outflow Plots (Offramps & Destinations) =====
+        print("  Creating per-node outflow plots (offramps & destinations)...")
+        for node in self.list_nodes():
+            outflow_components = [
+                link
+                for link in node.outgoing
+                if isinstance(link, (Offramp, Destination))
+            ]
+            if outflow_components:
+                self._plot_node_outflows(
+                    node=node,
+                    outflow_components=outflow_components,
+                    time_seconds=time_seconds,
+                    flows_over_time=flows_over_time,
+                    offramp_queues_over_time=offramp_queues_over_time,
+                    save_dir=save_dir,
+                )
+
+        # ===== PART 4: 3D Surface Plots for each MotorwayLink =====
+        print("  Creating 3D surface plots for motorway links...")
+        for node in self.list_nodes():
+            for link in node.outgoing:
+                if isinstance(link, MotorwayLink):
+                    self._plot_motorway_link_3d(
+                        link=link,
+                        time_seconds=time_seconds,
+                        densities=densities_over_time[link.id],
+                        flows=flows_over_time[link.id],
+                        speeds=speeds_over_time[link.id],
+                        save_dir=save_dir,
+                    )
+
+        # ===== PART 5: Per-Node Summary Plots (All Inflows & Outflows) =====
+        print("  Creating per-node summary plots...")
+        for node in self.list_nodes():
+            self._plot_node_summary(
+                node=node,
+                time_seconds=time_seconds,
+                flows_over_time=flows_over_time,
+                save_dir=save_dir,
+            )
+
+        print(f"All plots saved to {save_dir}")
+
+    def _plot_motorway_link_results(
+        self,
+        link: MotorwayLink,
+        time_seconds: NDArray[np.float64],
+        densities: NDArray[np.float64],
+        flows: NDArray[np.float64],
+        speeds: NDArray[np.float64],
+        save_dir: str,
+    ) -> None:
+        """Create density, flow, and speed plots for a motorway link.
+
+        Args:
+            link: The MotorwayLink to plot.
+            time_seconds: 1-D array of time points in seconds.
+            densities: 2-D array of densities over time (cells x time).
+            flows: 2-D array of flows over time (cells x time).
+            speeds: 2-D array of speeds over time (cells x time).
+            save_dir: Directory where plots should be saved.
+        """
+        num_cells = len(link)
+        ncols = 3
+        nrows = math.ceil(num_cells / ncols)
+        actual_duration = time_seconds[-1]
+
+        # calculate max values for y-axis scaling
+        max_density = max(np.max(densities) * 1.1, link.rho_jam * 1.1)
+        max_flow = max(
+            np.max(flows[:, :-1]) * 1.1, link.lane_capacity * link.lanes * 1.1
+        )
+        max_speed = max(np.max(speeds[:, :-1]) * 1.1, link.vf * 1.1)
+
+        # figure 1: Density
+        fig1, axes1 = plt.subplots(nrows, ncols, figsize=(4 * ncols, 3 * nrows))
+        fig1.suptitle(
+            f"Vehicle Density - Link {link.id}", fontsize=14, fontweight="bold"
+        )
+        axes1 = np.array(axes1).flatten() if num_cells > 1 else [axes1]
+
+        for i, _ in link.enumerate_cells():
+            axes1[i].plot(time_seconds, densities[i, :], linewidth=1.5)
+            axes1[i].axhline(link.rho_jam, color="red", linestyle="--", linewidth=1)
+            axes1[i].set_ylim([0, max(link.rho_jam * 1.1, max_density)])
+            axes1[i].set_xlim([0, actual_duration])
+            axes1[i].set_xlabel("time (s)")
+            axes1[i].set_ylabel("density (veh/km/lane)")
+            axes1[i].grid(True)
+            axes1[i].set_title(f"Cell {i + 1}")
+
+        for ax in axes1[num_cells:]:
+            ax.set_visible(False)
+
+        plt.tight_layout()
+        plt.savefig(
+            os.path.join(save_dir, f"{link.id}_density.png"),
+            dpi=200,
+            bbox_inches="tight",
+        )
+        plt.close(fig1)
+
+        # figure 2: Flow
+        fig2, axes2 = plt.subplots(nrows, ncols, figsize=(4 * ncols, 3 * nrows))
+        fig2.suptitle(f"Vehicle Flow - Link {link.id}", fontsize=14, fontweight="bold")
+        axes2 = np.array(axes2).flatten() if num_cells > 1 else [axes2]
+
+        for i, _ in link.enumerate_cells():
+            Qc = link.lane_capacity * link.lanes
+            axes2[i].plot(
+                time_seconds[:-1], flows[i, :-1], linewidth=1.5, label="Cell outflow"
+            )
+            axes2[i].axhline(Qc, color="red", linestyle="--", linewidth=1)
+            axes2[i].set_ylim([0, max(Qc * 1.1, max_flow)])
+            axes2[i].set_xlim([0, actual_duration])
+            axes2[i].set_xlabel("time (s)")
+            axes2[i].set_ylabel("flow (veh/h)")
+            axes2[i].grid(True)
+            axes2[i].set_title(f"Cell {i + 1}")
+
+        for ax in axes2[num_cells:]:
+            ax.set_visible(False)
+
+        plt.tight_layout()
+        plt.savefig(
+            os.path.join(save_dir, f"{link.id}_flow.png"), dpi=200, bbox_inches="tight"
+        )
+        plt.close(fig2)
+
+        # figure 3: Speed
+        fig3, axes3 = plt.subplots(nrows, ncols, figsize=(4 * ncols, 3 * nrows))
+        fig3.suptitle(f"Vehicle Speed - Link {link.id}", fontsize=14, fontweight="bold")
+        axes3 = np.array(axes3).flatten() if num_cells > 1 else [axes3]
+
+        for i, _ in link.enumerate_cells():
+            vf_cell = link.vf
+            axes3[i].plot(time_seconds[:-1], speeds[i, :-1], linewidth=1.5)
+            axes3[i].axhline(vf_cell, color="red", linestyle="--", linewidth=1)
+            axes3[i].set_ylim([0, max(vf_cell * 1.1, max_speed)])
+            axes3[i].set_xlim([0, actual_duration])
+            axes3[i].set_xlabel("time (s)")
+            axes3[i].set_ylabel("speed (km/h)")
+            axes3[i].grid(True)
+            axes3[i].set_title(f"Cell {i + 1}")
+
+        for ax in axes3[num_cells:]:
+            ax.set_visible(False)
+
+        plt.tight_layout()
+        plt.savefig(
+            os.path.join(save_dir, f"{link.id}_speed.png"), dpi=200, bbox_inches="tight"
+        )
+        plt.close(fig3)
+
+    def _plot_node_inflows(
+        self,
+        node: Node,
+        inflow_components: list,
+        time_seconds: NDArray[np.float64],
+        flows_over_time: dict,
+        origin_queues_over_time: dict,
+        onramp_queues_over_time: dict,
+        origin_demands_over_time: dict,
+        onramp_demands_over_time: dict,
+        save_dir: str,
+    ) -> None:
+        """Create inflow plots (demand+flow and queue) for origins and onramps at a node."""
+        num_inflows = len(inflow_components)
+        ncols = 2  # demand+flow, queue
+        nrows = num_inflows
+
+        fig, axes = plt.subplots(nrows, ncols, figsize=(6 * ncols, 3 * nrows))
+        fig.suptitle(f"Inflows at Node {node.id}", fontsize=14, fontweight="bold")
+
+        # normalize axes indexing to 2D
+        if num_inflows == 1:
+            axes = np.array([[axes[0], axes[1]]])
+        else:
+            axes = np.array(axes).reshape(nrows, ncols)
+
+        actual_duration = time_seconds[-1]
+
+        for row_idx, link in enumerate(inflow_components):
+            link_id = link.id
+            is_origin = isinstance(link, Origin)
+
+            # get demand and flow data
+            if is_origin:
+                demand = origin_demands_over_time.get(
+                    link_id, np.zeros(len(time_seconds) - 1)
+                )
+                queue = origin_queues_over_time.get(
+                    link_id, np.zeros(len(time_seconds))
+                )
+            else:
+                demand = onramp_demands_over_time.get(
+                    link_id, np.zeros(len(time_seconds) - 1)
+                )
+                queue = onramp_queues_over_time.get(
+                    link_id, np.zeros(len(time_seconds))
+                )
+
+            flow = flows_over_time.get(link_id, np.zeros((1, len(time_seconds))))
+            if len(flow.shape) > 1:
+                flow = flow[0, :]
+
+            # calculate max values for scaling
+            max_demand = np.max(demand) * 1.1 if np.max(demand) > 0 else 2500
+            max_flow = np.max(flow[:-1]) * 1.1 if np.max(flow[:-1]) > 0 else 2500
+            max_queue = np.max(queue[:-1]) * 1.1 if np.max(queue[:-1]) > 0 else 100
+            combined_max = max(max_demand, max_flow)
+
+            # plot demand and flow
+            axes[row_idx, 0].plot(
+                time_seconds[:-1], demand, linewidth=1.5, label="Demand"
+            )
+            axes[row_idx, 0].plot(
+                time_seconds[:-1], flow[:-1], linewidth=1.5, label="Flow"
+            )
+            axes[row_idx, 0].grid(True)
+            axes[row_idx, 0].set_xlim([0, actual_duration])
+            axes[row_idx, 0].set_ylim([0, combined_max])
+            axes[row_idx, 0].set_xlabel("time (s)")
+            axes[row_idx, 0].set_ylabel("veh/h")
+            axes[row_idx, 0].set_title(
+                f"{type(link).__name__} {link_id} - Demand & Flow"
+            )
+            axes[row_idx, 0].legend(fontsize="small", ncol=2, frameon=False)
+
+            # plot queue
+            axes[row_idx, 1].plot(
+                time_seconds[:-1], queue[:-1], linewidth=1.5, color="tab:gray"
+            )
+            axes[row_idx, 1].grid(True)
+            axes[row_idx, 1].set_xlim([0, actual_duration])
+            axes[row_idx, 1].set_ylim([0, max_queue])
+            axes[row_idx, 1].set_xlabel("time (s)")
+            axes[row_idx, 1].set_ylabel("Queue (veh)")
+            axes[row_idx, 1].set_title(f"{type(link).__name__} {link_id} - Queue")
+
+        plt.tight_layout()
+        plt.savefig(
+            os.path.join(save_dir, f"node_{node.id}_inflows.png"),
+            dpi=200,
+            bbox_inches="tight",
+        )
+        plt.close(fig)
+
+    def _plot_node_outflows(
+        self,
+        node: Node,
+        outflow_components: list,
+        time_seconds: NDArray[np.float64],
+        flows_over_time: dict,
+        offramp_queues_over_time: dict,
+        save_dir: str,
+    ) -> None:
+        """Create outflow plots for offramps and destinations at a node.
+
+        Args:
+            node: The Node to plot.
+            outflow_components: List of outgoing links (Offramp or Destination).
+            time_seconds: 1-D array of time points in seconds.
+            flows_over_time: Dictionary mapping link IDs to flow arrays over time.
+            offramp_queues_over_time: Dictionary mapping offramp IDs to queue arrays over time.
+            save_dir: Directory where plots should be saved.
+        """
+        num_outflows = len(outflow_components)
+
+        # count offramps to determine if we need queue plots
+        num_offramps = sum(
+            1 for link in outflow_components if isinstance(link, Offramp)
+        )
+        ncols = 2 if num_offramps > 0 else 1  # flow, and queue if offramps exist
+        nrows = num_outflows
+
+        fig, axes = plt.subplots(nrows, ncols, figsize=(6 * ncols, 3 * nrows))
+        fig.suptitle(f"Outflows at Node {node.id}", fontsize=14, fontweight="bold")
+
+        # normalize axes indexing
+        if num_outflows == 1 and ncols == 1:
+            axes = np.array([[axes]])
+        elif num_outflows == 1:
+            axes = np.array([[axes[0], axes[1]]])
+        elif ncols == 1:
+            axes = np.array([[ax] for ax in axes])
+        else:
+            axes = np.array(axes).reshape(nrows, ncols)
+
+        actual_duration = time_seconds[-1]
+
+        for row_idx, link in enumerate(outflow_components):
+            link_id = link.id
+            is_offramp = isinstance(link, Offramp)
+
+            flow = flows_over_time.get(link_id, np.zeros((1, len(time_seconds))))
+            if len(flow.shape) > 1:
+                flow = flow[0, :]
+
+            max_flow = np.max(flow[:-1]) * 1.1 if np.max(flow[:-1]) > 0 else 2500
+
+            # plot flow
+            axes[row_idx, 0].plot(time_seconds[:-1], flow[:-1], linewidth=1.5)
+            axes[row_idx, 0].grid(True)
+            axes[row_idx, 0].set_xlim([0, actual_duration])
+            axes[row_idx, 0].set_ylim([0, max_flow])
+            axes[row_idx, 0].set_xlabel("time (s)")
+            axes[row_idx, 0].set_ylabel("flow (veh/h)")
+            axes[row_idx, 0].set_title(f"{type(link).__name__} {link_id} - Flow")
+
+            # plot queue if it's an offramp
+            if is_offramp and ncols == 2:
+                queue = offramp_queues_over_time.get(
+                    link_id, np.zeros(len(time_seconds))
+                )
+                max_queue = np.max(queue[:-1]) * 1.1 if np.max(queue[:-1]) > 0 else 100
+
+                axes[row_idx, 1].plot(
+                    time_seconds[:-1], queue[:-1], linewidth=1.5, color="tab:gray"
+                )
+                axes[row_idx, 1].grid(True)
+                axes[row_idx, 1].set_xlim([0, actual_duration])
+                axes[row_idx, 1].set_ylim([0, max_queue])
+                axes[row_idx, 1].set_xlabel("time (s)")
+                axes[row_idx, 1].set_ylabel("Queue (veh)")
+                axes[row_idx, 1].set_title(f"Offramp {link_id} - Queue")
+            elif ncols == 2:
+                # Hide queue subplot for destinations
+                axes[row_idx, 1].set_visible(False)
+
+        plt.tight_layout()
+        plt.savefig(
+            os.path.join(save_dir, f"node_{node.id}_outflows.png"),
+            dpi=200,
+            bbox_inches="tight",
+        )
+        plt.close(fig)
+
+    def _plot_motorway_link_3d(
+        self,
+        link: MotorwayLink,
+        time_seconds: NDArray[np.float64],
+        densities: NDArray[np.float64],
+        flows: NDArray[np.float64],
+        speeds: NDArray[np.float64],
+        save_dir: str,
+    ) -> None:
+        """Create 3D surface plots for a motorway link."""
+        num_cells = len(link)
+        actual_duration = time_seconds[-1]
+
+        # create meshgrids
+        x_full, y_full = np.meshgrid(time_seconds, np.arange(1, num_cells + 1))
+        x_truncated, y_truncated = np.meshgrid(
+            time_seconds[:-1], np.arange(1, num_cells + 1)
+        )
+
+        # calculate max values
+        max_rho_jam = link.rho_jam
+        max_capacity = link.lane_capacity * link.lanes
+        max_vf = link.vf
+
+        fig = plt.figure(figsize=(18, 6))
+        fig.suptitle(
+            f"3D Visualization - Link {link.id}", fontsize=14, fontweight="bold"
+        )
+
+        # 3D density plot
+        ax1 = fig.add_subplot(1, 3, 1, projection="3d")
+        ax1.plot_surface(
+            x_full, y_full, densities, cmap="viridis", edgecolor="none", alpha=0.9
+        )
+        ax1.view_init(elev=30, azim=-37.5)
+        ax1.set_xlabel("time (s)", rotation=30)
+        ax1.set_ylabel("Cell", rotation=-37.5)
+        ax1.set_zlabel("density (veh/km/lane)")
+        ax1.set_xlim([0, actual_duration])
+        ax1.set_ylim([1, num_cells])
+        ax1.set_zlim([0, max_rho_jam * 1.1])
+
+        # 3D flow plot
+        ax2 = fig.add_subplot(1, 3, 2, projection="3d")
+        ax2.plot_surface(
+            x_truncated,
+            y_truncated,
+            flows[:, :-1],
+            cmap="viridis",
+            edgecolor="none",
+            alpha=0.9,
+        )
+        ax2.view_init(elev=30, azim=-37.5)
+        ax2.set_xlabel("time (s)", rotation=30)
+        ax2.set_ylabel("Cell", rotation=-37.5)
+        ax2.set_zlabel("flow (veh/h)")
+        ax2.set_xlim([0, actual_duration])
+        ax2.set_ylim([1, num_cells])
+        ax2.set_zlim([0, max_capacity * 1.1])
+
+        # 3D speed plot
+        ax3 = fig.add_subplot(1, 3, 3, projection="3d")
+        ax3.plot_surface(
+            x_truncated,
+            y_truncated,
+            speeds[:, :-1],
+            cmap="viridis",
+            edgecolor="none",
+            alpha=0.9,
+        )
+        ax3.view_init(elev=30, azim=-37.5)
+        ax3.set_xlabel("time (s)", rotation=30)
+        ax3.set_ylabel("Cell", rotation=-37.5)
+        ax3.set_zlabel("speed (km/h)")
+        ax3.set_xlim([0, actual_duration])
+        ax3.set_ylim([1, num_cells])
+        ax3.set_zlim([0, max_vf * 1.1])
+
+        plt.tight_layout()
+        plt.savefig(
+            os.path.join(save_dir, f"{link.id}_3d_surfaces.png"),
+            dpi=200,
+            bbox_inches="tight",
+        )
+        plt.close(fig)
+
+    def _plot_node_summary(
+        self,
+        node: Node,
+        time_seconds: NDArray[np.float64],
+        flows_over_time: dict,
+        save_dir: str,
+    ) -> None:
+        """Create a summary plot showing all inflows and outflows at a node.
+
+        Args:
+            node: The Node to plot.
+            time_seconds: 1-D array of time points in seconds.
+            flows_over_time: Dictionary mapping link IDs to flow arrays over time.
+            save_dir: Directory where plots should be saved.
+        """
+        # collect all incoming and outgoing links
+        incoming_links = node.incoming
+        outgoing_links = node.outgoing
+
+        # skip nodes with no meaningful flow to plot
+        if not incoming_links and not outgoing_links:
+            return
+
+        fig, axes = plt.subplots(1, 2, figsize=(14, 5))
+        fig.suptitle(f"Node {node.id} - Flow Summary", fontsize=14, fontweight="bold")
+        actual_duration = time_seconds[-1]
+
+        # plot incoming flows
+        if incoming_links:
+            max_inflow = 0
+            for link in incoming_links:
+                link_id = link.id
+                flow = flows_over_time.get(link_id, np.zeros((1, len(time_seconds))))
+
+                # for motorway links, take the flow from the last cell (outflow of the link)
+                if isinstance(link, MotorwayLink):
+                    flow_to_plot = flow[-1, :-1]
+                elif len(flow.shape) > 1:
+                    flow_to_plot = flow[0, :-1]
+                else:
+                    flow_to_plot = flow[:-1]
+
+                axes[0].plot(
+                    time_seconds[:-1],
+                    flow_to_plot,
+                    linewidth=1.5,
+                    label=f"{type(link).__name__} {link_id}",
+                )
+                max_inflow = max(
+                    max_inflow, np.max(flow_to_plot) if len(flow_to_plot) > 0 else 0
+                )
+
+            axes[0].grid(True)
+            axes[0].set_xlim([0, actual_duration])
+            axes[0].set_ylim([0, max_inflow * 1.1 if max_inflow > 0 else 2500])
+            axes[0].set_xlabel("time (s)")
+            axes[0].set_ylabel("flow (veh/h)")
+            axes[0].set_title("Incoming Flows")
+            axes[0].legend(fontsize="small", frameon=False)
+        else:
+            axes[0].text(
+                0.5,
+                0.5,
+                "No incoming links",
+                ha="center",
+                va="center",
+                transform=axes[0].transAxes,
+            )
+            axes[0].set_axis_off()
+
+        # plot outgoing flows
+        if outgoing_links:
+            max_outflow = 0
+            for link in outgoing_links:
+                link_id = link.id
+                flow = flows_over_time.get(link_id, np.zeros((1, len(time_seconds))))
+
+                # for motorway links, take the flow from the first cell (inflow to the link)
+                if isinstance(link, MotorwayLink):
+                    flow_to_plot = flow[0, :-1]
+                elif len(flow.shape) > 1:
+                    flow_to_plot = flow[0, :-1]
+                else:
+                    flow_to_plot = flow[:-1]
+
+                axes[1].plot(
+                    time_seconds[:-1],
+                    flow_to_plot,
+                    linewidth=1.5,
+                    label=f"{type(link).__name__} {link_id}",
+                )
+                max_outflow = max(
+                    max_outflow, np.max(flow_to_plot) if len(flow_to_plot) > 0 else 0
+                )
+
+            axes[1].grid(True)
+            axes[1].set_xlim([0, actual_duration])
+            axes[1].set_ylim([0, max_outflow * 1.1 if max_outflow > 0 else 2500])
+            axes[1].set_xlabel("time (s)")
+            axes[1].set_ylabel("flow (veh/h)")
+            axes[1].set_title("Outgoing Flows")
+            axes[1].legend(fontsize="small", frameon=False)
+        else:
+            axes[1].text(
+                0.5,
+                0.5,
+                "No outgoing links",
+                ha="center",
+                va="center",
+                transform=axes[1].transAxes,
+            )
+            axes[1].set_axis_off()
+
+        plt.tight_layout()
+        plt.savefig(
+            os.path.join(save_dir, f"node_{node.id}_summary.png"),
+            dpi=200,
+            bbox_inches="tight",
+        )
+        plt.close(fig)
+
     def plot(
         self,
-        layout: str = "spring",
         pos: Optional[Mapping[str, tuple[float, float] | NDArray[np.float64]]] = None,
         figsize: tuple[int, int] = (10, 8),
         show: bool = True,
         save_path: str | None = None,
-        flows: dict[str, float | NDArray[np.float64]] | None = None,
-        densities: dict[str, float | NDArray[np.float64]] | None = None,
-        speeds: dict[str, float | NDArray[np.float64]] | None = None,
-        origin_queues: dict[str, float] | None = None,
-        onramp_queues: dict[str, float] | None = None,
-        offramp_queues: dict[str, float] | None = None,
     ):
         """Plot the network topology using the plotting helper.
 
@@ -1320,30 +2151,35 @@ class Network:
             visited = set()
             y_offset = 0
 
-            def place_chain(src, y):
-                stack = [(src, 0.0)]
-                while stack:
-                    node_id, x = stack.pop(0)
-                    if node_id in pos:
-                        # keep smallest x
-                        pos[node_id] = (min(pos[node_id][0], x), pos[node_id][1])
-                    else:
-                        pos[node_id] = (x, y)
-
-                    visited.add(node_id)
-                    for v, link_obj in motor_adj.get(node_id, []):
-                        length = (
-                            getattr(link_obj, "length", 1.0)
-                            if link_obj is not None
-                            else 1.0
-                        )
-                        next_x = x + float(length)
-                        if v not in visited:
-                            stack.append((v, next_x))
-
             if sources:
-                for s in sources:
-                    place_chain(s, y_offset)
+                for src in sources:
+                    stack = [(src, 0.0)]
+                    while stack:
+                        node_id, x = stack.pop(0)
+                        if node_id in pos:
+                            # keep smallest x
+                            pos[node_id] = np.array(
+                                [
+                                    min(float(pos[node_id][0]), float(x)),
+                                    float(pos[node_id][1]),
+                                ],
+                                dtype=np.float64,
+                            )
+                        else:
+                            pos[node_id] = np.array(
+                                [float(x), float(y_offset)], dtype=np.float64
+                            )
+
+                        visited.add(node_id)
+                        for v, link_obj in motor_adj.get(node_id, []):
+                            length = (
+                                getattr(link_obj, "length", 1.0)
+                                if link_obj is not None
+                                else 1.0
+                            )
+                            next_x = x + float(length)
+                            if v not in visited:
+                                stack.append((v, next_x))
                     y_offset -= 1.0
             else:
                 # fallback to spring layout if no motorway structure
@@ -1353,6 +2189,7 @@ class Network:
             for n in G.nodes():
                 if n in pos:
                     continue
+
                 s = str(n)
                 placed = False
                 # incoming source nodes (SRC:...) -> place just above their destination
@@ -1360,7 +2197,10 @@ class Network:
                     neighbors = list(G.successors(n)) if n in G else []
                     if neighbors and neighbors[0] in pos:
                         dst_pos = pos[neighbors[0]]
-                        pos[n] = (dst_pos[0] - 0.08, dst_pos[1] + 0.25)
+                        pos[n] = np.array(
+                            [float(dst_pos[0]) - 0.08, float(dst_pos[1]) + 0.25],
+                            dtype=np.float64,
+                        )
                         placed = True
 
                 # destination placeholders (DEST:...) -> place just above their source
@@ -1368,12 +2208,15 @@ class Network:
                     preds = list(G.predecessors(n)) if n in G else []
                     if preds and preds[0] in pos:
                         src_pos = pos[preds[0]]
-                        pos[n] = (src_pos[0] + 0.08, src_pos[1] + 0.25)
+                        pos[n] = np.array(
+                            [float(src_pos[0]) + 0.08, float(src_pos[1]) + 0.25],
+                            dtype=np.float64,
+                        )
                         placed = True
 
                 # fallback placement
                 if not placed:
-                    pos[n] = (0.0, y_offset)
+                    pos[n] = np.array([0.0, float(y_offset)], dtype=np.float64)
                     y_offset -= 0.6
 
         fig, ax = plt.subplots(figsize=figsize)
@@ -1399,7 +2242,7 @@ class Network:
             n for n in externals if n not in externals_src and n not in externals_dest
         ]
 
-        nodes_src = nx.draw_networkx_nodes(
+        nx.draw_networkx_nodes(
             G,
             pos,
             nodelist=externals_src,
@@ -1410,7 +2253,7 @@ class Network:
             node_shape="^",
             ax=ax,
         )
-        nodes_dest = nx.draw_networkx_nodes(
+        nx.draw_networkx_nodes(
             G,
             pos,
             nodelist=externals_dest,
@@ -1421,7 +2264,7 @@ class Network:
             node_shape="s",
             ax=ax,
         )
-        nodes_other = nx.draw_networkx_nodes(
+        nx.draw_networkx_nodes(
             G,
             pos,
             nodelist=externals_other,

@@ -60,9 +60,7 @@ def setup_network_ab() -> tuple[Network, dict]:
     )
 
     # add origin, destination and onramp
-    origin = Origin(
-        id=None, lanes=3, lane_capacity=2000, free_flow_speed=100, jam_density=180
-    )
+    origin = Origin(id=None)
     destination = Destination(id=None)
     onr = Onramp(
         lanes=1,
@@ -119,9 +117,7 @@ def setup_network_c() -> tuple[Network, dict]:
     )
 
     # add origin, destination and onramp
-    origin = Origin(
-        id=None, lanes=3, lane_capacity=2000, free_flow_speed=100, jam_density=180
-    )
+    origin = Origin()
     destination = Destination(id=None)
     onr = Onramp(
         lanes=1,
@@ -186,9 +182,7 @@ def setup_network_d() -> tuple[Network, dict]:
     )
 
     # add origin, destination, onramp and offramp
-    origin = Origin(
-        id=None, lanes=3, lane_capacity=2000, free_flow_speed=100, jam_density=180
-    )
+    origin = Origin()
     destination = Destination(id=None)
     onr = Onramp(
         lanes=1,

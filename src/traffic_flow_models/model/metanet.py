@@ -127,7 +127,7 @@ class METANET:
             The stationary velocity (length per time unit).
         """
 
-        return free_flow_speed * np.exp(
+        exponent = (
             -1
             / self.alpha
             * (
@@ -137,6 +137,12 @@ class METANET:
                 )
             )
             ** self.alpha
+        )
+
+        return (
+            free_flow_speed * casadi.exp(exponent)
+            if isinstance(density, casadi.SX)
+            else free_flow_speed * np.exp(exponent)
         )
 
     def _compute_virtual_downstream_density(
@@ -243,8 +249,6 @@ class METANET:
         num_offramps: int,
         num_splits: int,
         num_destinations: int,
-        inflows_jam_density: float,
-        inflows_free_flow_speed: float,
         dt: float,
     ) -> casadi.Function:
         """Build a CasADi function implementing one METANET network step.
@@ -342,7 +346,7 @@ class METANET:
                 if isinstance(inc, Origin):
                     next_inflow, next_queue = store_and_forward_update(
                         capacity=casadi.inf,
-                        jam_density=inflows_jam_density,
+                        jam_density=casadi.inf,
                         backward_wave_speed=casadi.inf,
                         density=node_downstream_density,
                         demand=origin_demands[inc.id],

@@ -13,9 +13,7 @@ class TestNode:
 
         m_in = MotorwayLink()
         on = Onramp(lanes=1, lane_capacity=1000, free_flow_speed=80, jam_density=150)
-        org = Origin(
-            id=None, lanes=1, lane_capacity=1000, free_flow_speed=80, jam_density=150
-        )
+        org = Origin()
 
         m_out = MotorwayLink()
         off = Offramp(lanes=1, lane_capacity=900, free_flow_speed=70, jam_density=140)
@@ -91,9 +89,7 @@ class TestNode:
             n.add_incoming(off)
 
         # Origin not allowed as outgoing
-        org = Origin(
-            id=None, lanes=1, lane_capacity=1000, free_flow_speed=80, jam_density=150
-        )
+        org = Origin()
         with pytest.raises(TypeError):
             n.add_outgoing(org)
 
