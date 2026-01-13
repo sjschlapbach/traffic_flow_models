@@ -11,11 +11,15 @@ class TestNode:
     def test_add_and_validate_correct_types(self):
         n = Node(id="n1")
 
-        m_in = MotorwayLink(length=1.0, lanes=1, lane_capacity=1500, free_flow_speed=80, jam_density=140)
+        m_in = MotorwayLink(
+            length=1.0, lanes=1, lane_capacity=1500, free_flow_speed=80, jam_density=140
+        )
         on = Onramp(lanes=1, lane_capacity=1000, free_flow_speed=80, jam_density=150)
         org = Origin()
 
-        m_out = MotorwayLink(length=1.0, lanes=1, lane_capacity=1500, free_flow_speed=80, jam_density=140)
+        m_out = MotorwayLink(
+            length=1.0, lanes=1, lane_capacity=1500, free_flow_speed=80, jam_density=140
+        )
         off = Offramp(lanes=1, lane_capacity=900, free_flow_speed=70, jam_density=140)
         dest = Destination(id=None)
 
@@ -56,9 +60,13 @@ class TestNode:
         n.validate()
 
     def test_constructor_initial_links(self):
-        m1 = MotorwayLink(length=1.0, lanes=1, lane_capacity=1500, free_flow_speed=80, jam_density=140)
+        m1 = MotorwayLink(
+            length=1.0, lanes=1, lane_capacity=1500, free_flow_speed=80, jam_density=140
+        )
         o1 = Onramp(lanes=2, lane_capacity=1200, free_flow_speed=90, jam_density=160)
-        m2 = MotorwayLink(length=1.0, lanes=1, lane_capacity=1500, free_flow_speed=80, jam_density=140)
+        m2 = MotorwayLink(
+            length=1.0, lanes=1, lane_capacity=1500, free_flow_speed=80, jam_density=140
+        )
         d1 = Destination(id=None)
 
         # precondition: ids unset
@@ -98,8 +106,12 @@ class TestNode:
             n.add_incoming(123)
 
     def test_remove_and_set_methods(self):
-        m1 = MotorwayLink(length=1.0, lanes=1, lane_capacity=1500, free_flow_speed=80, jam_density=140)
-        m2 = MotorwayLink(length=1.0, lanes=1, lane_capacity=1500, free_flow_speed=80, jam_density=140)
+        m1 = MotorwayLink(
+            length=1.0, lanes=1, lane_capacity=1500, free_flow_speed=80, jam_density=140
+        )
+        m2 = MotorwayLink(
+            length=1.0, lanes=1, lane_capacity=1500, free_flow_speed=80, jam_density=140
+        )
         o1 = Onramp(lanes=1, lane_capacity=1000, free_flow_speed=80, jam_density=150)
         d1 = Destination(id=None)
 
