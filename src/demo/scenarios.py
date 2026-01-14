@@ -56,7 +56,7 @@ def setup_network_ab() -> tuple[Network, dict]:
         length=1.0, lanes=3, lane_capacity=2000, free_flow_speed=100, jam_density=180
     )
     m2 = MotorwayLink(
-        length=2.0, lanes=3, lane_capacity=2000, free_flow_speed=100, jam_density=180
+        length=1.5, lanes=3, lane_capacity=2000, free_flow_speed=100, jam_density=180
     )
 
     # add origin, destination and onramp
