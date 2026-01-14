@@ -41,6 +41,8 @@ class METANET:
         """Create an empty METANET model instance."""
         return
 
+    # ! Fundamental diagram helper functions
+    # region
     def critical_density(
         self,
         params: METANETParams | METANETSymbolicParams,
@@ -161,6 +163,10 @@ class METANET:
             else free_flow_speed * np.exp(exponent)
         )
 
+    # endregion
+
+    # ! Symbolic model parameter handling (validation, packing, unpacking)
+    # region
     def validate_model_params(self, model_params: METANETParams) -> None:
         """Validate a METANET model parameter dictionary.
 
@@ -235,10 +241,10 @@ class METANET:
         link_ids: list[str] = []  # links for which alpha values are required
         for node in network.list_nodes():
             for link in node.incoming:
-                if isinstance(link, Onramp) or isinstance(link, Offramp):
+                if isinstance(link, Onramp):
                     link_ids.append(link.id)
             for link in node.outgoing:
-                if isinstance(link, MotorwayLink):
+                if isinstance(link, MotorwayLink) or isinstance(link, Offramp):
                     link_ids.append(link.id)
 
         for link_id in link_ids:
@@ -306,10 +312,10 @@ class METANET:
         link_ids: list[str] = []
         for node in network.list_nodes():
             for link in node.incoming:
-                if isinstance(link, Onramp) or isinstance(link, Offramp):
+                if isinstance(link, Onramp):
                     link_ids.append(link.id)
             for link in node.outgoing:
-                if isinstance(link, MotorwayLink):
+                if isinstance(link, MotorwayLink) or isinstance(link, Offramp):
                     link_ids.append(link.id)
 
         for link_id in link_ids:
@@ -349,10 +355,10 @@ class METANET:
         num_links = 0
         for node in network.list_nodes():
             for link in node.incoming:
-                if isinstance(link, Onramp) or isinstance(link, Offramp):
+                if isinstance(link, Onramp):
                     num_links += 1
             for link in node.outgoing:
-                if isinstance(link, MotorwayLink):
+                if isinstance(link, MotorwayLink) or isinstance(link, Offramp):
                     num_links += 1
 
         # create symbolic variables for the model parameters (one entry for the alpha of each link)
@@ -360,6 +366,10 @@ class METANET:
         model_params_sym = casadi.SX.sym("metanet_params", num_links + 5, 1)  # type: ignore
         return model_params_sym
 
+    # endregion
+
+    # ! Network update helper functions
+    # region
     def _compute_virtual_downstream_density(
         self,
         node: Node,
@@ -703,6 +713,116 @@ class METANET:
 
         return next_densities_list, next_speeds_list, next_flows_list
 
+    def cell_update(
+        self,
+        params: METANETSymbolicParams,
+        link: MotorwayLink,
+        cell: Cell,
+        upstream_flow: casadi.SX,
+        previous_flow: casadi.SX,
+        previous_density: casadi.SX,
+        downstream_density: casadi.SX,
+        upstream_speed: casadi.SX,
+        previous_speed: casadi.SX,
+        dt: float,
+    ) -> Tuple[casadi.SX, casadi.SX, casadi.SX]:
+        """Compute one-step updates for density, speed and flow of a METANET cell.
+
+        Implements the METANET discrete-time update for a homogeneous motorway
+        cell. Density is updated by vehicle conservation using the provided
+        upstream and previous outflow. Speed evolves according to METANET's
+        second-order dynamics: relaxation toward the stationary velocity,
+        convective coupling with upstream speed, anticipation of downstream
+        density gradients, and additional deceleration for upcoming lane
+        drops. The updated flow is computed from the updated density and
+        speed.
+
+        Args:
+            params (METANETSymbolicParams): Model parameters.
+            link (MotorwayLink): Parent motorway link containing geometric
+                and lane information.
+            cell (Cell): Cell object with geometry and lane-drop info.
+            upstream_flow (casadi.SX): Flow entering the cell from upstream
+                (vehicles / time).
+            previous_flow (casadi.SX): Flow leaving the cell at the previous
+                time step (vehicles / time).
+            previous_density (casadi.SX): Density at the previous time step
+                (vehicles / length per lane).
+            downstream_density (casadi.SX): Density in the downstream cell
+                used for anticipation terms (vehicles / length per lane).
+            upstream_speed (casadi.SX): Speed in the upstream cell used for
+                convective coupling (length / time).
+            previous_speed (casadi.SX): Speed at the previous time step in
+                this cell (length / time).
+            dt (float): Simulation timestep.
+
+        Returns:
+            Tuple[casadi.SX, casadi.SX, casadi.SX]: ``(density, speed, flow)``
+            updated for one timestep where:
+            - ``density``: Updated density (vehicles / length per lane).
+            - ``speed``: Updated speed (length / time).
+            - ``flow``: Updated outflow from the cell (vehicles / time).
+        """
+
+        # compute the new density based on the flows at the previous timestep
+        # Note: off-ramps are modeled as splitting the outflow and do not
+        # directly reduce the density update term (matches MATLAB METANET).
+        density = previous_density + dt * (upstream_flow - previous_flow) / (
+            cell.length * link.lanes
+        )
+
+        # compute the new speed based on the previous timestep
+        speed = (
+            previous_speed
+            + dt
+            / params["tau"]
+            * (
+                self.stationary_velocity(
+                    params=params,
+                    link_id=link.id,
+                    lane_capacity=link.lane_capacity,
+                    free_flow_speed=link.vf,
+                    density=previous_density,
+                )
+                - previous_speed
+            )
+            + dt / cell.length * previous_speed * (upstream_speed - previous_speed)
+            - (dt * params["nu"])
+            / (params["tau"] * cell.length)
+            * (downstream_density - previous_density)
+            / (previous_density + params["kappa"])
+        )
+
+        # if a lane drop is coming up, add an additional term to the speed
+        # update equation to account for the additional deceleration
+        if cell.upcoming_lane_drop > 0:
+            speed -= (
+                dt
+                * params["phi"]
+                * cell.upcoming_lane_drop
+                * previous_density
+                * previous_speed**2
+            ) / (
+                cell.length
+                * link.lanes
+                * self.critical_density(
+                    params=params,
+                    link_id=link.id,
+                    lane_capacity=link.lane_capacity,
+                    free_flow_speed=link.vf,
+                )
+            )
+
+        # ensure that the speed values remain non-negative
+        speed = casadi.fmax(speed, 0)
+
+        # compute the flow update of the cell based on the speed and density
+        flow = density * speed * link.lanes
+
+        return density, speed, flow
+
+    # endregion
+
     def network_update_function(
         self,
         network: Network,
@@ -935,111 +1055,3 @@ class METANET:
 
         # wrap the state update in a nonlinear casadi function
         return casadi.Function("metanet_network_step", [sym_params, x, d], [x_next])
-
-    def cell_update(
-        self,
-        params: METANETSymbolicParams,
-        link: MotorwayLink,
-        cell: Cell,
-        upstream_flow: casadi.SX,
-        previous_flow: casadi.SX,
-        previous_density: casadi.SX,
-        downstream_density: casadi.SX,
-        upstream_speed: casadi.SX,
-        previous_speed: casadi.SX,
-        dt: float,
-    ) -> Tuple[casadi.SX, casadi.SX, casadi.SX]:
-        """Compute one-step updates for density, speed and flow of a METANET cell.
-
-        Implements the METANET discrete-time update for a homogeneous motorway
-        cell. Density is updated by vehicle conservation using the provided
-        upstream and previous outflow. Speed evolves according to METANET's
-        second-order dynamics: relaxation toward the stationary velocity,
-        convective coupling with upstream speed, anticipation of downstream
-        density gradients, and additional deceleration for upcoming lane
-        drops. The updated flow is computed from the updated density and
-        speed.
-
-        Args:
-            params (METANETSymbolicParams): Model parameters.
-            link (MotorwayLink): Parent motorway link containing geometric
-                and lane information.
-            cell (Cell): Cell object with geometry and lane-drop info.
-            upstream_flow (casadi.SX): Flow entering the cell from upstream
-                (vehicles / time).
-            previous_flow (casadi.SX): Flow leaving the cell at the previous
-                time step (vehicles / time).
-            previous_density (casadi.SX): Density at the previous time step
-                (vehicles / length per lane).
-            downstream_density (casadi.SX): Density in the downstream cell
-                used for anticipation terms (vehicles / length per lane).
-            upstream_speed (casadi.SX): Speed in the upstream cell used for
-                convective coupling (length / time).
-            previous_speed (casadi.SX): Speed at the previous time step in
-                this cell (length / time).
-            dt (float): Simulation timestep.
-
-        Returns:
-            Tuple[casadi.SX, casadi.SX, casadi.SX]: ``(density, speed, flow)``
-            updated for one timestep where:
-            - ``density``: Updated density (vehicles / length per lane).
-            - ``speed``: Updated speed (length / time).
-            - ``flow``: Updated outflow from the cell (vehicles / time).
-        """
-
-        # compute the new density based on the flows at the previous timestep
-        # Note: off-ramps are modeled as splitting the outflow and do not
-        # directly reduce the density update term (matches MATLAB METANET).
-        density = previous_density + dt * (upstream_flow - previous_flow) / (
-            cell.length * link.lanes
-        )
-
-        # compute the new speed based on the previous timestep
-        speed = (
-            previous_speed
-            + dt
-            / params["tau"]
-            * (
-                self.stationary_velocity(
-                    params=params,
-                    link_id=link.id,
-                    lane_capacity=link.lane_capacity,
-                    free_flow_speed=link.vf,
-                    density=previous_density,
-                )
-                - previous_speed
-            )
-            + dt / cell.length * previous_speed * (upstream_speed - previous_speed)
-            - (dt * params["nu"])
-            / (params["tau"] * cell.length)
-            * (downstream_density - previous_density)
-            / (previous_density + params["kappa"])
-        )
-
-        # if a lane drop is coming up, add an additional term to the speed
-        # update equation to account for the additional deceleration
-        if cell.upcoming_lane_drop > 0:
-            speed -= (
-                dt
-                * params["phi"]
-                * cell.upcoming_lane_drop
-                * previous_density
-                * previous_speed**2
-            ) / (
-                cell.length
-                * link.lanes
-                * self.critical_density(
-                    params=params,
-                    link_id=link.id,
-                    lane_capacity=link.lane_capacity,
-                    free_flow_speed=link.vf,
-                )
-            )
-
-        # ensure that the speed values remain non-negative
-        speed = casadi.fmax(speed, 0)
-
-        # compute the flow update of the cell based on the speed and density
-        flow = density * speed * link.lanes
-
-        return density, speed, flow

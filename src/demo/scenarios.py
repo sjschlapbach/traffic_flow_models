@@ -56,12 +56,12 @@ def setup_network_ab() -> tuple[Network, dict]:
         length=1.0, lanes=3, lane_capacity=2000, free_flow_speed=100, jam_density=180
     )
     m2 = MotorwayLink(
-        length=1.5, lanes=3, lane_capacity=2000, free_flow_speed=100, jam_density=180
+        length=2.0, lanes=3, lane_capacity=2000, free_flow_speed=100, jam_density=180
     )
 
     # add origin, destination and onramp
-    origin = Origin(id=None)
-    destination = Destination(id=None)
+    origin = Origin()
+    destination = Destination()
     onr = Onramp(
         lanes=1,
         lane_capacity=2000,
@@ -109,7 +109,7 @@ def setup_network_c() -> tuple[Network, dict]:
         length=1.0, lanes=3, lane_capacity=2000, free_flow_speed=100, jam_density=180
     )
     m2 = MotorwayLink(
-        length=0.5, lanes=3, lane_capacity=2000, free_flow_speed=100, jam_density=180
+        length=1.0, lanes=3, lane_capacity=2000, free_flow_speed=100, jam_density=180
     )
     m3 = MotorwayLink(
         length=0.5, lanes=1, lane_capacity=2000, free_flow_speed=100, jam_density=180
@@ -120,7 +120,7 @@ def setup_network_c() -> tuple[Network, dict]:
 
     # add origin, destination and onramp
     origin = Origin()
-    destination = Destination(id=None)
+    destination = Destination()
     onr = Onramp(
         lanes=1,
         lane_capacity=2000,
@@ -141,7 +141,8 @@ def setup_network_c() -> tuple[Network, dict]:
         n0.id: {m1.id: 1.0},
         n1.id: {m2.id: 1.0},
         n2.id: {m3.id: 1.0},
-        n3.id: {destination.id: 1.0},
+        n3.id: {m4.id: 1.0},
+        n4.id: {destination.id: 1.0},
     }
 
     metadata = {
@@ -187,7 +188,7 @@ def setup_network_d() -> tuple[Network, dict]:
 
     # add origin, destination, onramp and offramp
     origin = Origin()
-    destination = Destination(id=None)
+    destination = Destination()
     onr = Onramp(
         lanes=1,
         lane_capacity=2000,
