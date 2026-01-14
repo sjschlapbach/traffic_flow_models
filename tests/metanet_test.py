@@ -1,8 +1,11 @@
+from typing import cast
 import casadi
 import numpy as np
 
 from traffic_flow_models import (
     METANET,
+    METANETParams,
+    METANETSymbolicParams,
     Network,
     Node,
     MotorwayLink,
@@ -16,7 +19,7 @@ class TestMETANET:
     def test_cell_update_basic(self):
         # choose parameters that eliminate secondary effects so the
         # METANET speed update reduces to a no-op (stationary speed)
-        model = METANET(tau=1.0, nu=0.0, kappa=0.0, delta=0.0, phi=0.0, alpha=1.0)
+        model = METANET()
         link = MotorwayLink(
             length=0.5,
             lanes=2,
@@ -24,6 +27,15 @@ class TestMETANET:
             free_flow_speed=100,
             jam_density=150,
         )
+        model_params: METANETParams = {
+            "tau": 1.0,
+            "nu": 0.0,
+            "kappa": 0.0,
+            "delta": 0.0,
+            "phi": 0.0,
+            "alpha": {link.id: 1.0},
+        }
+
         # partition link into one cell using a small dt for CFL condition
         link.partition_link(preferred_cell_size=0.5, dt=0.001)
         cell = link.get_cell(0)
@@ -33,6 +45,8 @@ class TestMETANET:
         # as the previous and upstream speed so convective and relaxation
         # terms vanish (given nu=delta=0 and previous_speed==stationary)
         previous_speed = model.stationary_velocity(
+            params=model_params,
+            link_id=link.id,
             lane_capacity=link.lane_capacity,
             free_flow_speed=link.vf,
             density=previous_density,
@@ -50,7 +64,18 @@ class TestMETANET:
         previous_flow = 80.0
         dt = 0.25
 
+        network = Network(nodes=[Node(incoming=[], outgoing=[link])])
+        sx_params = model.set_up_symbolic_model_params(network=network)
+        symbolic_params = cast(
+            METANETSymbolicParams,
+            model.model_params_vec_to_dict(network=network, model_params_vec=sx_params),
+        )
+        # numeric parameter vector for function evaluation
+        numeric_params_vec = model.model_params_to_vec(
+            network=network, model_params=model_params
+        )
         next_density_sx, next_speed_sx, next_flow_sx = model.cell_update(
+            params=symbolic_params,
             link=link,
             cell=cell,
             upstream_flow=upstream_flow_sx,
@@ -66,6 +91,7 @@ class TestMETANET:
         cell_update_fn = casadi.Function(
             "cell_update",
             [
+                sx_params,
                 upstream_flow_sx,
                 previous_flow_sx,
                 previous_density_sx,
@@ -77,6 +103,7 @@ class TestMETANET:
         )
 
         res = cell_update_fn(
+            numeric_params_vec,
             upstream_flow,
             previous_flow,
             previous_density,
@@ -126,7 +153,15 @@ class TestMETANET:
         node2 = Node(incoming=[link], outgoing=[destination])
         network = Network(nodes=[node1, node2])
 
-        model = METANET(tau=1.0, nu=0.0, kappa=0.1, delta=0.0, phi=0.0, alpha=1.0)
+        model = METANET()
+        model_params: METANETParams = {
+            "tau": 1.0,
+            "nu": 0.0,
+            "kappa": 0.1,
+            "delta": 0.0,
+            "phi": 0.0,
+            "alpha": {onramp.id: 1.0, link.id: 1.0},
+        }
         previous_density = np.array([10.0, 12.0, 12.0], dtype=np.float64)
         previous_speed = np.array([0.0, 0.0, 0.0], dtype=np.float64)
         previous_flow = np.array([0.0, 0.0, 0.0], dtype=np.float64)
@@ -135,10 +170,11 @@ class TestMETANET:
         onramp_demand = lambda t: 0.0
         onramp_queue = np.array([0, 0], dtype=np.float64)
 
-        time_array, states, disturbances = network.simulate(
+        _, states, _ = network.simulate(
             duration=dt,
             dt=dt,
             model=model,
+            model_params=model_params,
             origin_demands={origin.id: mainline_demand},
             onramp_demands={onramp.id: onramp_demand},
             initial_flows={
@@ -187,7 +223,16 @@ class TestMETANET:
         upstream_speed_sx = casadi.SX.sym("upstream_speed", 1, 1)  # type: ignore
         previous_speed_sx = casadi.SX.sym("previous_speed", 1, 1)  # type: ignore
 
+        sx_params = model.set_up_symbolic_model_params(network=network)
+        symbolic_params = cast(
+            METANETSymbolicParams,
+            model.model_params_vec_to_dict(network=network, model_params_vec=sx_params),
+        )
+        numeric_params_vec = model.model_params_to_vec(
+            network=network, model_params=model_params
+        )
         next_density_sx, next_speed_sx, next_flow_sx = model.cell_update(
+            params=symbolic_params,
             link=link,
             cell=first_cell,
             upstream_flow=upstream_flow_sx,
@@ -202,6 +247,7 @@ class TestMETANET:
         cell_update_fn = casadi.Function(
             "cell_update_first",
             [
+                sx_params,
                 upstream_flow_sx,
                 previous_flow_sx,
                 previous_density_sx,
@@ -213,6 +259,7 @@ class TestMETANET:
         )
 
         res = cell_update_fn(
+            numeric_params_vec,
             flow[origin.id][0],
             previous_flow[0],
             previous_density[0],
@@ -236,11 +283,24 @@ class TestMETANET:
         )
         link.partition_link(preferred_cell_size=1.0, dt=0.001)
 
-        model = METANET(tau=1.0, nu=0.0, kappa=0.1, delta=0.0, phi=0.0, alpha=2.0)
+        model = METANET()
 
-        expected_rho_cr = link.lane_capacity / (link.vf * np.exp(-1 / model.alpha))
+        const_alpha = 2.0
+        model_params: METANETParams = {
+            "tau": 1.0,
+            "nu": 0.0,
+            "kappa": 0.1,
+            "delta": 0.0,
+            "phi": 0.0,
+            "alpha": {link.id: const_alpha},
+        }
+
+        expected_rho_cr = link.lane_capacity / (link.vf * np.exp(-1 / const_alpha))
         computed_rho_cr = model.critical_density(
-            lane_capacity=link.lane_capacity, free_flow_speed=link.vf
+            params=model_params,
+            link_id=link.id,
+            lane_capacity=link.lane_capacity,
+            free_flow_speed=link.vf,
         )
         assert np.isclose(computed_rho_cr, expected_rho_cr)
 
@@ -248,6 +308,8 @@ class TestMETANET:
             link.rho_jam - expected_rho_cr
         )
         computed_w = model.backward_wave_speed(
+            params=model_params,
+            link_id=link.id,
             capacity=link.lane_capacity * link.lanes,
             lane_capacity=link.lane_capacity,
             jam_density=link.rho_jam,
@@ -285,12 +347,17 @@ class TestMETANET:
         network = Network(nodes=[node, node2, node3])
 
         # run full simulation with both models and compare upstream link speeds
-        model_no_phi = METANET(
-            tau=1.0, nu=0.0, kappa=0.1, delta=0.0, phi=0.0, alpha=1.0
-        )
-        model_with_phi = METANET(
-            tau=1.0, nu=0.0, kappa=0.1, delta=0.0, phi=0.5, alpha=1.0
-        )
+        model_no_phi = METANET()
+        model_with_phi = METANET()
+        model_no_phi_params: METANETParams = {
+            "tau": 1.0,
+            "nu": 0.0,
+            "kappa": 0.1,
+            "delta": 0.0,
+            "phi": 0.0,
+            "alpha": {link.id: 1.0, link2.id: 1.0},
+        }
+        model_with_phi_params: METANETParams = {**model_no_phi_params, "phi": 0.5}
 
         # initial states for link (2 cells) and downstream link2 (1 cell)
         init_density_link = np.array([20.0, 20.0], dtype=np.float64)
@@ -308,6 +375,11 @@ class TestMETANET:
                 duration=dt,
                 dt=dt,
                 model=model,
+                model_params=(
+                    model_no_phi_params
+                    if model is model_no_phi
+                    else model_with_phi_params
+                ),
                 origin_demands={origin.id: mainline_demand},
                 onramp_demands={},
                 initial_flows={
@@ -343,3 +415,93 @@ class TestMETANET:
         # verify that the speeds for the last cell of the upstream link are lower when phi>0
         assert speed_with_phi.shape == speed_no_phi.shape
         assert speed_with_phi[-1] <= speed_no_phi[-1]
+
+    def test_model_params_conversion_and_validation(self):
+        # build a minimal network with one motorway link and one onramp
+        link = MotorwayLink(
+            length=1.0,
+            lanes=1,
+            lane_capacity=2000,
+            free_flow_speed=100,
+            jam_density=150,
+        )
+        onramp = Onramp(
+            lanes=1, lane_capacity=1000, free_flow_speed=60, jam_density=100
+        )
+        origin = Origin()
+        destination = Destination()
+
+        node1 = Node(incoming=[origin, onramp], outgoing=[link])
+        node2 = Node(incoming=[link], outgoing=[destination])
+        network = Network(nodes=[node1, node2])
+
+        model = METANET()
+
+        # 1) scalar alpha -> vector and back
+        scalar_params: METANETParams = {
+            "tau": 1.0,
+            "nu": 0.2,
+            "kappa": 0.1,
+            "delta": 0.0,
+            "phi": 0.0,
+            "alpha": 1.5,
+        }
+
+        vec = model.model_params_to_vec(network=network, model_params=scalar_params)
+        # we expect 5 scalars + 2 link-specific alphas (onramp + motorway link)
+        assert vec.shape[0] == 7
+
+        unpacked = model.model_params_vec_to_dict(network=network, model_params_vec=vec)
+        assert unpacked["tau"] == vec[0]
+        # alpha must be a dict mapping link ids -> values
+        assert isinstance(unpacked["alpha"], dict)
+        assert len(unpacked["alpha"]) == 2
+        for v in unpacked["alpha"].values():
+            assert float(v) == 1.5
+
+        # 2) dict alpha -> vector and back (link-specific values)
+        alpha_map = {onramp.id: 0.9, link.id: 1.1}
+        dict_params: METANETParams = {**scalar_params, "alpha": alpha_map}
+
+        vec2 = model.model_params_to_vec(network=network, model_params=dict_params)
+        unpacked2 = model.model_params_vec_to_dict(
+            network=network, model_params_vec=vec2
+        )
+        assert isinstance(unpacked2["alpha"], dict)
+        assert unpacked2["alpha"][onramp.id] == alpha_map[onramp.id]
+        assert unpacked2["alpha"][link.id] == alpha_map[link.id]
+
+        # 3) symbolic parameter vector creation + unpacking should work
+        sym = model.set_up_symbolic_model_params(network=network)
+        sym_unpacked = model.model_params_vec_to_dict(
+            network=network, model_params_vec=sym
+        )
+        # symbolic unpacking should produce an 'alpha' dict with correct size
+        assert isinstance(sym_unpacked["alpha"], dict)
+        assert len(sym_unpacked["alpha"]) == 2
+
+        # 4) validate_model_params: accept valid, reject invalid
+        # valid should not raise
+        model.validate_model_params(scalar_params)
+
+        # missing key triggers ValueError
+        bad = scalar_params.copy()
+        bad.pop("tau")
+        try:
+            model.validate_model_params(bad)
+            raise AssertionError(
+                "validate_model_params should have raised for missing key"
+            )
+        except ValueError:
+            pass
+
+        # invalid alpha type triggers ValueError
+        bad2 = scalar_params.copy()
+        bad2["alpha"] = [1, 2, 3]  # type: ignore
+        try:
+            model.validate_model_params(bad2)
+            raise AssertionError(
+                "validate_model_params should have raised for invalid alpha type"
+            )
+        except ValueError:
+            pass
