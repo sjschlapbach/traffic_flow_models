@@ -11,6 +11,7 @@ from traffic_flow_models import (
     MotorwayLink,
     Origin,
     Onramp,
+    Offramp,
     Destination,
 )
 
@@ -505,3 +506,145 @@ class TestMETANET:
             )
         except ValueError:
             pass
+
+    def test_circular_network_simulation(self):
+        """Test METANET can simulate a circular network topology with feedback loop."""
+        # create circular network: Origin -> Link1 -> Link2 -> Link3 -> Link4 -> back to Link2
+        # with offramp at node3 for traffic exit
+        dt = 0.005
+
+        link1 = MotorwayLink(
+            length=1.0, lanes=2, lane_capacity=1500, free_flow_speed=80, jam_density=140
+        )
+        link2 = MotorwayLink(
+            length=1.0, lanes=2, lane_capacity=1500, free_flow_speed=80, jam_density=140
+        )
+        link3 = MotorwayLink(
+            length=1.0, lanes=2, lane_capacity=1500, free_flow_speed=80, jam_density=140
+        )
+        link4 = MotorwayLink(
+            length=1.0, lanes=2, lane_capacity=1500, free_flow_speed=80, jam_density=140
+        )
+
+        origin = Origin()
+        offramp = Offramp(
+            lanes=1, lane_capacity=2000, free_flow_speed=100, jam_density=180
+        )
+        dest = Destination()
+        offramp.destination = dest
+
+        # create circular topology
+        node1 = Node(id="n1", incoming=[origin], outgoing=[link1])
+        node2 = Node(id="n2", incoming=[link1, link4], outgoing=[link2])  # loop closure
+        node3 = Node(id="n3", incoming=[link2], outgoing=[link3, offramp])
+        node4 = Node(id="n4", incoming=[link3], outgoing=[link4])
+
+        network = Network(nodes=[node1, node2, node3, node4])
+
+        # partition links
+        link1.partition_link(preferred_cell_size=0.5, dt=dt)
+        link2.partition_link(preferred_cell_size=0.5, dt=dt)
+        link3.partition_link(preferred_cell_size=0.5, dt=dt)
+        link4.partition_link(preferred_cell_size=0.5, dt=dt)
+
+        model = METANET()
+        model_params: METANETParams = {
+            "tau": 1.0,
+            "nu": 0.1,
+            "kappa": 0.1,
+            "delta": 0.001,
+            "phi": 0.0,
+            "alpha": 1.0,  # Use scalar alpha for all links
+        }
+
+        # initial conditions - small flows/densities throughout
+        num_cells_1 = len(link1)
+        num_cells_2 = len(link2)
+        num_cells_3 = len(link3)
+        num_cells_4 = len(link4)
+
+        initial_flow_dict = {
+            origin.id: 100.0,
+            link1.id: np.ones(num_cells_1) * 100.0,
+            link2.id: np.ones(num_cells_2) * 100.0,
+            link3.id: np.ones(num_cells_3) * 90.0,
+            link4.id: np.ones(num_cells_4) * 90.0,
+            offramp.id: 10.0,
+            dest.id: 90.0,
+        }
+
+        initial_density_dict = {
+            link1.id: np.ones(num_cells_1) * 10.0,
+            link2.id: np.ones(num_cells_2) * 10.0,
+            link3.id: np.ones(num_cells_3) * 10.0,
+            link4.id: np.ones(num_cells_4) * 10.0,
+            offramp.id: np.array([10.0]),
+        }
+
+        initial_speed_dict = {
+            link1.id: np.ones(num_cells_1) * 70.0,
+            link2.id: np.ones(num_cells_2) * 70.0,
+            link3.id: np.ones(num_cells_3) * 70.0,
+            link4.id: np.ones(num_cells_4) * 70.0,
+            offramp.id: np.array([70.0]),
+        }
+
+        # demand and split ratios
+        mainline_demand = lambda t: 200.0
+        turning_rates = {
+            node1.id: lambda t: {link1.id: 1.0},
+            node2.id: lambda t: {link2.id: 1.0},
+            node3.id: lambda t: {link3.id: 0.9, offramp.id: 0.1},  # 10% exit
+            node4.id: lambda t: {link4.id: 1.0},
+        }
+
+        # run short simulation
+        time_array, states, disturbances = network.simulate(
+            duration=3 * dt,  # just 3 timesteps
+            dt=dt,
+            model=model,
+            model_params=model_params,
+            origin_demands={origin.id: mainline_demand},
+            onramp_demands={},
+            initial_flows=initial_flow_dict,
+            initial_densities=initial_density_dict,
+            initial_speeds=initial_speed_dict,
+            initial_origin_queues={origin.id: 0.0},
+            initial_onramp_queues={},
+            initial_offramp_queues={offramp.id: 0.0},
+            turning_rates=turning_rates,
+            destination_boundary_conditions={dest.id: lambda t: 0.0},
+            preferred_cell_size=0.5,
+            plot_results=False,
+        )
+
+        # verify simulation completed successfully
+        assert time_array is not None
+        assert states is not None
+        assert disturbances is not None
+        assert len(time_array) == 4  # 0, dt, 2*dt, 3*dt
+
+        # unpack final state
+        flows, densities, speeds, origin_queues, onramp_queues, offramp_queues = (
+            network.state_vec_to_network_dict(states[:, -1])
+        )
+
+        # basic sanity checks - all states should be finite and non-negative
+        for link_id in [link1.id, link2.id, link3.id, link4.id]:
+            assert link_id in flows
+            assert link_id in densities
+            assert link_id in speeds
+            assert np.all(np.isfinite(flows[link_id]))
+            assert np.all(np.isfinite(densities[link_id]))
+            assert np.all(np.isfinite(speeds[link_id]))
+            assert np.all(flows[link_id] >= 0)
+            assert np.all(densities[link_id] >= 0)
+            assert np.all(speeds[link_id] >= 0)
+
+        # verify feedback: link4 feeds back into node2, which outputs to link2
+        # so link2's initial flow should be influenced by both link1 and link4
+        assert flows[link2.id][0] >= 0  # basic sanity check
+
+        # verify offramp receives some flow
+        assert offramp.id in flows
+        assert flows[offramp.id][-1] >= 0

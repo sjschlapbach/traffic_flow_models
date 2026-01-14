@@ -6,7 +6,7 @@ import casadi
 import networkx as nx
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
-from typing import TYPE_CHECKING, Iterator, Callable, Mapping, Optional, Tuple
+from typing import TYPE_CHECKING, Iterator, Callable, Mapping, Optional, Tuple, cast
 from numpy.typing import NDArray
 import math
 import os
@@ -43,13 +43,39 @@ class Network:
         - All nodes in the network must be connected through links (no unconnected components)
     """
 
-    def __init__(self, nodes: list[Node] = []) -> None:
+    # ! Initialization and basic methods
+    # region
+    def __init__(self, nodes: list[Node] | None = None) -> None:
         """Initialize the Network object."""
         self._nodes: list[Node] = []
+
+        if nodes is None:
+            nodes = []
 
         for n in nodes:
             self.add_node(n)
 
+    def __len__(self) -> int:
+        """Return the number of nodes in the network.
+
+        Returns:
+            int: Number of nodes contained in the network.
+        """
+        return len(self._nodes)
+
+    def __iter__(self) -> Iterator[Node]:
+        """Iterate over nodes in insertion order.
+
+        Yields:
+            Node: Next node in the network.
+        """
+        for n in self.list_nodes():
+            yield n
+
+    # endregion
+
+    # ! Node management methods
+    # region
     def add_node(self, node: Node) -> None:
         """
         Add a `Node` instance to the network.
@@ -97,179 +123,10 @@ class Network:
         """Return a shallow copy of the node list."""
         return self._nodes
 
-    def __len__(self) -> int:
-        """Return the number of nodes in the network.
+    # endregion
 
-        Returns:
-            int: Number of nodes contained in the network.
-        """
-        return len(self._nodes)
-
-    def __iter__(self) -> Iterator[Node]:
-        """Iterate over nodes in insertion order.
-
-        Yields:
-            Node: Next node in the network.
-        """
-        for n in self.list_nodes():
-            yield n
-
-    def validate(self) -> bool:
-        """
-        Validate network structure according to class requirements.
-
-        Requirements validated:
-            - Each network must have at least one origin link or onramp
-            - Each network must have at least one destination
-            - Each offramp needs to be connected to a destination
-            - Each node needs to have at least one incoming and one outgoing link
-            - All nodes in the network must be connected through links
-
-        Raises:
-            ValueError: if any of the requirements are violated.
-        """
-
-        # verify that the network is not empty
-        if len(self._nodes) < 2:
-            raise ValueError("Network contains less than 2 nodes.")
-
-        # call node-level validation (ensures at least one incoming & outgoing per node)
-        for node in self.list_nodes():
-            if not isinstance(node, Node):
-                raise TypeError("Network contains non-Node object.")
-
-            node.validate()
-
-        # ensure that the network has at least one origin / onramp and one destination
-        has_origin_or_onramp = False
-        has_destination = False
-
-        # collect all destination instances present in network (to check offramp targets)
-        dests: set[Destination] = set()
-
-        for node in self.list_nodes():
-            for link in list(node.incoming) + list(node.outgoing):
-                if isinstance(link, (Origin, Onramp)):
-                    has_origin_or_onramp = True
-                if isinstance(link, Destination):
-                    has_destination = True
-                    dests.add(link)
-                if isinstance(link, Offramp) and link.destination is not None:
-                    has_destination = True
-                    dests.add(link.destination)
-
-        if not has_origin_or_onramp:
-            raise ValueError("Network must contain at least one origin or onramp link.")
-
-        if not has_destination:
-            raise ValueError("Network must contain at least one destination.")
-
-        # check that every offramp has a destination
-        for node in self.list_nodes():
-            for link in list(node.incoming) + list(node.outgoing):
-                if isinstance(link, Offramp):
-                    if link.destination is None:
-                        raise ValueError("Offramp is not connected to a destination.")
-
-        # connectivity: use two DFS passes (original and reversed edges)
-        # build adjacency (directed) between nodes: A -> B if any link in A.outgoing is in B.incoming
-        num_nodes = len(self._nodes)
-
-        # validate that each node's incoming links have their destination_node_id set
-        # to this node's id, and each outgoing link has its origin_node_id set to
-        # this node's id. This ensures the per-link origin/destination metadata is
-        # consistent with the node topology.
-        for node in self.list_nodes():
-            for link in node.incoming:
-                if hasattr(link, "destination_node_id"):
-                    if link.destination_node_id is None:
-                        raise ValueError(
-                            f"Incoming link {getattr(link,'id',repr(link))} has no destination_node_id set for node {node.id}"
-                        )
-                    if link.destination_node_id != node.id:
-                        raise ValueError(
-                            f"Incoming link {getattr(link,'id',repr(link))} destination_node_id mismatch: expected {node.id}, got {link.destination_node_id}"
-                        )
-                else:
-                    raise ValueError(
-                        f"Incoming link {getattr(link,'id',repr(link))} missing destination_node_id attribute for node {node.id}"
-                    )
-
-            for link in node.outgoing:
-                if hasattr(link, "origin_node_id"):
-                    if link.origin_node_id is None:
-                        raise ValueError(
-                            f"Outgoing link {getattr(link,'id',repr(link))} has no origin_node_id set for node {node.id}"
-                        )
-                    if link.origin_node_id != node.id:
-                        raise ValueError(
-                            f"Outgoing link {getattr(link,'id',repr(link))} origin_node_id mismatch: expected {node.id}, got {link.origin_node_id}"
-                        )
-                else:
-                    raise ValueError(
-                        f"Outgoing link {getattr(link,'id',repr(link))} missing origin_node_id attribute for node {node.id}"
-                    )
-
-        # build a mapping from node id -> index for quick lookups
-        node_id_to_index: dict[str, int] = {
-            n.id: i for i, n in enumerate(self.list_nodes())
-        }
-
-        # build directed adjacency using each outgoing link's destination id.
-        adj_forward: dict[int, set[int]] = {i: set() for i in range(num_nodes)}
-        for i, node in enumerate(self.list_nodes()):
-            for link in node.outgoing:
-                dest_id = getattr(link, "destination_node_id", None)
-                if dest_id is None:
-                    continue
-
-                j = node_id_to_index.get(dest_id)
-                if j is not None and i != j:
-                    adj_forward[i].add(j)
-
-        # reversed adjacency
-        adj_reversed: dict[int, set[int]] = {i: set() for i in range(num_nodes)}
-        for u, nbrs in adj_forward.items():
-            for v in nbrs:
-                adj_reversed[v].add(u)
-
-        # choose a start node (index 0)
-        start = 0
-        vis1 = [False] * num_nodes
-        vis2 = [False] * num_nodes
-
-        # iterative DFS on original graph
-        stack = [start]
-        while stack:
-            cur = stack.pop()
-            if vis1[cur]:
-                continue
-
-            vis1[cur] = True
-            for nb in adj_forward.get(cur, ()):
-                if not vis1[nb]:
-                    stack.append(nb)
-
-        # iterative DFS on reversed graph
-        stack = [start]
-        while stack:
-            cur = stack.pop()
-            if vis2[cur]:
-                continue
-            vis2[cur] = True
-            for nb in adj_reversed.get(cur, ()):
-                if not vis2[nb]:
-                    stack.append(nb)
-
-        # any node that is neither reachable from start nor can reach start is disconnected
-        unconnected = [
-            self._nodes[i].id for i in range(num_nodes) if (not vis1[i] and not vis2[i])
-        ]
-        if unconnected:
-            raise ValueError(f"Network contains unconnected components: {unconnected}")
-
-        # all checks passed
-        return True
+    # ! Converstion / reshaping methods
+    # region
 
     def network_dict_to_state_vec(
         self,
@@ -371,9 +228,8 @@ class Network:
                         )
 
             # initialize outgoing links (full for motorlinks, queue and flow for offramp, flow for destination)
+            num_splits += len(node.outgoing)
             for link in node.outgoing:
-                num_splits += len(node.outgoing)
-
                 if isinstance(link, MotorwayLink):
                     num_cells = len(link)
                     init_flow = flow_dict[link.id]
@@ -456,6 +312,10 @@ class Network:
                             f"Initial queue for offramp {link.id} must be a scalar."
                         )
 
+                    # count destination connected to offramp for disturbance vector sizing
+                    if link.destination is not None:
+                        num_destinations += 1
+
                 elif isinstance(link, Destination):
                     init_flow = flow_dict[link.id]
                     num_destinations += 1
@@ -504,9 +364,7 @@ class Network:
             boundary_condition_dict: Mapping destination id -> downstream density (veh/km/lane).
 
         Returns:
-            A tuple `(d, num_turning_rates)` where `d` is a 1-D NumPy array of
-            concatenated disturbances and `num_turning_rates` is the number of
-            turning-rate scalars included.
+            Disturbance vector containing all exogenous inputs for simulation.
 
         Raises:
             ValueError: If required demand or turning-rate entries are missing
@@ -795,89 +653,250 @@ class Network:
 
         return origin_demands, onramp_demands, turning_rates, boundary_conditions
 
-    def simulate(
-        self,
-        duration: float,
-        dt: float,
-        # model: Union["CTM", "METANET"], # TODO: re-introduce this union of models as soon as CTM supports the new network structure (also update model params type)
-        model: METANET,
-        model_params: METANETParams,
-        origin_demands: dict[
-            str, Callable[[float], float]
-        ],  # for each origin id, provide a callable function returning the demand at time t
-        onramp_demands: dict[
-            str, Callable[[float], float]
-        ],  # for each onramp id, provide a callable function returning the demand at time t
-        turning_rates: dict[
-            str, Callable[[float], dict[str, float]]
-        ],  # for each node id, provide a callable function returning a dict mapping outgoing link ids to split ratios at time t
-        destination_boundary_conditions: dict[
-            str, Callable[[float], float]
-        ],  # for each destination id, provide a callable function returning the downstream density at time t
-        initial_flows: (
-            dict[str, float | NDArray[np.float64]] | None
-        ) = None,  # for each link id, provide either a float (uniform initial flow) or an array of floats (per-cell initial flows; default: 0)
-        initial_densities: (
-            dict[str, float | NDArray[np.float64]] | None
-        ) = None,  # for each link id, provide either a float (uniform initial density) or an array of floats (per-cell initial densities; default: 0)
-        initial_speeds: (
-            dict[str, float | NDArray[np.float64]] | None
-        ) = None,  # for each link id, provide either a float (uniform initial speed) or an array of floats (per-cell initial speeds; default: free-flow speed)
-        initial_origin_queues: (
-            dict[str, float] | None
-        ) = None,  # for each origin id, provide the initial queue length (default: 0)
-        initial_onramp_queues: (
-            dict[str, float] | None
-        ) = None,  # for each onramp id, provide the initial queue length (default: 0)
-        initial_offramp_queues: (
-            dict[str, float] | None
-        ) = None,  # for each offramp id, provide the initial queue length (default: 0)
-        preferred_cell_size: float = 0.5,  # preferred size of link segments (subject to CFL condition and link length divisibility)
-        plot_results: bool = True,
-        show_plots: bool = False,
-        results_dir: (
-            str | None
-        ) = None,  # directory for saving results; if None and plot_results=True, uses timestamped folder in results/
-    ):
-        """Simulate the network over a time horizon using the provided model.
+    # endregion
 
-        Runs a forward simulation using the provided traffic `model` (which
-        must expose `network_update_function`) and the per-component callable
-        inputs for demands, turning rates and boundary conditions. The
-        routine will discretize motorway links, initialize state and
-        disturbance vectors, perform time-stepping to update the state, and
-        optionally plot and save results.
+    # ! Simulation and validation
+    # region
+    def validate(self) -> bool:
+        """
+        Validate network structure according to class requirements.
 
-        Args:
-            duration: Total simulation time (same units as demand functions, e.g. hours).
-            dt: Simulation time step (same units as `duration`).
-            model: Traffic model instance providing `network_update_function`.
-            origin_demands: Mapping origin id -> callable(time) -> demand (veh/h).
-            onramp_demands: Mapping onramp id -> callable(time) -> demand (veh/h).
-            turning_rates: Mapping node id -> callable(time) -> dict[outgoing_link_id -> split rate].
-            destination_boundary_conditions: Mapping destination id -> callable(time) -> downstream density (veh/km/lane).
-            initial_flows: Optional mapping link id -> scalar or per-cell array for initial flows (default: zeros).
-            initial_densities: Optional mapping link id -> scalar or per-cell array for initial densities (default: zeros for mainline links).
-            initial_speeds: Optional mapping link id -> scalar or per-cell array for initial speeds (default: free-flow speed for motorway links).
-            initial_origin_queues: Optional mapping origin id -> initial queue length (veh).
-            initial_onramp_queues: Optional mapping onramp id -> initial queue length (veh).
-            initial_offramp_queues: Optional mapping offramp id -> initial queue length (veh).
-            preferred_cell_size: Preferred link segmentation size (km) used when partitioning motorway links.
-            plot_results: If True, generate plots and save results to `results_dir`.
-            show_plots: If True, display plots interactively.
-            results_dir: Directory for saving results; if None a timestamped folder under `results/` is used when `plot_results` is True.
-
-        Returns:
-            tuple: `(time_array, state_history, disturbance_history)` where
-                - `time_array` is a 1-D NumPy array of time points,
-                - `state_history` is a 2-D NumPy array of packed states over time (state_size x timesteps),
-                - `disturbance_history` is a 2-D NumPy array of packed disturbances over time (disturbance_size x timesteps-1).
+        Requirements validated:
+            - Each network must have at least one origin link or onramp
+            - Each network must have at least one destination
+            - Each offramp needs to be connected to a destination
+            - Each node needs to have at least one incoming and one outgoing link
+            - All nodes in the network must be connected through links
 
         Raises:
-            ValueError: If required inputs are missing or inconsistent with the network topology.
+            ValueError: if any of the requirements are violated.
         """
-        # ! 1 - validate all inputs as required
-        model.validate_model_params(model_params)
+
+        # verify that the network is not empty
+        if len(self._nodes) < 2:
+            raise ValueError("Network contains less than 2 nodes.")
+
+        # call node-level validation (ensures at least one incoming & outgoing per node)
+        for node in self.list_nodes():
+            if not isinstance(node, Node):
+                raise TypeError("Network contains non-Node object.")
+
+            node.validate()
+
+        # ensure that the network has at least one origin / onramp and one destination
+        has_origin_or_onramp = False
+        has_destination = False
+
+        # collect all destination instances present in network (to check offramp targets)
+        dests: set[Destination] = set()
+
+        for node in self.list_nodes():
+            for link in list(node.incoming) + list(node.outgoing):
+                if isinstance(link, (Origin, Onramp)):
+                    has_origin_or_onramp = True
+                if isinstance(link, Destination):
+                    has_destination = True
+                    dests.add(link)
+                if isinstance(link, Offramp) and link.destination is not None:
+                    has_destination = True
+                    dests.add(link.destination)
+
+        if not has_origin_or_onramp:
+            raise ValueError("Network must contain at least one origin or onramp link.")
+
+        if not has_destination:
+            raise ValueError("Network must contain at least one destination.")
+
+        # check that every offramp has a destination
+        for node in self.list_nodes():
+            for link in list(node.incoming) + list(node.outgoing):
+                if isinstance(link, Offramp):
+                    if link.destination is None:
+                        raise ValueError("Offramp is not connected to a destination.")
+
+        # connectivity: use two DFS passes (original and reversed edges)
+        # build adjacency (directed) between nodes: A -> B if any link in A.outgoing is in B.incoming
+        num_nodes = len(self._nodes)
+
+        # validate that each node's incoming links have their destination_node_id set
+        # to this node's id, and each outgoing link has its origin_node_id set to
+        # this node's id. This ensures the per-link origin/destination metadata is
+        # consistent with the node topology.
+        for node in self.list_nodes():
+            for link in node.incoming:
+                if hasattr(link, "destination_node_id"):
+                    if link.destination_node_id is None:
+                        raise ValueError(
+                            f"Incoming link {getattr(link,'id',repr(link))} has no destination_node_id set for node {node.id}"
+                        )
+                    if link.destination_node_id != node.id:
+                        raise ValueError(
+                            f"Incoming link {getattr(link,'id',repr(link))} destination_node_id mismatch: expected {node.id}, got {link.destination_node_id}"
+                        )
+                else:
+                    raise ValueError(
+                        f"Incoming link {getattr(link,'id',repr(link))} missing destination_node_id attribute for node {node.id}"
+                    )
+
+            for link in node.outgoing:
+                if hasattr(link, "origin_node_id"):
+                    if link.origin_node_id is None:
+                        raise ValueError(
+                            f"Outgoing link {getattr(link,'id',repr(link))} has no origin_node_id set for node {node.id}"
+                        )
+                    if link.origin_node_id != node.id:
+                        raise ValueError(
+                            f"Outgoing link {getattr(link,'id',repr(link))} origin_node_id mismatch: expected {node.id}, got {link.origin_node_id}"
+                        )
+                else:
+                    raise ValueError(
+                        f"Outgoing link {getattr(link,'id',repr(link))} missing origin_node_id attribute for node {node.id}"
+                    )
+
+        # build a mapping from node id -> index for quick lookups
+        node_id_to_index: dict[str, int] = {
+            n.id: i for i, n in enumerate(self.list_nodes())
+        }
+
+        # build directed adjacency using each outgoing link's destination id.
+        adj_forward: dict[int, set[int]] = {i: set() for i in range(num_nodes)}
+        for i, node in enumerate(self.list_nodes()):
+            for link in node.outgoing:
+                dest_id = getattr(link, "destination_node_id", None)
+                if dest_id is None:
+                    continue
+
+                j = node_id_to_index.get(dest_id)
+                if j is not None and i != j:
+                    adj_forward[i].add(j)
+
+        # reversed adjacency
+        adj_reversed: dict[int, set[int]] = {i: set() for i in range(num_nodes)}
+        for u, nbrs in adj_forward.items():
+            for v in nbrs:
+                adj_reversed[v].add(u)
+
+        # choose a start node (index 0)
+        start = 0
+        vis1 = [False] * num_nodes
+        vis2 = [False] * num_nodes
+
+        # iterative DFS on original graph
+        stack = [start]
+        while stack:
+            cur = stack.pop()
+            if vis1[cur]:
+                continue
+
+            vis1[cur] = True
+            for nb in adj_forward.get(cur, ()):
+                if not vis1[nb]:
+                    stack.append(nb)
+
+        # iterative DFS on reversed graph
+        stack = [start]
+        while stack:
+            cur = stack.pop()
+            if vis2[cur]:
+                continue
+            vis2[cur] = True
+            for nb in adj_reversed.get(cur, ()):
+                if not vis2[nb]:
+                    stack.append(nb)
+
+        # any node that is neither reachable from start nor can reach start is disconnected
+        unconnected = [
+            self._nodes[i].id for i in range(num_nodes) if (not vis1[i] and not vis2[i])
+        ]
+        if unconnected:
+            raise ValueError(f"Network contains unconnected components: {unconnected}")
+
+        # all checks passed
+        return True
+
+    def _validate_state_history_numerical(
+        self,
+        flows: dict[str, NDArray[np.float64] | casadi.SX],
+        densities: dict[str, NDArray[np.float64] | casadi.SX],
+        speeds: dict[str, NDArray[np.float64] | casadi.SX],
+        origin_queues: dict[str, float | casadi.SX],
+        onramp_queues: dict[str, float | casadi.SX],
+        offramp_queues: dict[str, float | casadi.SX],
+    ) -> None:
+        """Validate that state-history dictionaries contain numerical values.
+
+        This helper checks that the provided per-link and per-queue dictionaries
+        contain numeric NumPy arrays (for flows, densities, speeds) or scalar
+        numeric values (for queues). It raises a ValueError if any non-numerical
+        entries are found.
+
+        Args:
+            flows: Mapping link id -> per-cell flow arrays or CasADi SX slices.
+            densities: Mapping motorway link id -> per-cell density arrays or CasADi SX.
+            speeds: Mapping motorway link id -> per-cell speed arrays or CasADi SX.
+            origin_queues: Mapping origin id -> scalar queue values.
+            onramp_queues: Mapping onramp id -> scalar queue values.
+            offramp_queues: Mapping offramp id -> scalar queue values.
+
+        Raises:
+            ValueError: If any entry is not a numeric NumPy array or numeric scalar.
+        """
+
+        if (
+            not all(
+                isinstance(val, np.ndarray) and np.issubdtype(val.dtype, np.floating)
+                for val in flows.values()
+            )
+            or not all(
+                isinstance(val, np.ndarray) and np.issubdtype(val.dtype, np.floating)
+                for val in densities.values()
+            )
+            or not all(
+                isinstance(val, np.ndarray) and np.issubdtype(val.dtype, np.floating)
+                for val in speeds.values()
+            )
+            or not all(
+                isinstance(val, (float, np.floating)) for val in origin_queues.values()
+            )
+            or not all(
+                isinstance(val, (float, np.floating)) for val in onramp_queues.values()
+            )
+            or not all(
+                isinstance(val, (float, np.floating)) for val in offramp_queues.values()
+            )
+        ):
+            raise ValueError("Non-numerical values found in state history.")
+
+    def _validate_initial_conditions_numerical(
+        self,
+        origin_demands: dict[str, Callable[[float], float]],
+        onramp_demands: dict[str, Callable[[float], float]],
+        turning_rates: dict[str, Callable[[float], dict[str, float]]],
+        destination_boundary_conditions: dict[str, Callable[[float], float]],
+        initial_flows: dict[str, float | NDArray[np.float64]] | None = None,
+        initial_densities: dict[str, float | NDArray[np.float64]] | None = None,
+        initial_speeds: dict[str, float | NDArray[np.float64]] | None = None,
+    ):
+        """Validate presence and basic consistency of initial-condition inputs.
+
+        Ensures that for each node in the network the required callable demand
+        and turning-rate functions are provided, and (if arrays of initial
+        flows/densities/speeds are supplied) that entries exist for the
+        respective links. Raises descriptive ValueError messages on missing
+        or inconsistent inputs.
+
+        Args:
+            origin_demands: Mapping origin id -> callable(time) -> demand.
+            onramp_demands: Mapping onramp id -> callable(time) -> demand.
+            turning_rates: Mapping node id -> callable(time) -> dict[outgoing->rate].
+            destination_boundary_conditions: Mapping destination id -> callable(time) -> density.
+            initial_flows: Optional mapping link id -> scalar or per-cell array for initial flows.
+            initial_densities: Optional mapping link id -> scalar or per-cell array for initial densities.
+            initial_speeds: Optional mapping link id -> scalar or per-cell array for initial speeds.
+
+        Raises:
+            ValueError: If required functions or initial arrays are missing or inconsistent.
+        """
 
         for node in self.list_nodes():
             # validate node structure
@@ -945,45 +964,88 @@ class Network:
                             f"Initial speed for link {link.id} not provided (required for onramp, offramp, motorway links)."
                         )
 
-        # ! 2 - discretize mainline motorway links according to preferred cell size and CFL condition -> create cells and link correctly
-        for node in self.list_nodes():
-            for link in node.outgoing:
-                if isinstance(link, MotorwayLink):
-                    if (
-                        link.destination_node_id is None
-                        or link.destination_node_id == ""
-                    ):
-                        raise ValueError(
-                            f"Motorway link {getattr(link,'id',repr(link))} has no destination_node_id set."
-                        )
+    def _compute_upcoming_lane_drop(self, link: MotorwayLink) -> int:
+        """Compute lane drop between a motorway link and its downstream link.
 
-                    # if the node at the end of the current link represents a lane drop, set it accordingly
-                    upcoming_lane_drop = 0
-                    dest_node = self.get_node(link.destination_node_id)
-                    if (
-                        dest_node is not None
-                        and len(dest_node.incoming) == 1
-                        and len(dest_node.outgoing) == 1
-                        and (
-                            isinstance(dest_node.outgoing[0], MotorwayLink)
-                            or isinstance(dest_node.outgoing[0], Offramp)
-                        )
-                    ):
-                        downstream_link = dest_node.outgoing[0]
-                        if downstream_link.lanes < link.lanes:
-                            upcoming_lane_drop = link.lanes - downstream_link.lanes
+        Checks the downstream node connected to `link` and, if the downstream
+        successor is a motorway link or an offramp with fewer lanes, returns
+        the number of lanes that are dropped. Returns 0 if no drop is detected.
 
-                    link.partition_link(
-                        preferred_cell_size=preferred_cell_size,
-                        dt=dt,
-                        upcoming_lane_drop=upcoming_lane_drop,
-                    )
+        Args:
+            link: The `MotorwayLink` to inspect.
 
-        # ! 3 - augment the node and link states such that complete information can be guaranteed
-        # states ordered according to node ordering and their incoming and outgoing links
-        # e.g. flows: [ node1.incoming[0].flows, node1.incoming[1].flows, ..., node1.outgoing[0].flows, ... , nodeN.outgoing[M].flows ]
-        # as incoming links, only onramps are considered (motorway links are outgoing from another node)
-        # stacking into state vector is done through dedicated helper function
+        Returns:
+            Number of lanes dropped (non-negative integer).
+
+        Raises:
+            ValueError: If `link.destination_node_id` is not set.
+        """
+
+        if link.destination_node_id is None or link.destination_node_id == "":
+            raise ValueError(
+                f"Motorway link {getattr(link,'id',repr(link))} has no destination_node_id set."
+            )
+
+        upcoming_lane_drop = 0
+        dest_node = self.get_node(link.destination_node_id)
+        if (
+            dest_node is not None
+            and len(dest_node.incoming) == 1
+            and len(dest_node.outgoing) == 1
+            and (
+                isinstance(dest_node.outgoing[0], MotorwayLink)
+                or isinstance(dest_node.outgoing[0], Offramp)
+            )
+        ):
+            downstream_link = dest_node.outgoing[0]
+            if downstream_link.lanes < link.lanes:
+                upcoming_lane_drop = link.lanes - downstream_link.lanes
+
+        return upcoming_lane_drop
+
+    def _augment_network_initialization(
+        self,
+        initial_flows: dict[str, float | NDArray[np.float64]] | None,
+        initial_densities: dict[str, float | NDArray[np.float64]] | None,
+        initial_speeds: dict[str, float | NDArray[np.float64]] | None,
+        initial_origin_queues: dict[str, float] | None,
+        initial_onramp_queues: dict[str, float] | None,
+        initial_offramp_queues: dict[str, float] | None,
+        turning_rates: dict[str, Callable[[float], dict[str, float]]],
+        destination_boundary_conditions: dict[str, Callable[[float], float]],
+    ):
+        """Prepare and augment initial per-link and per-queue dictionaries.
+
+        This method fills defaults for missing initial states (flows, densities,
+        speeds, queues) and ensures that turning-rate and destination boundary
+        condition callables are available for all nodes/links. It returns a
+        tuple with the initialized dictionaries used by the simulator.
+
+        Args:
+            initial_flows: Optional mapping link id -> scalar or per-cell array for initial flows.
+            initial_densities: Optional mapping link id -> scalar or per-cell array for initial densities.
+            initial_speeds: Optional mapping link id -> scalar or per-cell array for initial speeds.
+            initial_origin_queues: Optional mapping origin id -> initial queue length.
+            initial_onramp_queues: Optional mapping onramp id -> initial queue length.
+            initial_offramp_queues: Optional mapping offramp id -> initial queue length.
+            turning_rates: Mapping node id -> callable(time) -> turning-rate dict.
+            destination_boundary_conditions: Mapping destination id -> callable(time) -> downstream density.
+
+        Returns:
+            Tuple containing:
+            - link_flows_dict: mapping link id -> per-cell flows (np.ndarray)
+            - link_densities_dict: mapping link id -> per-cell densities (np.ndarray)
+            - link_speeds_dict: mapping link id -> per-cell speeds (np.ndarray)
+            - origin_queues_dict: mapping origin id -> scalar queue
+            - onramp_queues_dict: mapping onramp id -> scalar queue
+            - offramp_queues_dict: mapping offramp id -> scalar queue
+            - turning_rates_dict: mapping node id -> callable(time) -> dict[outgoing->rate]
+            - dest_boundary_conditions_dict: mapping destination id -> callable(time) -> density
+
+        Raises:
+            ValueError: If an offramp lacks a connected destination.
+        """
+
         link_flows_dict: dict[str, NDArray[np.float64]] = {}
         link_densities_dict: dict[str, NDArray[np.float64]] = {}
         link_speeds_dict: dict[str, NDArray[np.float64]] = {}
@@ -1031,11 +1093,15 @@ class Network:
                         or link.id not in initial_origin_queues
                     ):
                         origin_queues_dict[link.id] = 0.0
+                    elif isinstance(link, Origin):
+                        origin_queues_dict[link.id] = initial_origin_queues[link.id]
                     elif isinstance(link, Onramp) and (
                         initial_onramp_queues is None
                         or link.id not in initial_onramp_queues
                     ):
                         onramp_queues_dict[link.id] = 0.0
+                    elif isinstance(link, Onramp):
+                        onramp_queues_dict[link.id] = initial_onramp_queues[link.id]
 
             # initialize outgoing links (mainline links, offramps, and destinations)
             for link in node.outgoing:
@@ -1201,42 +1267,70 @@ class Network:
                     else:
                         link_flows_dict[link.id] = np.zeros(1)
 
-        # combine state from separate arrays into single state vector if required by model
-        # disturbance = demands and split ratios will be computed with passed functions at simulation time
-        (
-            x0,
-            num_flows,
-            num_densities,
-            num_speeds,
-            num_origins,
-            num_onramps,
-            num_offramps,
-            num_splits,
-            num_destinations,
-        ) = self.network_dict_to_state_vec(
-            flow_dict=link_flows_dict,
-            density_dict=link_densities_dict,
-            speed_dict=link_speeds_dict,
-            origin_queue_dict=origin_queues_dict,
-            onramp_queue_dict=onramp_queues_dict,
-            offramp_queue_dict=offramp_queues_dict,
+        return (
+            link_flows_dict,
+            link_densities_dict,
+            link_speeds_dict,
+            origin_queues_dict,
+            onramp_queues_dict,
+            offramp_queues_dict,
+            turning_rates_dict,
+            dest_boundary_conditions_dict,
         )
 
-        # ! 4 - generate the model udpate equations according to the selected model and the network structure
-        system: casadi.Function = model.network_update_function(
-            network=self,
-            num_flows=num_flows,
-            num_densities=num_densities,
-            num_speeds=num_speeds,
-            num_origins=num_origins,
-            num_onramps=num_onramps,
-            num_offramps=num_offramps,
-            num_splits=num_splits,
-            num_destinations=num_destinations,
-            dt=dt,
-        )
+    def _run_simulation_loop(
+        self,
+        system: casadi.Function,
+        duration: float,
+        dt: float,
+        x0: NDArray[np.float64],
+        num_origins: int,
+        num_onramps: int,
+        num_splits: int,
+        num_destinations: int,
+        origin_queues_dict: dict,
+        onramp_queues_dict: dict,
+        turning_rates_dict: dict,
+        dest_boundary_conditions_dict: dict,
+        origin_demands: dict,
+        onramp_demands: dict,
+        model,
+        model_params,
+    ):
+        """Execute the discrete-time simulation loop for the network.
 
-        # ! 6 - run the simulation loop, update all link states, and track outputs
+        Advances the system state using the provided CasADi `system` update
+        function for the requested duration and time-step. It evaluates the
+        callable disturbance inputs (origin/onramp demands, turning rates and
+        boundary conditions) at each time step, forms the disturbance vector,
+        calls the model update, and stores state and disturbance histories.
+
+        Args:
+            system: CasADi function implementing the network state update.
+            duration: Total simulation time (same units as `dt`).
+            dt: Time-step for integration.
+            x0: Initial packed state vector (NumPy array).
+            num_origins: Number of origin queue entries in disturbance vector.
+            num_onramps: Number of onramp queue entries in disturbance vector.
+            num_splits: Number of turning-rate scalars per time step.
+            num_destinations: Number of destination boundary condition entries.
+            origin_queues_dict: Mapping origin id -> initial queue (used to order disturbances).
+            onramp_queues_dict: Mapping onramp id -> initial queue (used to order disturbances).
+            turning_rates_dict: Mapping node id -> callable(time) -> turning-rate dict.
+            dest_boundary_conditions_dict: Mapping destination id -> callable(time) -> density.
+            origin_demands: Mapping origin id -> callable(time) -> demand.
+            onramp_demands: Mapping onramp id -> callable(time) -> demand.
+            turning_rates: Mapping node id -> callable(time) -> turning-rate dict (user-provided).
+            model: Model instance (provides parameter conversion helper).
+            model_params: Parameters passed to the model when building `params`.
+
+        Returns:
+            Tuple `(time_array, state_history, disturbance_history)` where
+            - `time_array` is a 1-D NumPy array of time points,
+            - `state_history` is a 2-D NumPy array of packed states over time,
+            - `disturbance_history` is a 2-D NumPy array of packed disturbances over time.
+        """
+
         time_array: NDArray[np.float64] = np.arange(
             0, duration + dt, dt, dtype=np.float64
         )
@@ -1297,6 +1391,197 @@ class Network:
             state_history[:, t + 1] = np.array(x_next).flatten()
             disturbance_history[:, t] = d
 
+        return time_array, state_history, disturbance_history
+
+    def simulate(
+        self,
+        duration: float,
+        dt: float,
+        # model: Union["CTM", "METANET"], # TODO: re-introduce this union of models as soon as CTM supports the new network structure (also update model params type)
+        model: METANET,
+        model_params: METANETParams,
+        origin_demands: dict[
+            str, Callable[[float], float]
+        ],  # for each origin id, provide a callable function returning the demand at time t
+        onramp_demands: dict[
+            str, Callable[[float], float]
+        ],  # for each onramp id, provide a callable function returning the demand at time t
+        turning_rates: dict[
+            str, Callable[[float], dict[str, float]]
+        ],  # for each node id, provide a callable function returning a dict mapping outgoing link ids to split ratios at time t
+        destination_boundary_conditions: dict[
+            str, Callable[[float], float]
+        ],  # for each destination id, provide a callable function returning the downstream density at time t
+        initial_flows: (
+            dict[str, float | NDArray[np.float64]] | None
+        ) = None,  # for each link id, provide either a float (uniform initial flow) or an array of floats (per-cell initial flows; default: 0)
+        initial_densities: (
+            dict[str, float | NDArray[np.float64]] | None
+        ) = None,  # for each link id, provide either a float (uniform initial density) or an array of floats (per-cell initial densities; default: 0)
+        initial_speeds: (
+            dict[str, float | NDArray[np.float64]] | None
+        ) = None,  # for each link id, provide either a float (uniform initial speed) or an array of floats (per-cell initial speeds; default: free-flow speed)
+        initial_origin_queues: (
+            dict[str, float] | None
+        ) = None,  # for each origin id, provide the initial queue length (default: 0)
+        initial_onramp_queues: (
+            dict[str, float] | None
+        ) = None,  # for each onramp id, provide the initial queue length (default: 0)
+        initial_offramp_queues: (
+            dict[str, float] | None
+        ) = None,  # for each offramp id, provide the initial queue length (default: 0)
+        preferred_cell_size: float = 0.5,  # preferred size of link segments (subject to CFL condition and link length divisibility)
+        plot_results: bool = True,
+        show_plots: bool = False,
+        results_dir: (
+            str | None
+        ) = None,  # directory for saving results; if None and plot_results=True, uses timestamped folder in results/
+    ):
+        """Simulate the network over a time horizon using the provided model.
+
+        Runs a forward simulation using the provided traffic `model` (which
+        must expose `network_update_function`) and the per-component callable
+        inputs for demands, turning rates and boundary conditions. The
+        routine will discretize motorway links, initialize state and
+        disturbance vectors, perform time-stepping to update the state, and
+        optionally plot and save results.
+
+        Args:
+            duration: Total simulation time (same units as demand functions, e.g. hours).
+            dt: Simulation time step (same units as `duration`).
+            model: Traffic model instance providing `network_update_function`.
+            origin_demands: Mapping origin id -> callable(time) -> demand (veh/h).
+            onramp_demands: Mapping onramp id -> callable(time) -> demand (veh/h).
+            turning_rates: Mapping node id -> callable(time) -> dict[outgoing_link_id -> split rate].
+            destination_boundary_conditions: Mapping destination id -> callable(time) -> downstream density (veh/km/lane).
+            initial_flows: Optional mapping link id -> scalar or per-cell array for initial flows (default: zeros).
+            initial_densities: Optional mapping link id -> scalar or per-cell array for initial densities (default: zeros for mainline links).
+            initial_speeds: Optional mapping link id -> scalar or per-cell array for initial speeds (default: free-flow speed for motorway links).
+            initial_origin_queues: Optional mapping origin id -> initial queue length (veh).
+            initial_onramp_queues: Optional mapping onramp id -> initial queue length (veh).
+            initial_offramp_queues: Optional mapping offramp id -> initial queue length (veh).
+            preferred_cell_size: Preferred link segmentation size (km) used when partitioning motorway links.
+            plot_results: If True, generate plots and save results to `results_dir`.
+            show_plots: If True, display plots interactively.
+            results_dir: Directory for saving results; if None a timestamped folder under `results/` is used when `plot_results` is True.
+
+        Returns:
+            tuple: `(time_array, state_history, disturbance_history)` where
+                - `time_array` is a 1-D NumPy array of time points,
+                - `state_history` is a 2-D NumPy array of packed states over time (state_size x timesteps),
+                - `disturbance_history` is a 2-D NumPy array of packed disturbances over time (disturbance_size x timesteps-1).
+
+        Raises:
+            ValueError: If required inputs are missing or inconsistent with the network topology.
+        """
+        # ! 1 - validate all inputs as required
+        # validate that all required model parameters are provided
+        model.validate_model_params(model_params)
+
+        # validate that all required initial conditions are provided
+        self._validate_initial_conditions_numerical(
+            origin_demands=origin_demands,
+            onramp_demands=onramp_demands,
+            turning_rates=turning_rates,
+            destination_boundary_conditions=destination_boundary_conditions,
+            initial_flows=initial_flows,
+            initial_densities=initial_densities,
+            initial_speeds=initial_speeds,
+        )
+
+        # ! 2 - discretize mainline motorway links according to preferred cell size and CFL condition -> create cells and link correctly
+        for node in self.list_nodes():
+            for link in node.outgoing:
+                if isinstance(link, MotorwayLink):
+                    # if the node at the end of the current link represents a lane drop, set it accordingly
+                    upcoming_lane_drop = self._compute_upcoming_lane_drop(link)
+
+                    link.partition_link(
+                        preferred_cell_size=preferred_cell_size,
+                        dt=dt,
+                        upcoming_lane_drop=upcoming_lane_drop,
+                    )
+
+        # ! 3 - augment the node and link states such that complete information can be guaranteed
+        # states ordered according to node ordering and their incoming and outgoing links
+        # e.g. flows: [ node1.incoming[0].flows, node1.incoming[1].flows, ..., node1.outgoing[0].flows, ... , nodeN.outgoing[M].flows ]
+        # as incoming links, only onramps are considered (motorway links are outgoing from another node)
+        # stacking into state vector is done through dedicated helper function
+        (
+            link_flows_dict,
+            link_densities_dict,
+            link_speeds_dict,
+            origin_queues_dict,
+            onramp_queues_dict,
+            offramp_queues_dict,
+            turning_rates_dict,
+            dest_boundary_conditions_dict,
+        ) = self._augment_network_initialization(
+            initial_flows=initial_flows,
+            initial_densities=initial_densities,
+            initial_speeds=initial_speeds,
+            initial_origin_queues=initial_origin_queues,
+            initial_onramp_queues=initial_onramp_queues,
+            initial_offramp_queues=initial_offramp_queues,
+            turning_rates=turning_rates,
+            destination_boundary_conditions=destination_boundary_conditions,
+        )
+
+        # combine state from separate arrays into single state vector if required by model
+        # disturbance = demands and split ratios will be computed with passed functions at simulation time
+        (
+            x0,
+            num_flows,
+            num_densities,
+            num_speeds,
+            num_origins,
+            num_onramps,
+            num_offramps,
+            num_splits,
+            num_destinations,
+        ) = self.network_dict_to_state_vec(
+            flow_dict=link_flows_dict,
+            density_dict=link_densities_dict,
+            speed_dict=link_speeds_dict,
+            origin_queue_dict=origin_queues_dict,
+            onramp_queue_dict=onramp_queues_dict,
+            offramp_queue_dict=offramp_queues_dict,
+        )
+
+        # ! 4 - generate the model udpate equations according to the selected model and the network structure
+        system: casadi.Function = model.network_update_function(
+            network=self,
+            num_flows=num_flows,
+            num_densities=num_densities,
+            num_speeds=num_speeds,
+            num_origins=num_origins,
+            num_onramps=num_onramps,
+            num_offramps=num_offramps,
+            num_splits=num_splits,
+            num_destinations=num_destinations,
+            dt=dt,
+        )
+
+        # ! 6 - run the simulation loop, update all link states, and track outputs
+        time_array, state_history, disturbance_history = self._run_simulation_loop(
+            system=system,
+            duration=duration,
+            dt=dt,
+            x0=cast(NDArray[np.float64], x0),
+            num_origins=num_origins,
+            num_onramps=num_onramps,
+            num_splits=num_splits,
+            num_destinations=num_destinations,
+            origin_queues_dict=origin_queues_dict,
+            onramp_queues_dict=onramp_queues_dict,
+            turning_rates_dict=turning_rates_dict,
+            dest_boundary_conditions_dict=dest_boundary_conditions_dict,
+            origin_demands=origin_demands,
+            onramp_demands=onramp_demands,
+            model=model,
+            model_params=model_params,
+        )
+
         # ! 7 - plotting of simulation results, network structure and saving to results directory
         if plot_results:
             # create timestamped results directory if not specified
@@ -1329,39 +1614,96 @@ class Network:
 
         return time_array, state_history, disturbance_history
 
-    def _validate_state_history_numerical(
-        self,
-        flows: dict[str, NDArray[np.float64] | casadi.SX],
-        densities: dict[str, NDArray[np.float64] | casadi.SX],
-        speeds: dict[str, NDArray[np.float64] | casadi.SX],
-        origin_queues: dict[str, float | casadi.SX],
-        onramp_queues: dict[str, float | casadi.SX],
-        offramp_queues: dict[str, float | casadi.SX],
-    ) -> None:
-        if (
-            not all(
-                isinstance(val, np.ndarray) and np.issubdtype(val.dtype, np.floating)
-                for val in flows.values()
-            )
-            or not all(
-                isinstance(val, np.ndarray) and np.issubdtype(val.dtype, np.floating)
-                for val in densities.values()
-            )
-            or not all(
-                isinstance(val, np.ndarray) and np.issubdtype(val.dtype, np.floating)
-                for val in speeds.values()
-            )
-            or not all(
-                isinstance(val, (float, np.floating)) for val in origin_queues.values()
-            )
-            or not all(
-                isinstance(val, (float, np.floating)) for val in onramp_queues.values()
-            )
-            or not all(
-                isinstance(val, (float, np.floating)) for val in offramp_queues.values()
-            )
-        ):
-            raise ValueError("Non-numerical values found in state history.")
+    # endregion
+
+    # ! Evaluation and result visualizations
+    # region
+    def save_network_structure_txt(self, filepath: str) -> None:
+        """Save network structure to a text file for reference.
+
+        Writes a human-readable representation of the network topology showing
+        nodes, their IDs, connected links with IDs, and the connections between
+        them. The structure is written in a way that starts from origins/onramps
+        and follows the flow through the network.
+
+        Args:
+            filepath: Path where the text file should be saved.
+        """
+        with open(filepath, "w") as f:
+            f.write("=" * 80 + "\n")
+            f.write("NETWORK STRUCTURE\n")
+            f.write("=" * 80 + "\n\n")
+
+            # list all nodes with their IDs
+            f.write(f"Total Nodes: {len(self._nodes)}\n")
+            f.write("-" * 80 + "\n\n")
+
+            # iterate through all nodes and document their connections
+            for node in self.list_nodes():
+                f.write(f"NODE: {node.id}\n")
+                f.write(f"  {'=' * 76}\n")
+
+                # list incoming links
+                if node.incoming:
+                    f.write(f"  Incoming Links ({len(node.incoming)}):\n")
+                    for link in node.incoming:
+                        link_type = type(link).__name__
+                        link_id = getattr(link, "id", "N/A")
+                        origin_node = getattr(link, "origin_node_id", "N/A")
+                        dest_node = getattr(link, "destination_node_id", "N/A")
+
+                        f.write(f"    - {link_type} [ID: {link_id}]\n")
+                        f.write(f"      Origin Node ID: {origin_node}\n")
+                        f.write(f"      Destination Node ID: {dest_node}\n")
+
+                        # add type-specific information
+                        if isinstance(link, MotorwayLink):
+                            f.write(
+                                f"      Length: {link.length} km, Lanes: {link.lanes}, Cells: {len(link)}\n"
+                            )
+                        elif isinstance(link, (Onramp)):
+                            f.write(
+                                f"      Lanes: {link.lanes}, Capacity: {link.Qc} veh/h\n"
+                            )
+                else:
+                    f.write(f"  Incoming Links: None\n")
+
+                # list outgoing links
+                if node.outgoing:
+                    f.write(f"  Outgoing Links ({len(node.outgoing)}):\n")
+                    for link in node.outgoing:
+                        link_type = type(link).__name__
+                        link_id = getattr(link, "id", "N/A")
+                        origin_node = getattr(link, "origin_node_id", "N/A")
+                        dest_node = getattr(link, "destination_node_id", "N/A")
+
+                        f.write(f"    - {link_type} [ID: {link_id}]\n")
+                        f.write(f"      Origin Node ID: {origin_node}\n")
+                        f.write(f"      Destination Node ID: {dest_node}\n")
+
+                        # add type-specific information
+                        if isinstance(link, MotorwayLink):
+                            f.write(
+                                f"      Length: {link.length} km, Lanes: {link.lanes}, Cells: {len(link)}\n"
+                            )
+                        elif isinstance(link, Offramp):
+                            f.write(
+                                f"      Lanes: {link.lanes}, Capacity: {link.Qc} veh/h\n"
+                            )
+                            if link.destination is not None:
+                                f.write(
+                                    f"      Connected Destination: {link.destination.id}\n"
+                                )
+                        elif isinstance(link, Destination):
+                            f.write(f"      (Network exit point)\n")
+                else:
+                    f.write(f"  Outgoing Links: None\n")
+
+                f.write("\n")
+
+            f.write("=" * 80 + "\n")
+            f.write("END OF NETWORK STRUCTURE\n")
+            f.write("=" * 80 + "\n")
 
     def compute_performance_metrics(
         self,
@@ -1439,89 +1781,6 @@ class Network:
         overall_avg_speed: float = VKT / VHT if VHT > 0 else 0.0
 
         return VKT, VHT, float(overall_avg_speed)
-
-    def save_network_structure_txt(self, filepath: str) -> None:
-        """Save network structure to a text file for reference.
-
-        Writes a human-readable representation of the network topology showing
-        nodes, their IDs, connected links with IDs, and the connections between
-        them. The structure is written in a way that starts from origins/onramps
-        and follows the flow through the network.
-
-        Args:
-            filepath: Path where the text file should be saved.
-        """
-        with open(filepath, "w") as f:
-            f.write("=" * 80 + "\n")
-            f.write("NETWORK STRUCTURE\n")
-            f.write("=" * 80 + "\n\n")
-
-            # list all nodes with their IDs
-            f.write(f"Total Nodes: {len(self._nodes)}\n")
-            f.write("-" * 80 + "\n\n")
-
-            # iterate through all nodes and document their connections
-            for node in self.list_nodes():
-                f.write(f"NODE: {node.id}\n")
-                f.write(f"  {'=' * 76}\n")
-
-                # list incoming links
-                if node.incoming:
-                    f.write(f"  Incoming Links ({len(node.incoming)}):\n")
-                    for link in node.incoming:
-                        link_type = type(link).__name__
-                        link_id = getattr(link, "id", "N/A")
-                        origin_node = getattr(link, "origin_node_id", "N/A")
-
-                        f.write(f"    - {link_type} [ID: {link_id}]\n")
-                        f.write(f"      Origin Node: {origin_node}\n")
-
-                        # add type-specific information
-                        if isinstance(link, MotorwayLink):
-                            f.write(
-                                f"      Length: {link.length} km, Lanes: {link.lanes}, Cells: {len(link)}\n"
-                            )
-                        elif isinstance(link, (Onramp)):
-                            f.write(
-                                f"      Lanes: {link.lanes}, Capacity: {link.Qc} veh/h\n"
-                            )
-                else:
-                    f.write(f"  Incoming Links: None\n")
-
-                # list outgoing links
-                if node.outgoing:
-                    f.write(f"  Outgoing Links ({len(node.outgoing)}):\n")
-                    for link in node.outgoing:
-                        link_type = type(link).__name__
-                        link_id = getattr(link, "id", "N/A")
-                        dest_node = getattr(link, "destination_node_id", "N/A")
-
-                        f.write(f"    - {link_type} [ID: {link_id}]\n")
-                        f.write(f"      Destination Node: {dest_node}\n")
-
-                        # add type-specific information
-                        if isinstance(link, MotorwayLink):
-                            f.write(
-                                f"      Length: {link.length} km, Lanes: {link.lanes}, Cells: {len(link)}\n"
-                            )
-                        elif isinstance(link, Offramp):
-                            f.write(
-                                f"      Lanes: {link.lanes}, Capacity: {link.Qc} veh/h\n"
-                            )
-                            if link.destination is not None:
-                                f.write(
-                                    f"      Connected Destination: {link.destination.id}\n"
-                                )
-                        elif isinstance(link, Destination):
-                            f.write(f"      (Network exit point)\n")
-                else:
-                    f.write(f"  Outgoing Links: None\n")
-
-                f.write("\n")
-
-            f.write("=" * 80 + "\n")
-            f.write("END OF NETWORK STRUCTURE\n")
-            f.write("=" * 80 + "\n")
 
     def plot_simulation_results(
         self,
@@ -2232,6 +2491,10 @@ class Network:
         )
         plt.close(fig)
 
+    # endregion
+
+    # ! Network visualization
+    # region
     def plot(
         self,
         pos: Optional[Mapping[str, tuple[float, float] | NDArray[np.float64]]] = None,
@@ -2591,3 +2854,5 @@ class Network:
             plt.show()
 
         return ax
+
+    # endregion
