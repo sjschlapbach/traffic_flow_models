@@ -5,7 +5,6 @@ from typing import Iterable, List, Any
 from traffic_flow_models.network.motorway_link import MotorwayLink
 from traffic_flow_models.network.onramp import Onramp
 from traffic_flow_models.network.origin import Origin
-from traffic_flow_models.network.motorway_link import MotorwayLink
 from traffic_flow_models.network.offramp import Offramp
 from traffic_flow_models.network.destination import Destination
 

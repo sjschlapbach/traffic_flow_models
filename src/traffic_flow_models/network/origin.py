@@ -4,7 +4,7 @@ import uuid
 class Origin:
     """A simple container for origin link id.
 
-    Since the origin is a virtual link without phsyical attributes / flow
+    Since the origin is a virtual link without physical attributes / flow
     restrictions / etc., this class only contains an identifier. Demand values
     for the origin link are provided during simulation.
 

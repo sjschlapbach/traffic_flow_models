@@ -12,7 +12,7 @@ class Destination:
     def __init__(
         self, id: str | None = None, origin_node_id: str | None = None
     ) -> None:
-        """Initialize the Origin parameters.
+        """Initialize the Destination parameters.
 
         Args:
             id: Identifier for the destination link (for potential

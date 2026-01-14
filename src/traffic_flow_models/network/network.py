@@ -1089,20 +1089,23 @@ class Network:
                     else:
                         link_flows_dict[link.id] = np.zeros(1)
 
-                    if isinstance(link, Origin) and (
-                        initial_origin_queues is None
-                        or link.id not in initial_origin_queues
-                    ):
-                        origin_queues_dict[link.id] = 0.0
-                    elif isinstance(link, Origin):
-                        origin_queues_dict[link.id] = initial_origin_queues[link.id]
-                    elif isinstance(link, Onramp) and (
-                        initial_onramp_queues is None
-                        or link.id not in initial_onramp_queues
-                    ):
-                        onramp_queues_dict[link.id] = 0.0
+                    if isinstance(link, Origin):
+                        if (
+                            initial_origin_queues is None
+                            or link.id not in initial_origin_queues
+                        ):
+                            origin_queues_dict[link.id] = 0.0
+                        else:
+                            origin_queues_dict[link.id] = initial_origin_queues[link.id]
+
                     elif isinstance(link, Onramp):
-                        onramp_queues_dict[link.id] = initial_onramp_queues[link.id]
+                        if (
+                            initial_onramp_queues is None
+                            or link.id not in initial_onramp_queues
+                        ):
+                            onramp_queues_dict[link.id] = 0.0
+                        else:
+                            onramp_queues_dict[link.id] = initial_onramp_queues[link.id]
 
             # initialize outgoing links (mainline links, offramps, and destinations)
             for link in node.outgoing:
@@ -2105,7 +2108,8 @@ class Network:
         print("  Creating 3D surface plots for motorway links...")
         for node in self.list_nodes():
             for link in node.outgoing:
-                if isinstance(link, MotorwayLink):
+                if isinstance(link, MotorwayLink) and len(link) > 1:
+                    # skip single-cell links for 3D plots (no spatial dimension to visualize)
                     self._plot_motorway_link_3d(
                         link=link,
                         time_seconds=time_seconds,
@@ -2163,7 +2167,14 @@ class Network:
         fig1.suptitle(
             f"Vehicle Density - Link {link.id}", fontsize=14, fontweight="bold"
         )
-        axes1 = np.array(axes1).flatten() if num_cells > 1 else [axes1]
+
+        # properly handle axes array structure
+        if nrows == 1 and ncols == 1:
+            axes1 = [axes1]
+        elif nrows == 1 or ncols == 1:
+            axes1 = axes1.flatten()
+        else:
+            axes1 = axes1.flatten()
 
         for i, _ in link.enumerate_cells():
             axes1[i].plot(time_seconds, densities[i, :], linewidth=1.5)
@@ -2189,7 +2200,14 @@ class Network:
         # figure 2: Flow
         fig2, axes2 = plt.subplots(nrows, ncols, figsize=(4 * ncols, 3 * nrows))
         fig2.suptitle(f"Vehicle Flow - Link {link.id}", fontsize=14, fontweight="bold")
-        axes2 = np.array(axes2).flatten() if num_cells > 1 else [axes2]
+
+        # properly handle axes array structure
+        if nrows == 1 and ncols == 1:
+            axes2 = [axes2]
+        elif nrows == 1 or ncols == 1:
+            axes2 = axes2.flatten()
+        else:
+            axes2 = axes2.flatten()
 
         for i, _ in link.enumerate_cells():
             Qc = link.lane_capacity * link.lanes
@@ -2216,7 +2234,14 @@ class Network:
         # figure 3: Speed
         fig3, axes3 = plt.subplots(nrows, ncols, figsize=(4 * ncols, 3 * nrows))
         fig3.suptitle(f"Vehicle Speed - Link {link.id}", fontsize=14, fontweight="bold")
-        axes3 = np.array(axes3).flatten() if num_cells > 1 else [axes3]
+
+        # properly handle axes array structure
+        if nrows == 1 and ncols == 1:
+            axes3 = [axes3]
+        elif nrows == 1 or ncols == 1:
+            axes3 = axes3.flatten()
+        else:
+            axes3 = axes3.flatten()
 
         for i, _ in link.enumerate_cells():
             vf_cell = link.vf

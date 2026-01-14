@@ -34,7 +34,7 @@ if __name__ == "__main__":
     alpha = 2
 
     # check if plotting is disabled through command line argument (CI environment)
-    parser = argparse.ArgumentParser(description="CTM Simulation Demo")
+    parser = argparse.ArgumentParser(description="METANET Simulation Demo")
     parser.add_argument(
         "--no-plot",
         action="store_true",

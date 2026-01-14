@@ -535,18 +535,18 @@ class METANET:
             node_upstream_speed = min(
                 out.vf for out in node.outgoing if isinstance(out, MotorwayLink)
             )
+        else:
+            nom_terms = []
+            denom_terms = []
+            for inc in node.incoming:
+                if isinstance(inc, MotorwayLink):
+                    # motorway link: use the last cell speed and flow for upstream speed
+                    nom_terms.append(speeds[inc.id][-1] * flows[inc.id][-1])
+                    denom_terms.append(flows[inc.id][-1])
 
-        nom_terms = []
-        denom_terms = []
-        for inc in node.incoming:
-            if isinstance(inc, MotorwayLink):
-                # motorway link: use the last cell speed and flow for upstream speed
-                nom_terms.append(speeds[inc.id][-1] * flows[inc.id][-1])
-                denom_terms.append(flows[inc.id][-1])
-
-        node_upstream_speed = casadi.sum(casadi.vertcat(*nom_terms)) / casadi.sum(
-            casadi.vertcat(*denom_terms)
-        )
+            node_upstream_speed = casadi.sum(casadi.vertcat(*nom_terms)) / casadi.sum(
+                casadi.vertcat(*denom_terms)
+            )
 
         return node_outflows, node_upstream_speed
 
@@ -771,6 +771,7 @@ class METANET:
             cell.length * link.lanes
         )
 
+        # TODO: evaluate possibilities to include additional term for anticipation of onramps (including delta parameter)
         # compute the new speed based on the previous timestep
         speed = (
             previous_speed
