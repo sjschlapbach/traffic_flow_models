@@ -3,6 +3,7 @@ from __future__ import annotations
 import numpy as np
 import warnings
 import casadi
+import json
 import networkx as nx
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
@@ -1599,6 +1600,16 @@ class Network:
             self.plot(show=show_plots, save_path=topology_path)
             print(f"  Network topology saved to {topology_path}")
 
+            # save simulation results as text file
+            results_path = os.path.join(results_dir, "simulation_results.txt")
+            self.save_simulation_results_txt(
+                time_array=time_array,
+                state_history=state_history,
+                disturbance_history=disturbance_history,
+                filepath=results_path,
+            )
+            print(f"  Simulation results saved to {results_path}")
+
             # save network structure as text file
             structure_path = os.path.join(results_dir, "network_structure.txt")
             self.save_network_structure_txt(structure_path)
@@ -1618,6 +1629,133 @@ class Network:
 
     # ! Evaluation and result visualizations
     # region
+    def save_simulation_results_txt(
+        self,
+        time_array: NDArray[np.float64],
+        state_history: NDArray[np.float64],
+        disturbance_history: NDArray[np.float64],
+        filepath: str,
+    ) -> None:
+        """Save simulation results to a text file for reference.
+
+        Writes the time array, state history and disturbance history to a
+        human-readable text file for later reference. State and disturbance
+        histories are split into link/node specific time series using the
+        network unpacking helpers.
+        """
+
+        # prepare containers for per-link / per-node time series
+        flows_time: dict[str, list] = {}
+        densities_time: dict[str, list] = {}
+        speeds_time: dict[str, list] = {}
+        origin_queues_time: dict[str, list] = {}
+        onramp_queues_time: dict[str, list] = {}
+        offramp_queues_time: dict[str, list] = {}
+
+        origin_demands_time: dict[str, list] = {}
+        onramp_demands_time: dict[str, list] = {}
+        turning_rates_time: dict[str, dict[str, list]] = {}
+        boundary_conditions_time: dict[str, list] = {}
+
+        num_timesteps = state_history.shape[1]
+
+        # split state history into per-link/node time series
+        for t in range(num_timesteps):
+            flows_t, densities_t, speeds_t, origin_q_t, onramp_q_t, offramp_q_t = (
+                self.state_vec_to_network_dict(state_history[:, t])
+            )
+
+            # initialize containers on first timestep
+            if t == 0:
+                for k in flows_t.keys():
+                    flows_time[k] = []
+                for k in densities_t.keys():
+                    densities_time[k] = []
+                for k in speeds_t.keys():
+                    speeds_time[k] = []
+                for k in origin_q_t.keys():
+                    origin_queues_time[k] = []
+                for k in onramp_q_t.keys():
+                    onramp_queues_time[k] = []
+                for k in offramp_q_t.keys():
+                    offramp_queues_time[k] = []
+
+            # append values (convert numpy -> native Python types)
+            for k, v in flows_t.items():
+                flows_time[k].append(np.asarray(v).tolist())
+            for k, v in densities_t.items():
+                densities_time[k].append(np.asarray(v).tolist())
+            for k, v in speeds_t.items():
+                speeds_time[k].append(np.asarray(v).tolist())
+
+            for k, v in origin_q_t.items():
+                origin_queues_time[k].append(float(np.asarray(v).tolist()))
+            for k, v in onramp_q_t.items():
+                onramp_queues_time[k].append(float(np.asarray(v).tolist()))
+            for k, v in offramp_q_t.items():
+                offramp_queues_time[k].append(float(np.asarray(v).tolist()))
+
+        # split disturbance history into per-component time series
+        if disturbance_history.size > 0:
+            num_dist_timesteps = disturbance_history.shape[1]
+            for t in range(num_dist_timesteps):
+                origin_d_t, onramp_d_t, turning_t, boundary_t = (
+                    self.disturbance_vec_to_network_dict(disturbance_history[:, t])
+                )
+
+                if t == 0:
+                    for k in origin_d_t.keys():
+                        origin_demands_time[k] = []
+                    for k in onramp_d_t.keys():
+                        onramp_demands_time[k] = []
+                    for node_id, inner in turning_t.items():
+                        turning_rates_time[node_id] = {lk: [] for lk in inner.keys()}
+                    for k in boundary_t.keys():
+                        boundary_conditions_time[k] = []
+
+                for k, v in origin_d_t.items():
+                    origin_demands_time[k].append(float(np.asarray(v).tolist()))
+                for k, v in onramp_d_t.items():
+                    onramp_demands_time[k].append(float(np.asarray(v).tolist()))
+
+                for node_id, inner in turning_t.items():
+                    for lk, rate in inner.items():
+                        turning_rates_time.setdefault(node_id, {}).setdefault(
+                            lk, []
+                        ).append(float(np.asarray(rate).tolist()))
+
+                for k, v in boundary_t.items():
+                    boundary_conditions_time[k].append(float(np.asarray(v).tolist()))
+
+        # assemble output structure
+        out = {
+            "time_array": np.asarray(time_array).tolist(),
+            "state_time_series": {
+                "flows": flows_time,
+                "densities": densities_time,
+                "speeds": speeds_time,
+                "origin_queues": origin_queues_time,
+                "onramp_queues": onramp_queues_time,
+                "offramp_queues": offramp_queues_time,
+            },
+            "disturbance_time_series": {
+                "origin_demands": origin_demands_time,
+                "onramp_demands": onramp_demands_time,
+                "turning_rates": turning_rates_time,
+                "boundary_conditions": boundary_conditions_time,
+            },
+        }
+
+        # write readable JSON to file
+        with open(filepath, "w") as f:
+            f.write("=" * 80 + "\n")
+            f.write("SIMULATION RESULTS (per-link / per-node time series)\n")
+            f.write("=" * 80 + "\n\n")
+            json.dump(out, f, indent=2)
+            f.write("\n\n" + "=" * 80 + "\n")
+            f.write("END OF SIMULATION RESULTS\n")
+            f.write("\n" + "=" * 80 + "\n")
+
     def save_network_structure_txt(self, filepath: str) -> None:
         """Save network structure to a text file for reference.
 
