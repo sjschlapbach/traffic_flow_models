@@ -4,6 +4,6 @@ Empty package for consistency with the project layout.
 """
 
 from .ctm import CTM
-from .metanet import METANET
+from .metanet import METANET, METANETParams, METANETSymbolicParams
 
-__all__ = ["CTM", "METANET"]
+__all__ = ["CTM", "METANET", "METANETParams", "METANETSymbolicParams"]

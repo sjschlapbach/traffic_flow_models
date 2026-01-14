@@ -1,7 +1,7 @@
 import argparse
 from typing import Callable
 
-from traffic_flow_models import METANET
+from traffic_flow_models import METANET, METANETParams
 from demo.scenarios import (
     mainline_demand_a,
     mainline_demand_b,
@@ -63,9 +63,6 @@ if __name__ == "__main__":
     else:
         raise ValueError(f"Scenario {scenario} is not defined.")
 
-    # initialize the METANET model with the specified parameters
-    metanet = METANET(tau=tau, nu=nu, kappa=kappa, delta=delta, phi=phi, alpha=alpha)
-
     # initialize the network with the correct structure (optionally with ALINEA ramp metering)
     network, metadata = setup_network()
 
@@ -90,11 +87,23 @@ if __name__ == "__main__":
         nid: (lambda _t, s=splits[nid]: s) for nid in splits.keys()
     }
 
+    # initialize the METANET model parameters
+    model_params: METANETParams = {
+        "tau": tau,
+        "nu": nu,
+        "kappa": kappa,
+        "delta": delta,
+        "phi": phi,
+        "alpha": alpha,
+    }
+
     # run a simulation of the network using the METANET model
+    metanet = METANET()
     time, states, disturbances = network.simulate(
         duration=duration,
         dt=dt,
         model=metanet,
+        model_params=model_params,
         preferred_cell_size=0.5,
         origin_demands=origin_demands,
         onramp_demands=onramp_demands,

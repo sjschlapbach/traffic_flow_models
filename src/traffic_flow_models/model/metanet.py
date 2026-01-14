@@ -1,7 +1,8 @@
 import numpy as np
 import casadi
 import warnings
-from typing import Tuple
+from typing import Callable, Tuple, TypedDict, cast, Union
+from numpy.typing import NDArray
 
 
 from traffic_flow_models.network.motorway_link import MotorwayLink
@@ -17,39 +18,36 @@ from .helpers import (
 )
 
 
+class METANETParams(TypedDict):
+    tau: float
+    nu: float
+    kappa: float
+    delta: float
+    phi: float
+    alpha: float | dict[str, float]
+
+
+class METANETSymbolicParams(TypedDict):
+    tau: float | casadi.SX
+    nu: float | casadi.SX
+    kappa: float | casadi.SX
+    delta: float | casadi.SX
+    phi: float | casadi.SX
+    alpha: dict[str, float | casadi.SX]
+
+
 class METANET:
-    def __init__(self, tau, nu, kappa, delta, phi, alpha):
-        """Create a METANET model instance with given parameters.
+    def __init__(self):
+        """Create an empty METANET model instance."""
+        return
 
-        The METANET model is a second-order macroscopic traffic model that
-        includes dynamics for both density and speed. This constructor
-        stores the model parameters used in the speed update and flow
-        computations.
-
-        Args:
-            tau (float): Relaxation time scale for speed dynamics (time).
-            nu (float): Anticipation coefficient for downstream density
-                gradient sensitivity.
-            kappa (float): Small positive constant added to densities to
-                avoid division-by-zero in speed/flow expressions.
-            delta (float): Weighting coefficient for onramp influence on
-                speed dynamics.
-            phi (float): Coefficient for additional deceleration due to
-                upcoming lane drops.
-            alpha (float): Shape parameter used in the stationary velocity
-                function (must be > 0).
-        """
-
-        self.tau = tau
-        self.nu = nu
-        self.kappa = kappa
-        self.delta = delta
-        self.phi = phi
-        self.alpha = (
-            alpha  # TODO: make this parameter link-specific -> relevant for fitting
-        )
-
-    def critical_density(self, lane_capacity: float, free_flow_speed: float) -> float:
+    def critical_density(
+        self,
+        params: METANETParams | METANETSymbolicParams,
+        link_id: str,
+        lane_capacity: float,
+        free_flow_speed: float,
+    ) -> float:
         """
         Compute and return the critical density for a given lane capacity and free-flow speed.
 
@@ -65,11 +63,17 @@ class METANET:
         Returns:
             Critical density (vehicles per length per lane).
         """
-
-        return lane_capacity / (free_flow_speed * np.exp(-1 / self.alpha))
+        alpha = (
+            params["alpha"][link_id]
+            if isinstance(params["alpha"], dict)
+            else params["alpha"]
+        )
+        return lane_capacity / (free_flow_speed * np.exp(-1 / (alpha)))
 
     def backward_wave_speed(
         self,
+        params: METANETParams | METANETSymbolicParams,
+        link_id: str,
         capacity: float,
         lane_capacity: float,
         jam_density: float,
@@ -97,17 +101,21 @@ class METANET:
         """
 
         rho_crit = self.critical_density(
-            lane_capacity=lane_capacity, free_flow_speed=free_flow_speed
+            params=params,
+            link_id=link_id,
+            lane_capacity=lane_capacity,
+            free_flow_speed=free_flow_speed,
         )
-        if jam_density <= rho_crit:
-            raise ValueError(
-                f"jam_density must be greater than the critical density to compute backward wave speed: {jam_density} <= {rho_crit}"
-            )
 
         return capacity / (jam_density - rho_crit)
 
     def stationary_velocity(
-        self, lane_capacity: float, free_flow_speed: float, density: float | casadi.SX
+        self,
+        params: METANETParams | METANETSymbolicParams,
+        link_id: str,
+        lane_capacity: float,
+        free_flow_speed: float,
+        density: float | casadi.SX,
     ) -> float:
         """Compute the stationary (equilibrium) velocity for a cell.
 
@@ -127,16 +135,24 @@ class METANET:
             The stationary velocity (length per time unit).
         """
 
+        alpha = (
+            params["alpha"][link_id]
+            if isinstance(params["alpha"], dict)
+            else params["alpha"]
+        )
         exponent = (
             -1
-            / self.alpha
+            / alpha
             * (
                 density
                 / self.critical_density(
-                    lane_capacity=lane_capacity, free_flow_speed=free_flow_speed
+                    params=params,
+                    link_id=link_id,
+                    lane_capacity=lane_capacity,
+                    free_flow_speed=free_flow_speed,
                 )
             )
-            ** self.alpha
+            ** alpha
         )
 
         return (
@@ -144,6 +160,205 @@ class METANET:
             if isinstance(density, casadi.SX)
             else free_flow_speed * np.exp(exponent)
         )
+
+    def validate_model_params(self, model_params: METANETParams) -> None:
+        """Validate a METANET model parameter dictionary.
+
+        Ensures required keys are present and their types are correct. All
+        scalar parameters (`tau`, `nu`, `kappa`, `delta`, `phi`) must be
+        numeric (int or float). The `alpha` parameter may be either a scalar
+        (int or float) or a dictionary mapping link ids to numeric values.
+
+        Args:
+            model_params: Dictionary containing METANET model parameters.
+
+        Raises:
+            ValueError: If a required parameter is missing or has an invalid type.
+        """
+
+        required_params = ["tau", "nu", "kappa", "delta", "phi", "alpha"]
+        for param in required_params:
+            if param not in model_params:
+                raise ValueError(f"Missing required METANET model parameter: {param}")
+
+        # make sure that the parameters have the correct type
+        # all parameters should be scalars, while the alpha parameter may be a scalar or link-specific
+        for param in required_params:
+            if param != "alpha":
+                if not isinstance(model_params[param], (int, float)):
+                    raise ValueError(
+                        f"METANET model parameter {param} must be a scalar (int or float)."
+                    )
+            else:
+                if not (
+                    isinstance(model_params["alpha"], (int, float))
+                    or (
+                        isinstance(model_params["alpha"], dict)
+                        and all(
+                            isinstance(k, str) and isinstance(v, (int, float))
+                            for k, v in model_params["alpha"].items()
+                        )
+                    )
+                ):
+                    raise ValueError(
+                        f"METANET model parameter {param} must be either a scalar (int or float) or a callable function(link_id) returning a scalar."
+                    )
+
+    def model_params_to_vec(
+        self,
+        network: Network,
+        model_params: METANETParams,
+    ) -> NDArray[np.float64]:
+        """Convert a METANET parameter dictionary to a numerical vector.
+
+        The returned vector layout is identical to that used by the
+        symbolic parameter vector: the five scalar parameters in the order
+        `tau, nu, kappa, delta, phi` followed by the per-link `alpha`
+        parameters for all motorway links, onramps and offramps in the same
+        ordering used throughout the model formulation.
+
+        Args:
+            network: Network instance used to determine the ordering of link
+                specific `alpha` entries.
+            model_params: Parameter dictionary containing scalar parameters
+                and either a scalar `alpha` or a dict mapping link ids to
+                `alpha` values.
+
+        Returns:
+            1-D numpy array of dtype `np.float64` containing the packed
+            model parameters suitable for use with the symbolic routines.
+        """
+
+        # augment the model parameters dictionary for links where necessary
+        alpha_vector = np.array([], dtype=np.float64)
+
+        link_ids: list[str] = []  # links for which alpha values are required
+        for node in network.list_nodes():
+            for link in node.incoming:
+                if isinstance(link, Onramp) or isinstance(link, Offramp):
+                    link_ids.append(link.id)
+            for link in node.outgoing:
+                if isinstance(link, MotorwayLink):
+                    link_ids.append(link.id)
+
+        for link_id in link_ids:
+            if isinstance(model_params["alpha"], float) or isinstance(
+                model_params["alpha"], int
+            ):
+                alpha_vector = np.append(alpha_vector, model_params["alpha"])
+            else:
+                casted_params_function = cast(dict[str, float], model_params["alpha"])
+                alpha_vector = np.append(alpha_vector, casted_params_function[link_id])
+
+        return np.concatenate(
+            (
+                np.array(
+                    [
+                        model_params["tau"],
+                        model_params["nu"],
+                        model_params["kappa"],
+                        model_params["delta"],
+                        model_params["phi"],
+                    ],
+                    dtype=np.float64,
+                ),
+                alpha_vector,
+            )
+        )
+
+    def model_params_vec_to_dict(
+        self,
+        network: Network,
+        model_params_vec: NDArray[np.float64] | casadi.SX,
+    ) -> METANETParams | METANETSymbolicParams:
+        """Convert a packed parameter vector into a METANET parameter dict.
+
+        This is the inverse of `model_params_to_vec`. The input vector is
+        expected to contain the five scalar parameters followed by the per
+        link `alpha` values in the ordering implied by `network.list_nodes()`
+        and the per-node link ordering used elsewhere in the model.
+
+        Args:
+            network: Network instance used to determine link ordering for
+                unpacking the `alpha` entries.
+            model_params_vec: 1-D numpy array or CasADi SX vector containing
+                the packed model parameters.
+
+        Returns:
+            A dictionary mapping scalar parameter names to their values and
+            `alpha` to a dict of per-link values. When `model_params_vec` is
+            symbolic (`casadi.SX`) the returned values will be symbolic as
+            well (see `METANETSymbolicParams`).
+        """
+
+        # extract the scalar parameters
+        tau: float | casadi.SX = model_params_vec[0]
+        nu: float | casadi.SX = model_params_vec[1]
+        kappa: float | casadi.SX = model_params_vec[2]
+        delta: float | casadi.SX = model_params_vec[3]
+        phi: float | casadi.SX = model_params_vec[4]
+
+        # extract the alpha parameters for each link
+        alpha_vector = model_params_vec[5:]
+        alpha_dict: dict[str, float | casadi.SX] = {}
+        alpha_index = 0
+
+        link_ids: list[str] = []
+        for node in network.list_nodes():
+            for link in node.incoming:
+                if isinstance(link, Onramp) or isinstance(link, Offramp):
+                    link_ids.append(link.id)
+            for link in node.outgoing:
+                if isinstance(link, MotorwayLink):
+                    link_ids.append(link.id)
+
+        for link_id in link_ids:
+            alpha_dict[link_id] = alpha_vector[alpha_index]
+            alpha_index += 1
+
+        return {
+            "tau": tau,
+            "nu": nu,
+            "kappa": kappa,
+            "delta": delta,
+            "phi": phi,
+            "alpha": alpha_dict,
+        }
+
+    def set_up_symbolic_model_params(
+        self,
+        network: Network,
+    ) -> casadi.SX:
+        """Create a CasADi symbolic vector for METANET model parameters.
+
+        The created `casadi.SX` vector contains one entry for each scalar
+        parameter (`tau, nu, kappa, delta, phi`) followed by one `alpha`
+        entry per motorway link, onramp and offramp in the network. The
+        ordering of per-link `alpha` entries matches the unpacking performed
+        in `model_params_vec_to_dict`.
+
+        Args:
+            network: Network instance used to count links and determine the
+                length of the symbolic parameter vector.
+
+        Returns:
+            A `casadi.SX` symbolic column vector of shape `(num_links + 5, 1)`.
+        """
+
+        # count the number of motorway links, onramps and offramps in the network
+        num_links = 0
+        for node in network.list_nodes():
+            for link in node.incoming:
+                if isinstance(link, Onramp) or isinstance(link, Offramp):
+                    num_links += 1
+            for link in node.outgoing:
+                if isinstance(link, MotorwayLink):
+                    num_links += 1
+
+        # create symbolic variables for the model parameters (one entry for the alpha of each link)
+        # 5 more entries for the parameters tau, nu, kappa, delta, phi
+        model_params_sym = casadi.SX.sym("metanet_params", num_links + 5, 1)  # type: ignore
+        return model_params_sym
 
     def _compute_virtual_downstream_density(
         self,
@@ -327,6 +542,7 @@ class METANET:
 
     def _compute_offramp_outflows(
         self,
+        params: METANETSymbolicParams,
         offramp: Offramp,
         node_outflows: dict[str, casadi.SX],
         offramp_queues: dict[str, casadi.SX],
@@ -377,6 +593,8 @@ class METANET:
             capacity=offramp.Qc,
             jam_density=offramp.rho_jam,
             backward_wave_speed=self.backward_wave_speed(
+                params=params,
+                link_id=offramp.id,
                 capacity=offramp.Qc,
                 lane_capacity=offramp.Qc_lane,
                 jam_density=offramp.rho_jam,
@@ -392,6 +610,7 @@ class METANET:
 
     def _compute_motorway_link_outflows(
         self,
+        params: METANETSymbolicParams,
         link: MotorwayLink,
         node: Node,
         node_outflows: dict[str, casadi.SX],
@@ -413,6 +632,7 @@ class METANET:
         `speeds` vector for internal cells.
 
         Args:
+            params (METANETSymbolicParams): Model parameters.
             link (MotorwayLink): Motorway link containing the cells to update.
             node (Node): The upstream node of the link (used for error
                 messages and contextual checks).
@@ -455,6 +675,7 @@ class METANET:
         for i, cell in link.enumerate_cells():
             # compute updates for this cell and append to lists
             d_next, s_next, f_next = self.cell_update(
+                params=params,
                 link=link,
                 cell=cell,
                 upstream_flow=(
@@ -517,8 +738,8 @@ class METANET:
                 vector.
             num_speeds (int): Length of the speed portion of the state vector.
             num_origins (int): Number of origins.
-            num_onramp (int): Number of onramps.
-            num_offramp (int): Number of offramps.
+            num_onramps (int): Number of onramps.
+            num_offramps (int): Number of offramps.
             num_turning_rates (int): Number of turning rate disturbance entries.
             num_boundary_conditions (int): Number of boundary condition entries.
             inflows_jam_density (float): Jam density to use for origin
@@ -532,6 +753,19 @@ class METANET:
             the full network update for one timestep.
         """
 
+        # ! Store the model parameters in a dedicated vector to be used for evaluation
+        sym_params = self.set_up_symbolic_model_params(network=network)
+
+        # load the model parameters in dictionary form for easy access during function formulation
+        params: METANETSymbolicParams = cast(
+            METANETSymbolicParams,
+            self.model_params_vec_to_dict(
+                network=network,
+                model_params_vec=sym_params,
+            ),
+        )
+
+        # ! Set up variables for state update and cast types to be correct
         # set up state and disturbance vectors
         # state: flows, densities, speeds, origin, onramp
         # disturbances: origin_demands, onramp_demands, offramp_split_ratios
@@ -609,6 +843,8 @@ class METANET:
                         capacity=inc.Qc,
                         jam_density=inc.rho_jam,
                         backward_wave_speed=self.backward_wave_speed(
+                            params=params,
+                            link_id=inc.id,
                             capacity=inc.Qc,
                             lane_capacity=inc.Qc_lane,
                             jam_density=inc.rho_jam,
@@ -643,6 +879,7 @@ class METANET:
                     next_flows[out.id] = node_outflows[out.id]
                 elif isinstance(out, Offramp):
                     next_outflow, next_queue = self._compute_offramp_outflows(
+                        params=params,
                         offramp=out,
                         node_outflows=node_outflows,
                         offramp_queues=offramp_queues,
@@ -666,6 +903,7 @@ class METANET:
                 elif isinstance(out, MotorwayLink):
                     next_densities_list, next_speeds_list, next_flows_list = (
                         self._compute_motorway_link_outflows(
+                            params=params,
                             link=out,
                             node=node,
                             node_outflows=node_outflows,
@@ -696,10 +934,11 @@ class METANET:
         )
 
         # wrap the state update in a nonlinear casadi function
-        return casadi.Function("metanet_network_step", [x, d], [x_next])
+        return casadi.Function("metanet_network_step", [sym_params, x, d], [x_next])
 
     def cell_update(
         self,
+        params: METANETSymbolicParams,
         link: MotorwayLink,
         cell: Cell,
         upstream_flow: casadi.SX,
@@ -722,6 +961,7 @@ class METANET:
         speed.
 
         Args:
+            params (METANETSymbolicParams): Model parameters.
             link (MotorwayLink): Parent motorway link containing geometric
                 and lane information.
             cell (Cell): Cell object with geometry and lane-drop info.
@@ -758,9 +998,11 @@ class METANET:
         speed = (
             previous_speed
             + dt
-            / self.tau
+            / params["tau"]
             * (
                 self.stationary_velocity(
+                    params=params,
+                    link_id=link.id,
                     lane_capacity=link.lane_capacity,
                     free_flow_speed=link.vf,
                     density=previous_density,
@@ -768,10 +1010,10 @@ class METANET:
                 - previous_speed
             )
             + dt / cell.length * previous_speed * (upstream_speed - previous_speed)
-            - (dt * self.nu)
-            / (self.tau * cell.length)
+            - (dt * params["nu"])
+            / (params["tau"] * cell.length)
             * (downstream_density - previous_density)
-            / (previous_density + self.kappa)
+            / (previous_density + params["kappa"])
         )
 
         # if a lane drop is coming up, add an additional term to the speed
@@ -779,7 +1021,7 @@ class METANET:
         if cell.upcoming_lane_drop > 0:
             speed -= (
                 dt
-                * self.phi
+                * params["phi"]
                 * cell.upcoming_lane_drop
                 * previous_density
                 * previous_speed**2
@@ -787,6 +1029,8 @@ class METANET:
                 cell.length
                 * link.lanes
                 * self.critical_density(
+                    params=params,
+                    link_id=link.id,
                     lane_capacity=link.lane_capacity,
                     free_flow_speed=link.vf,
                 )

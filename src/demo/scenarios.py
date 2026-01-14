@@ -85,6 +85,8 @@ def setup_network_ab() -> tuple[Network, dict]:
     metadata = {
         "origin_ids": [origin.id],
         "onramp_ids": [onr.id],
+        "motorway_ids": [m1.id, m2.id],
+        "offramp_ids": [],
         "destination_ids": [destination.id],
         "splits": splits,
     }
@@ -145,6 +147,8 @@ def setup_network_c() -> tuple[Network, dict]:
     metadata = {
         "origin_ids": [origin.id],
         "onramp_ids": [onr.id],
+        "motorway_ids": [m1.id, m2.id, m3.id, m4.id],
+        "offramp_ids": [],
         "destination_ids": [destination.id],
         "splits": splits,
     }
@@ -217,6 +221,8 @@ def setup_network_d() -> tuple[Network, dict]:
     metadata = {
         "origin_ids": [origin.id],
         "onramp_ids": [onr.id],
+        "motorway_ids": [m1.id, m2.id, m3.id],
+        "offramp_ids": [offr.id],
         "destination_ids": [destination.id],
         "splits": splits,
     }

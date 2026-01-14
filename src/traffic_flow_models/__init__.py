@@ -16,7 +16,7 @@ from .network.network import Network
 
 # re-export model components
 from .model.ctm import CTM
-from .model.metanet import METANET
+from .model.metanet import METANET, METANETParams, METANETSymbolicParams
 
 # re-export controller components
 from .controller.alinea import AlineaController
@@ -37,6 +37,8 @@ __all__ = [
     "Network",
     "CTM",
     "METANET",
+    "METANETParams",
+    "METANETSymbolicParams",
     "AlineaController",
     "SUMOSimulation",
     "SUMOPipeline",

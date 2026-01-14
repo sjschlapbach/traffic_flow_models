@@ -21,7 +21,7 @@ from traffic_flow_models.network.motorway_link import MotorwayLink
 
 if TYPE_CHECKING:
     from traffic_flow_models.model.ctm import CTM
-    from traffic_flow_models.model.metanet import METANET
+    from traffic_flow_models.model.metanet import METANET, METANETParams
 
 
 class Network:
@@ -799,8 +799,9 @@ class Network:
         self,
         duration: float,
         dt: float,
-        # model: Union["CTM", "METANET"], # TODO: re-introduce this union of models as soon as CTM supports the new network structure
+        # model: Union["CTM", "METANET"], # TODO: re-introduce this union of models as soon as CTM supports the new network structure (also update model params type)
         model: METANET,
+        model_params: METANETParams,
         origin_demands: dict[
             str, Callable[[float], float]
         ],  # for each origin id, provide a callable function returning the demand at time t
@@ -876,6 +877,8 @@ class Network:
             ValueError: If required inputs are missing or inconsistent with the network topology.
         """
         # ! 1 - validate all inputs as required
+        model.validate_model_params(model_params)
+
         for node in self.list_nodes():
             # validate node structure
             node.validate()
@@ -1284,8 +1287,11 @@ class Network:
                 boundary_condition_dict=boundary_condition_dict,
             )
 
+            # obtain the model parameters in vector form for the model update
+            params = model.model_params_to_vec(network=self, model_params=model_params)
+
             # perform the state update
-            x_next = system(state_history[:, t], d)
+            x_next = system(params, state_history[:, t], d)
 
             # store the updated state and disturbance
             state_history[:, t + 1] = np.array(x_next).flatten()
