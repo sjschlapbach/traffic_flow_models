@@ -6,7 +6,7 @@ import casadi
 import networkx as nx
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
-from typing import TYPE_CHECKING, Iterator, Callable, Mapping, Optional
+from typing import TYPE_CHECKING, Iterator, Callable, Mapping, Optional, Tuple
 from numpy.typing import NDArray
 import math
 import os
@@ -1323,6 +1323,117 @@ class Network:
 
         return time_array, state_history, disturbance_history
 
+    def _validate_state_history_numerical(
+        self,
+        flows: dict[str, NDArray[np.float64] | casadi.SX],
+        densities: dict[str, NDArray[np.float64] | casadi.SX],
+        speeds: dict[str, NDArray[np.float64] | casadi.SX],
+        origin_queues: dict[str, float | casadi.SX],
+        onramp_queues: dict[str, float | casadi.SX],
+        offramp_queues: dict[str, float | casadi.SX],
+    ) -> None:
+        if (
+            not all(
+                isinstance(val, np.ndarray) and np.issubdtype(val.dtype, np.floating)
+                for val in flows.values()
+            )
+            or not all(
+                isinstance(val, np.ndarray) and np.issubdtype(val.dtype, np.floating)
+                for val in densities.values()
+            )
+            or not all(
+                isinstance(val, np.ndarray) and np.issubdtype(val.dtype, np.floating)
+                for val in speeds.values()
+            )
+            or not all(
+                isinstance(val, (float, np.floating)) for val in origin_queues.values()
+            )
+            or not all(
+                isinstance(val, (float, np.floating)) for val in onramp_queues.values()
+            )
+            or not all(
+                isinstance(val, (float, np.floating)) for val in offramp_queues.values()
+            )
+        ):
+            raise ValueError("Non-numerical values found in state history.")
+
+    def compute_performance_metrics(
+        self,
+        states: NDArray[np.float64],
+        dt: float,
+        timesteps: int,
+    ) -> Tuple[float, float, float]:
+        """Compute a set of performance metrics based on the provided simulation results
+
+        Args:
+            flow: 2-D array shape (num_cells, time_steps) in veh/h.
+            density: 2-D array shape (num_cells, time_steps) in veh/km/lane.
+            speed: 2-D array shape (num_cells, time_steps) in km/h.
+            input_queue: 1-D array of input queue lengths over time (veh).
+            onramp_queues: 2-D array shape (num_cells, time_steps) of onramp queues (veh).
+            dt: Time step used in the simulation (hours).
+
+        Returns:
+            (VKT, VHT, overall_avg_speed) floats: vehicle-kilometres travelled,
+                vehicle-hours travelled, and overall average speed.
+        """
+
+        # ! Part 1: Calculate VKT and VHT
+        VKT: float = 0.0
+        VHT: float = 0.0
+
+        for t in range(timesteps - 1):
+            # extract the different states at time t from the state vector
+            flows, densities, speeds, origin_queues, onramp_queues, offramp_queues = (
+                self.state_vec_to_network_dict(states[:, t])
+            )
+
+            # verify that the extracted values are numerical arrays
+            self._validate_state_history_numerical(
+                flows=flows,
+                densities=densities,
+                speeds=speeds,
+                origin_queues=origin_queues,
+                onramp_queues=onramp_queues,
+                offramp_queues=offramp_queues,
+            )
+
+            # typecast to np.ndarray to ensure type safety
+            flows = {k: np.asarray(v) for k, v in flows.items()}
+            densities = {k: np.asarray(v) for k, v in densities.items()}
+            speeds = {k: np.asarray(v) for k, v in speeds.items()}
+            origin_queues = {k: float(v) for k, v in origin_queues.items()}
+            onramp_queues = {k: float(v) for k, v in onramp_queues.items()}
+            offramp_queues = {k: float(v) for k, v in offramp_queues.items()}
+
+            # add the time vehicles spent in the origin, onramp, and offramp queues (veh * hours)
+            VHT += dt * sum(origin_queues.values())
+            VHT += dt * sum(onramp_queues.values())
+            VHT += dt * sum(offramp_queues.values())
+
+            # iterate over all outgoing motorway links and accumulate VKT and VHT
+            for node in self.list_nodes():
+                for link in node.outgoing:
+                    if isinstance(link, MotorwayLink):
+                        for idx, cell in link.enumerate_cells():
+                            if cell is None:
+                                raise ValueError(
+                                    f"Cell {idx} not found in motorway link {link.id}."
+                                )
+
+                            # add VKT: distance * vehicles that passed (flow is veh/h)
+                            VKT += cell.length * dt * flows[link.id][idx]
+
+                            # add VHT for vehicles on the mainline segment (density is veh/km/lane)
+                            VHT += (
+                                cell.length * dt * densities[link.id][idx] * link.lanes
+                            )
+
+        # ! Part 2: Calculate vehicle-weighted average speed
+        overall_avg_speed: float = VKT / VHT if VHT > 0 else 0.0
+
+        return VKT, VHT, float(overall_avg_speed)
+
     def save_network_structure_txt(self, filepath: str) -> None:
         """Save network structure to a text file for reference.
 
@@ -1453,33 +1564,14 @@ class Network:
             ) = self.state_vec_to_network_dict(state_history[:, t])
 
             # make sure that the history values are numerical
-            if (
-                not all(
-                    isinstance(val, (float, np.floating, np.ndarray))
-                    for val in flows_t.values()
-                )
-                or not all(
-                    isinstance(val, (float, np.floating, np.ndarray))
-                    for val in densities_t.values()
-                )
-                or not all(
-                    isinstance(val, (float, np.floating, np.ndarray))
-                    for val in speeds_t.values()
-                )
-                or not all(
-                    isinstance(val, (float, np.floating, np.ndarray))
-                    for val in origin_queues_t.values()
-                )
-                or not all(
-                    isinstance(val, (float, np.floating, np.ndarray))
-                    for val in onramp_queues_t.values()
-                )
-                or not all(
-                    isinstance(val, (float, np.floating, np.ndarray))
-                    for val in offramp_queues_t.values()
-                )
-            ):
-                raise ValueError("Non-numerical values found in state history.")
+            self._validate_state_history_numerical(
+                flows=flows_t,
+                densities=densities_t,
+                speeds=speeds_t,
+                origin_queues=origin_queues_t,
+                onramp_queues=onramp_queues_t,
+                offramp_queues=offramp_queues_t,
+            )
 
             # typecast to np.ndarray to ensure type safety
             flows_t = {k: np.asarray(v) for k, v in flows_t.items()}

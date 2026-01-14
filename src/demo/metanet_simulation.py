@@ -95,6 +95,7 @@ if __name__ == "__main__":
         duration=duration,
         dt=dt,
         model=metanet,
+        preferred_cell_size=0.5,
         origin_demands=origin_demands,
         onramp_demands=onramp_demands,
         turning_rates=turning_rates,
@@ -103,17 +104,12 @@ if __name__ == "__main__":
         show_plots=plot_enabled,
     )
 
-    # TODO: re-introduce performance metrics and illustrate them through appropriate plots
     # compute performance metrics and illustrate them
-    # VKT, VHT, avg_speed = network.compute_performance_metrics(
-    #     density=density,
-    #     flow=flow,
-    #     speed=speed,
-    #     input_queue=input_queue,
-    #     onramp_queues=onramp_queue,
-    #     dt=dt,
-    #     plotting=plot_enabled,
-    # )
-    # print(f"Total VKT: {VKT:.2f} veh-km")
-    # print(f"Total VHT: {VHT:.2f} veh-h")
-    # print(f"Overall Average Speed: {avg_speed:.2f} km/h")
+    VKT, VHT, avg_speed = network.compute_performance_metrics(
+        states=states,
+        dt=dt,
+        timesteps=len(time),
+    )
+    print(f"Total VKT: {VKT:.2f} veh-km")
+    print(f"Total VHT: {VHT:.2f} veh-h")
+    print(f"Overall Average Speed: {avg_speed:.2f} km/h")
