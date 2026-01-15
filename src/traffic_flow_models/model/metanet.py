@@ -966,19 +966,23 @@ class METANET:
         # iterate through all nodes and update the corrresponding quantities of incoming and outgoing links
         for node in network.list_nodes():
             # ! 1) update the flows and queues for origins and onramps connected to this node
-            node_downstream_density = self._compute_virtual_downstream_density(
-                node=node,
-                densities=densities,
-                boundary_conditions=boundary_conditions,
-            )
-
             for inc in node.incoming:
+                # compute the virtual downstream density for the current node
+                # -> required for onramp and origin store-and-forward state updates
+                node_virtual_downstream_density = (
+                    self._compute_virtual_downstream_density(
+                        node=node,
+                        densities=densities,
+                        boundary_conditions=boundary_conditions,
+                    )
+                )
+
                 if isinstance(inc, Origin):
                     next_inflow, next_queue = store_and_forward_update(
                         capacity=casadi.inf,
                         jam_density=casadi.inf,
                         backward_wave_speed=casadi.inf,
-                        density=node_downstream_density,
+                        density=node_virtual_downstream_density,
                         demand=origin_demands[inc.id],
                         queue=origin_queues[inc.id],
                         dt=dt,
@@ -1000,7 +1004,7 @@ class METANET:
                             jam_density=inc.rho_jam,
                             free_flow_speed=inc.vf,
                         ),
-                        density=node_downstream_density,
+                        density=node_virtual_downstream_density,
                         demand=onramp_demands[inc.id],
                         queue=onramp_queues[inc.id],
                         dt=dt,
@@ -1051,20 +1055,10 @@ class METANET:
 
                 # ! 4) update the outgoing motorway links connected to this node (including all cells)
                 elif isinstance(out, MotorwayLink):
-                    if out.origin_node_id is None:
-                        raise ValueError(
-                            f"Motorway link {out.id} does not have a upstream node defined."
-                        )
-
-                    # get the upstream node of the motorway link
-                    upstream_node = network.get_node(out.origin_node_id)
-                    if upstream_node is None:
-                        raise ValueError(
-                            f"Upstream node {out.origin_node_id} of motorway link {out.id} not found in network."
-                        )
-
-                    # check if any onramps are connected to the upstream node
-                    # and combine them into a symbolic variable
+                    # check if any onramps are connected to the upstream node of the motorway link
+                    # (= currently considered node) and if so, compute the corresponding inflows
+                    # to take the merging effect into account in the speed update equations
+                    upstream_node = node
                     node_upstream_onramp_inflows: casadi.SX | None = None
                     if any(isinstance(inc, Onramp) for inc in upstream_node.incoming):
                         for inc in upstream_node.incoming:
@@ -1074,13 +1068,35 @@ class METANET:
                                 else:
                                     node_upstream_onramp_inflows += flows[inc.id]
 
+                    # get the downstream node of the motorway and compute the virtual
+                    # downstream density of the corresponding destination node as a
+                    # boundary condition for the last cell of the outgoing link from
+                    # the current node
+                    destination_node = (
+                        network.get_node(id=out.destination_node_id)
+                        if out.destination_node_id is not None
+                        else None
+                    )
+                    if destination_node is None:
+                        raise ValueError(
+                            f"Motorway link {out.id} does not have a valid destination node defined."
+                        )
+
+                    node_downstream_virtual_downstream_density = (
+                        self._compute_virtual_downstream_density(
+                            node=destination_node,
+                            densities=densities,
+                            boundary_conditions=boundary_conditions,
+                        )
+                    )
+
                     next_densities_list, next_speeds_list, next_flows_list = (
                         self._compute_motorway_link_outflows(
                             params=params,
                             link=out,
                             node=node,
                             node_outflows=node_outflows,
-                            node_downstream_density=node_downstream_density,
+                            node_downstream_density=node_downstream_virtual_downstream_density,
                             node_upstream_speed=node_upstream_speed,
                             node_upstream_onramp_inflows=node_upstream_onramp_inflows,
                             flows=flows,
