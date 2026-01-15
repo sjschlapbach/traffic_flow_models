@@ -533,9 +533,9 @@ class METANET:
         # if all incoming links are origins, assume free flow conditions upstream
         if all(not isinstance(inc, MotorwayLink) for inc in node.incoming):
             # if any onramps are connected to the node, use the minimum free-flow speed of those onramps
-            if any(isinstance(out, Onramp) for out in node.incoming):
+            if any(isinstance(inc, Onramp) for inc in node.incoming):
                 node_upstream_speed = casadi.SX(
-                    min(out.vf for out in node.incoming if isinstance(out, Onramp))
+                    min(inc.vf for inc in node.incoming if isinstance(inc, Onramp))
                 )
             else:
                 node_upstream_speed = casadi.SX(
