@@ -530,11 +530,19 @@ class METANET:
 
         # determine the virtual upstream speed of the node (for outgoing motorway links) = v_m,0(k)
         # since a speed parameter is required, only incoming motorway links are considered
-        # if all incoming links are onramps / origins, assume free flow conditions upstream
+        # if all incoming links are origins, assume free flow conditions upstream
         if all(not isinstance(inc, MotorwayLink) for inc in node.incoming):
-            node_upstream_speed = min(
-                out.vf for out in node.outgoing if isinstance(out, MotorwayLink)
-            )
+            # if any onramps are connected to the node, use the minimum free-flow speed of those onramps
+            if any(isinstance(out, Onramp) for out in node.incoming):
+                node_upstream_speed = casadi.SX(
+                    min(out.vf for out in node.incoming if isinstance(out, Onramp))
+                )
+            else:
+                node_upstream_speed = casadi.SX(
+                    min(
+                        out.vf for out in node.outgoing if isinstance(out, MotorwayLink)
+                    )
+                )
         else:
             nom_terms = []
             denom_terms = []
@@ -626,6 +634,7 @@ class METANET:
         node_outflows: dict[str, casadi.SX],
         node_downstream_density: casadi.SX,
         node_upstream_speed: casadi.SX,
+        node_upstream_onramp_inflows: casadi.SX | None,
         flows: dict[str, casadi.SX],
         densities: dict[str, casadi.SX],
         speeds: dict[str, casadi.SX],
@@ -652,6 +661,9 @@ class METANET:
                 at the node used as boundary for the last cell (CasADi SX).
             node_upstream_speed (casadi.SX): Virtual upstream speed at the
                 node used as boundary for the first cell (CasADi SX).
+            node_upstream_onramp_inflows (casadi.SX | None): Total inflow
+                from onramps connected upstream of the node used to account
+                for speed reduction terms caused by merging traffic.
             flows (dict[str, casadi.SX]): Current per-link flow vectors
                 (CasADi SX).
             densities (dict[str, casadi.SX]): Current per-link density vectors
@@ -701,7 +713,12 @@ class METANET:
                     else node_downstream_density
                 ),
                 upstream_speed=(
-                    node_upstream_speed if cell.upstream is None else link_speeds[i - 1]
+                    link_speeds[i - 1]
+                    if cell.upstream is not None
+                    else node_upstream_speed
+                ),
+                upstream_onramp_inflows=(
+                    node_upstream_onramp_inflows if cell.upstream is None else None
                 ),
                 previous_speed=link_speeds[i],
                 dt=dt,
@@ -723,6 +740,7 @@ class METANET:
         previous_density: casadi.SX,
         downstream_density: casadi.SX,
         upstream_speed: casadi.SX,
+        upstream_onramp_inflows: casadi.SX | None,
         previous_speed: casadi.SX,
         dt: float,
     ) -> Tuple[casadi.SX, casadi.SX, casadi.SX]:
@@ -752,6 +770,8 @@ class METANET:
                 used for anticipation terms (vehicles / length per lane).
             upstream_speed (casadi.SX): Speed in the upstream cell used for
                 convective coupling (length / time).
+            upstream_onramp_inflows (casadi.SX | None): Total onramp inflow
+                entering upstream of the cell used for speed reduction terms.
             previous_speed (casadi.SX): Speed at the previous time step in
                 this cell (length / time).
             dt (float): Simulation timestep.
@@ -771,7 +791,6 @@ class METANET:
             cell.length * link.lanes
         )
 
-        # TODO: evaluate possibilities to include additional term for anticipation of onramps (including delta parameter)
         # compute the new speed based on the previous timestep
         speed = (
             previous_speed
@@ -793,6 +812,15 @@ class METANET:
             * (downstream_density - previous_density)
             / (previous_density + params["kappa"])
         )
+
+        # if the considered cell is the last downstream cell of a link into a node with onramp inflows, reduce the speed accordingly
+        if upstream_onramp_inflows is not None:
+            speed -= (
+                (dt * params["delta"])
+                / (cell.length * link.lanes)
+                * (upstream_onramp_inflows * previous_speed)
+                / (previous_density + params["kappa"])
+            )
 
         # if a lane drop is coming up, add an additional term to the speed
         # update equation to account for the additional deceleration
@@ -943,6 +971,7 @@ class METANET:
                 densities=densities,
                 boundary_conditions=boundary_conditions,
             )
+
             for inc in node.incoming:
                 if isinstance(inc, Origin):
                     next_inflow, next_queue = store_and_forward_update(
@@ -1022,6 +1051,29 @@ class METANET:
 
                 # ! 4) update the outgoing motorway links connected to this node (including all cells)
                 elif isinstance(out, MotorwayLink):
+                    if out.origin_node_id is None:
+                        raise ValueError(
+                            f"Motorway link {out.id} does not have a upstream node defined."
+                        )
+
+                    # get the upstream node of the motorway link
+                    upstream_node = network.get_node(out.origin_node_id)
+                    if upstream_node is None:
+                        raise ValueError(
+                            f"Upstream node {out.origin_node_id} of motorway link {out.id} not found in network."
+                        )
+
+                    # check if any onramps are connected to the upstream node
+                    # and combine them into a symbolic variable
+                    node_upstream_onramp_inflows: casadi.SX | None = None
+                    if any(isinstance(inc, Onramp) for inc in upstream_node.incoming):
+                        for inc in upstream_node.incoming:
+                            if isinstance(inc, Onramp):
+                                if node_upstream_onramp_inflows is None:
+                                    node_upstream_onramp_inflows = flows[inc.id]
+                                else:
+                                    node_upstream_onramp_inflows += flows[inc.id]
+
                     next_densities_list, next_speeds_list, next_flows_list = (
                         self._compute_motorway_link_outflows(
                             params=params,
@@ -1030,6 +1082,7 @@ class METANET:
                             node_outflows=node_outflows,
                             node_downstream_density=node_downstream_density,
                             node_upstream_speed=node_upstream_speed,
+                            node_upstream_onramp_inflows=node_upstream_onramp_inflows,
                             flows=flows,
                             densities=densities,
                             speeds=speeds,
