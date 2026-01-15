@@ -51,26 +51,35 @@ class METANET:
         free_flow_speed: float,
     ) -> float:
         """
-        Compute and return the critical density for a given lane capacity and free-flow speed.
+        Compute the METANET critical density for a link.
 
-        The METANET critical density is defined as
-            rho_crit = lane_capacity / (free_flow_speed * exp(-1 / self.alpha))
-        where self.alpha is the model shape parameter. Units: vehicles per length
-        per lane. Requires self.alpha > 0.
+        The METANET critical density is defined as::
+            rho_crit = lane_capacity / (free_flow_speed * exp(-1 / alpha))
+
+        where ``alpha`` is the fundamental-diagram shape parameter. The
+        ``alpha`` value is read from ``params['alpha']`` and may be either a
+        scalar or a dictionary mapping ``link_id`` to a per-link value.
 
         Args:
+            params: METANET model parameters (may be numeric or symbolic).
+            link_id: Identifier of the link for which to compute ``alpha``.
             lane_capacity: Lane capacity (vehicles per time).
             free_flow_speed: Free-flow speed (length per time).
 
         Returns:
-            Critical density (vehicles per length per lane).
+            Critical density (vehicles per length per lane). When symbolic
+            parameters are provided the returned expression may be a CasADi
+            symbolic value.
+
+        Raises:
+            ValueError: If the resolved ``alpha`` is not positive.
         """
         alpha = (
             params["alpha"][link_id]
             if isinstance(params["alpha"], dict)
             else params["alpha"]
         )
-        return lane_capacity / (free_flow_speed * np.exp(-1 / (alpha)))
+        return lane_capacity / (free_flow_speed * (casadi.exp(-1 / (alpha)) if isinstance(alpha, casadi.SX) else np.exp(-1 / (alpha))))  # type: ignore
 
     def backward_wave_speed(
         self,
@@ -207,7 +216,7 @@ class METANET:
                     )
                 ):
                     raise ValueError(
-                        f"METANET model parameter {param} must be either a scalar (int or float) or a callable function(link_id) returning a scalar."
+                        f"METANET model parameter {param} must be either a scalar (int or float) or a mapping returning a scalar."
                     )
 
     def model_params_to_vec(
@@ -868,16 +877,16 @@ class METANET:
         """Build a CasADi function implementing one METANET network step.
 
         The returned CasADi `Function` (named ``metanet_network_step``) maps
-        the current state vector ``x`` and disturbance vector ``d`` to the
-        next-step state vector ``x_next`` according to the METANET update
-        rules combined with store-and-forward updates for origins, onramps
-        and offramps.
+        the symbolic model parameter vector, the current state vector ``x``
+        and the disturbance vector ``d`` to the next-step state vector
+        ``x_next`` according to the METANET dynamics combined with
+        store-and-forward updates for origins, onramps and offramps.
 
-        State and disturbance vector layouts are those used by
+        State and disturbance vector layouts follow
         `Network.state_vec_to_network_dict` and
-        `Network.disturbance_vec_to_network_dict` and include flows,
-        densities, speeds, origin/onramp queues, origin demands, onramp
-        demands, split ratios and boundary conditions.
+        `Network.disturbance_vec_to_network_dict`. The disturbance vector
+        contains origin demands, onramp demands, split ratios and boundary
+        condition entries in the ordering expected by the network helpers.
 
         Args:
             network (Network): Network object containing links, nodes and
@@ -886,20 +895,18 @@ class METANET:
             num_densities (int): Length of the density portion of the state
                 vector.
             num_speeds (int): Length of the speed portion of the state vector.
-            num_origins (int): Number of origins.
-            num_onramps (int): Number of onramps.
-            num_offramps (int): Number of offramps.
-            num_turning_rates (int): Number of turning rate disturbance entries.
-            num_boundary_conditions (int): Number of boundary condition entries.
-            inflows_jam_density (float): Jam density to use for origin
-                inflows when modeling external inputs.
-            inflows_free_flow_speed (float): Free-flow speed to use for
-                origin inflows.
+            num_origins (int): Number of origin links (state/disturbance size).
+            num_onramps (int): Number of onramp links (state/disturbance size).
+            num_offramps (int): Number of offramp links (state/disturbance size).
+            num_splits (int): Number of split-ratio disturbance entries.
+            num_destinations (int): Number of boundary-condition disturbance entries.
             dt (float): Simulation timestep.
 
         Returns:
-            casadi.Function: A CasADi function `f(x,d) -> x_next` implementing
-            the full network update for one timestep.
+            casadi.Function: A CasADi function `f(params, x, d) -> x_next`
+            implementing the network update for one timestep. The first
+            argument to the function is the symbolic model parameter vector
+            produced by `set_up_symbolic_model_params`.
         """
 
         # ! Store the model parameters in a dedicated vector to be used for evaluation
@@ -966,19 +973,23 @@ class METANET:
         # iterate through all nodes and update the corrresponding quantities of incoming and outgoing links
         for node in network.list_nodes():
             # ! 1) update the flows and queues for origins and onramps connected to this node
-            node_downstream_density = self._compute_virtual_downstream_density(
-                node=node,
-                densities=densities,
-                boundary_conditions=boundary_conditions,
-            )
-
             for inc in node.incoming:
+                # compute the virtual downstream density for the current node
+                # -> required for onramp and origin store-and-forward state updates
+                node_virtual_downstream_density = (
+                    self._compute_virtual_downstream_density(
+                        node=node,
+                        densities=densities,
+                        boundary_conditions=boundary_conditions,
+                    )
+                )
+
                 if isinstance(inc, Origin):
                     next_inflow, next_queue = store_and_forward_update(
                         capacity=casadi.inf,
                         jam_density=casadi.inf,
                         backward_wave_speed=casadi.inf,
-                        density=node_downstream_density,
+                        density=node_virtual_downstream_density,
                         demand=origin_demands[inc.id],
                         queue=origin_queues[inc.id],
                         dt=dt,
@@ -1000,7 +1011,7 @@ class METANET:
                             jam_density=inc.rho_jam,
                             free_flow_speed=inc.vf,
                         ),
-                        density=node_downstream_density,
+                        density=node_virtual_downstream_density,
                         demand=onramp_demands[inc.id],
                         queue=onramp_queues[inc.id],
                         dt=dt,
@@ -1051,20 +1062,10 @@ class METANET:
 
                 # ! 4) update the outgoing motorway links connected to this node (including all cells)
                 elif isinstance(out, MotorwayLink):
-                    if out.origin_node_id is None:
-                        raise ValueError(
-                            f"Motorway link {out.id} does not have a upstream node defined."
-                        )
-
-                    # get the upstream node of the motorway link
-                    upstream_node = network.get_node(out.origin_node_id)
-                    if upstream_node is None:
-                        raise ValueError(
-                            f"Upstream node {out.origin_node_id} of motorway link {out.id} not found in network."
-                        )
-
-                    # check if any onramps are connected to the upstream node
-                    # and combine them into a symbolic variable
+                    # check if any onramps are connected to the upstream node of the motorway link
+                    # (= currently considered node) and if so, compute the corresponding inflows
+                    # to take the merging effect into account in the speed update equations
+                    upstream_node = node
                     node_upstream_onramp_inflows: casadi.SX | None = None
                     if any(isinstance(inc, Onramp) for inc in upstream_node.incoming):
                         for inc in upstream_node.incoming:
@@ -1074,13 +1075,35 @@ class METANET:
                                 else:
                                     node_upstream_onramp_inflows += flows[inc.id]
 
+                    # get the downstream node of the motorway and compute the virtual
+                    # downstream density of the corresponding destination node as a
+                    # boundary condition for the last cell of the outgoing link from
+                    # the current node
+                    destination_node = (
+                        network.get_node(id=out.destination_node_id)
+                        if out.destination_node_id is not None
+                        else None
+                    )
+                    if destination_node is None:
+                        raise ValueError(
+                            f"Motorway link {out.id} does not have a valid destination node defined."
+                        )
+
+                    node_downstream_virtual_downstream_density = (
+                        self._compute_virtual_downstream_density(
+                            node=destination_node,
+                            densities=densities,
+                            boundary_conditions=boundary_conditions,
+                        )
+                    )
+
                     next_densities_list, next_speeds_list, next_flows_list = (
                         self._compute_motorway_link_outflows(
                             params=params,
                             link=out,
                             node=node,
                             node_outflows=node_outflows,
-                            node_downstream_density=node_downstream_density,
+                            node_downstream_density=node_downstream_virtual_downstream_density,
                             node_upstream_speed=node_upstream_speed,
                             node_upstream_onramp_inflows=node_upstream_onramp_inflows,
                             flows=flows,
