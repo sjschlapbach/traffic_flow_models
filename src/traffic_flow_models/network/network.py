@@ -2661,354 +2661,292 @@ class Network:
     def plot(
         self,
         pos: Optional[Mapping[str, tuple[float, float] | NDArray[np.float64]]] = None,
-        figsize: tuple[int, int] = (10, 8),
+        figsize: tuple[int, int] = (24, 18),
         show: bool = True,
         save_path: str | None = None,
+        cell_spacing_x: float = 5.0,
+        cell_spacing_y: float = 4.0,
     ):
-        """Plot the network topology using the plotting helper.
+        """Plot the network topology using flowchart-style visualization.
 
         Args:
-            layout: Layout algorithm for NetworkX ('spring','shell','circular',...)
-            pos: Optional precomputed positions mapping node id -> (x, y)
-            figsize: Figure size for Matplotlib
+            pos: Optional precomputed positions mapping cell id -> (x, y)
+            figsize: Figure size for Matplotlib (default: 24x18)
             show: Whether to call `plt.show()`
             save_path: Optional path to save the figure
+            cell_spacing_x: Horizontal spacing between cells (default: 5.0)
+            cell_spacing_y: Vertical spacing between cells (default: 4.0)
         """
-
-        # simplified plotting: draw static network topology only
-        def _link_style(link):
-            if isinstance(link, MotorwayLink):
-                return "#222222", max(1.0, 0.6 * getattr(link, "lanes", 1)), "Motorway"
-            if isinstance(link, Onramp):
-                return "#2ca02c", 1.6, "Onramp"
-            if isinstance(link, Offramp):
-                return "#d62728", 1.6, "Offramp"
-            if isinstance(link, Origin):
-                return "#9467bd", 1.2, "Origin"
-            if isinstance(link, Destination):
-                return "#1f77b4", 1.2, "Destination"
-            return "#888888", 1.0, "Other"
-
-        G = nx.DiGraph()
-
-        # add node objects
-        for node in self.list_nodes():
-            G.add_node(node.id, label=node.id, type="junction")
-
-        def _ensure(node_id: str):
-            if node_id not in G:
-                G.add_node(node_id, label=node_id, type="external")
-
-        # build edges from node.outgoing and represent origins/onramps as SRC:... nodes
-        for node in self.list_nodes():
-            for link in node.outgoing:
-                src = node.id
-                dst = getattr(link, "destination_node_id", None)
-                if dst is None:
-                    dst = f"DEST:{getattr(link, 'id', repr(link))}"
-                    _ensure(dst)
-                _ensure(src)
-
-                color, width, ltype = _link_style(link)
-                link_id = getattr(link, "id", "")
-                G.add_edge(
-                    src,
-                    dst,
-                    color=color,
-                    width=width,
-                    _link_obj=link,
-                    link_id=link_id,
-                    ltype=ltype,
-                )
-
-            for link in node.incoming:
-                if isinstance(link, (Origin, Onramp)):
-                    src = f"SRC:{getattr(link, 'id', repr(link))}"
-                    _ensure(src)
-                    dst = node.id
-                    color, width, ltype = _link_style(link)
-                    link_id = getattr(link, "id", "")
-                    G.add_edge(
-                        src,
-                        dst,
-                        color=color,
-                        width=width,
-                        _link_obj=link,
-                        link_id=link_id,
-                        ltype=ltype,
-                    )
-
-        # compute positions
-        if pos is None:
-            # attempt an orthogonal/cartesian layout along motorway chains
-            pos = {}
-
-            # build motorway adjacency (u -> list of (v, link))
-            motor_adj: dict[str, list[tuple[str, object]]] = {}
-            in_deg: dict[str, int] = {n.id: 0 for n in self.list_nodes()}
-            for u, v, d in G.edges(data=True):
-                if d.get("ltype") == "Motorway":
-                    motor_adj.setdefault(u, []).append((v, d.get("_link_obj")))
-                    in_deg[v] = in_deg.get(v, 0) + 1
-
-            # find motorway sources (nodes with zero incoming motorway links)
-            sources = [n for n, deg in in_deg.items() if deg == 0]
-
-            # simple layout: traverse each motorway chain and place nodes along x axis
-            visited = set()
-            y_offset = 0
-
-            if sources:
-                for src in sources:
-                    stack = [(src, 0.0)]
-                    while stack:
-                        node_id, x = stack.pop(0)
-                        if node_id in pos:
-                            # keep smallest x
-                            pos[node_id] = np.array(
-                                [
-                                    min(float(pos[node_id][0]), float(x)),
-                                    float(pos[node_id][1]),
-                                ],
-                                dtype=np.float64,
-                            )
-                        else:
-                            pos[node_id] = np.array(
-                                [float(x), float(y_offset)], dtype=np.float64
-                            )
-
-                        visited.add(node_id)
-                        for v, link_obj in motor_adj.get(node_id, []):
-                            length = (
-                                getattr(link_obj, "length", 1.0)
-                                if link_obj is not None
-                                else 1.0
-                            )
-                            next_x = x + float(length)
-                            if v not in visited:
-                                stack.append((v, next_x))
-                    y_offset -= 1.0
-            else:
-                # fallback to spring layout if no motorway structure
-                pos = nx.spring_layout(G, seed=42)
-
-            # place externals (SRC:/DEST:) very close to junctions for compact layout
-            for n in G.nodes():
-                if n in pos:
-                    continue
-
-                s = str(n)
-                placed = False
-                # incoming source nodes (SRC:...) -> place just above their destination
-                if s.startswith("SRC:"):
-                    neighbors = list(G.successors(n)) if n in G else []
-                    if neighbors and neighbors[0] in pos:
-                        dst_pos = pos[neighbors[0]]
-                        pos[n] = np.array(
-                            [float(dst_pos[0]) - 0.08, float(dst_pos[1]) + 0.25],
-                            dtype=np.float64,
-                        )
-                        placed = True
-
-                # destination placeholders (DEST:...) -> place just above their source
-                if not placed and s.startswith("DEST:"):
-                    preds = list(G.predecessors(n)) if n in G else []
-                    if preds and preds[0] in pos:
-                        src_pos = pos[preds[0]]
-                        pos[n] = np.array(
-                            [float(src_pos[0]) + 0.08, float(src_pos[1]) + 0.25],
-                            dtype=np.float64,
-                        )
-                        placed = True
-
-                # fallback placement
-                if not placed:
-                    pos[n] = np.array([0.0, float(y_offset)], dtype=np.float64)
-                    y_offset -= 0.6
-
-        # avoid automatic display in interactive backends when `show` is False
-        prev_interactive = plt.isinteractive()
-        if not show and prev_interactive:
-            plt.ioff()
+        import matplotlib.pyplot as plt
+        from matplotlib.patches import FancyBboxPatch, FancyArrowPatch
+        import networkx as nx
 
         fig, ax = plt.subplots(figsize=figsize)
 
-        # draw nodes without IDs (IDs will be shown on hover if mplcursors available)
-        junctions = [n for n, d in G.nodes(data=True) if d.get("type") == "junction"]
-        externals = [n for n, d in G.nodes(data=True) if d.get("type") != "junction"]
+        # Helper function to get cell type and properties
+        def get_cell_info(link):
+            """Extract cell information from a link."""
+            cell_type = "UNKNOWN"
+            lanes = 1
+            cell_id = getattr(link, "id", "unknown")
 
-        nx.draw_networkx_nodes(
-            G,
-            pos,
-            nodelist=junctions,
-            node_color="#ffffff",
-            edgecolors="#111111",
-            node_size=520,
-            ax=ax,
-        )
+            if isinstance(link, Origin):
+                cell_type = "SOURCE"
+                lanes = 1
+            elif isinstance(link, Destination):
+                cell_type = "DESTINATION"
+                lanes = 1
+            elif isinstance(link, MotorwayLink):
+                cell_type = "MOTORWAY"
+                lanes = getattr(link, "lanes", 1)
+            elif isinstance(link, Onramp):
+                cell_type = "ONRAMP"
+                lanes = getattr(link, "lanes", 1)
+            elif isinstance(link, Offramp):
+                cell_type = "OFFRAMP"
+                lanes = getattr(link, "lanes", 1)
 
-        # split externals into sources (SRC:), destinations (DEST:) and others
-        externals_src = [n for n in externals if str(n).startswith("SRC:")]
-        externals_dest = [n for n in externals if str(n).startswith("DEST:")]
-        externals_other = [
-            n for n in externals if n not in externals_src and n not in externals_dest
-        ]
+            return cell_type, lanes, cell_id
 
-        nx.draw_networkx_nodes(
-            G,
-            pos,
-            nodelist=externals_src,
-            node_color="#e7d4f5",
-            edgecolors="#9467bd",
-            linewidths=2.5,
-            node_size=300,
-            node_shape="^",
-            ax=ax,
-        )
-        nx.draw_networkx_nodes(
-            G,
-            pos,
-            nodelist=externals_dest,
-            node_color="#b3d9ff",
-            edgecolors="#1f77b4",
-            linewidths=2.5,
-            node_size=300,
-            node_shape="s",
-            ax=ax,
-        )
-        nx.draw_networkx_nodes(
-            G,
-            pos,
-            nodelist=externals_other,
-            node_color="#f0f0f0",
-            edgecolors="#444444",
-            linewidths=1.5,
-            node_size=200,
-            ax=ax,
-        )
+        def get_cell_color(cell_type: str) -> tuple[str, str]:
+            """Get fill and edge color for a cell type."""
+            colors = {
+                "SOURCE": ("#cce5ff", "#1f77b4"),  # Light blue, blue edge
+                "DESTINATION": ("#fff5e6", "#ff9800"),  # Light orange, orange edge
+                "MOTORWAY": ("#e6f3ff", "#2196f3"),  # Light blue, blue edge
+                "ONRAMP": ("#e8f5e9", "#4caf50"),  # Light green, green edge
+                "OFFRAMP": ("#ffebee", "#f44336"),  # Light red, red edge
+                "MERGE": ("#e8f5e9", "#4caf50"),  # Light green, green edge
+                "NODE": ("#f5f5f5", "#9e9e9e"),  # Light gray, gray edge
+            }
+            return colors.get(cell_type, ("#f0f0f0", "#666666"))
 
-        # draw edges plainly and capture artist
-        edges = list(G.edges(data=True))
+        def truncate_id(id_str: str, max_len: int = 12) -> str:
+            """Truncate ID string for display."""
+            id_str = str(id_str)
+            if len(id_str) <= max_len:
+                return id_str
+            # Show first and last parts
+            if max_len <= 6:
+                return id_str[:max_len]
+            mid = max_len // 2 - 1
+            return f"{id_str[:mid]}..{id_str[-mid:]}"
 
-        # group edges by type to draw with distinct styles
-        motorway_edges = []
-        onramp_edges = []
-        offramp_edges = []
-        origin_edges = []
-        destination_edges = []
-        other_edges = []
+        # Collect all cells from the network (including nodes/junctions)
+        cells = []
+        cell_id_counter = 1
+        cell_to_info = {}  # Maps cell object to (numeric_id, type, lanes, original_id)
+        node_to_info = {}  # Maps node object to (numeric_id, type, lanes, original_id)
 
-        for u, v, d in edges:
-            ltype = d.get("ltype", "Other")
-            if ltype == "Motorway":
-                motorway_edges.append((u, v, d))
-            elif ltype == "Onramp":
-                onramp_edges.append((u, v, d))
-            elif ltype == "Offramp":
-                offramp_edges.append((u, v, d))
-            elif ltype == "Origin":
-                origin_edges.append((u, v, d))
-            elif ltype == "Destination":
-                destination_edges.append((u, v, d))
-            else:
-                other_edges.append((u, v, d))
+        # First, add all nodes (junctions) as cells
+        for node in self.list_nodes():
+            node_to_info[node] = (
+                cell_id_counter,
+                "NODE",
+                0,
+                node.id,
+            )
+            cells.append(node)
+            cell_id_counter += 1
 
-        edge_artists = []
+        # Process all nodes and their links
+        for node in self.list_nodes():
+            # Process incoming links
+            for link in node.incoming:
+                if link not in cell_to_info:
+                    cell_type, lanes, original_id = get_cell_info(link)
+                    cell_to_info[link] = (
+                        cell_id_counter,
+                        cell_type,
+                        lanes,
+                        original_id,
+                    )
+                    cells.append(link)
+                    cell_id_counter += 1
 
-        def _draw_group(edge_list, style, base_width, alpha=1.0):
-            if not edge_list:
-                return None
-            et = [(u, v) for u, v, _ in edge_list]
-            colors = [d.get("color", "#333333") for _, _, d in edge_list]
-            widths = [
-                max(
-                    0.8,
-                    base_width
-                    * (
-                        float(getattr(d.get("_link_obj"), "lanes", 1))
-                        if d.get("_link_obj")
-                        else d.get("width", 1.0)
-                    ),
+            # Process outgoing links
+            for link in node.outgoing:
+                if link not in cell_to_info:
+                    cell_type, lanes, original_id = get_cell_info(link)
+                    cell_to_info[link] = (
+                        cell_id_counter,
+                        cell_type,
+                        lanes,
+                        original_id,
+                    )
+                    cells.append(link)
+                    cell_id_counter += 1
+
+        # Build connectivity graph
+        G = nx.DiGraph()
+        for cell in cells:
+            # Add all cells as nodes in the graph
+            if cell in cell_to_info:
+                cell_num, _, _, _ = cell_to_info[cell]
+                G.add_node(cell_num)
+            elif cell in node_to_info:
+                cell_num, _, _, _ = node_to_info[cell]
+                G.add_node(cell_num)
+
+        # Add edges based on network topology
+        for node in self.list_nodes():
+            node_num, _, _, _ = node_to_info[node]
+
+            # Connect incoming links to the node
+            for in_link in node.incoming:
+                if in_link in cell_to_info:
+                    in_num, _, _, _ = cell_to_info[in_link]
+                    G.add_edge(in_num, node_num)
+
+            # Connect node to outgoing links
+            for out_link in node.outgoing:
+                if out_link in cell_to_info:
+                    out_num, _, _, _ = cell_to_info[out_link]
+                    G.add_edge(node_num, out_num)
+
+        # Compute positions if not provided
+        if pos is None:
+            # Try hierarchical layout first for DAGs
+            try:
+                pos_layout = nx.nx_agraph.graphviz_layout(G, prog="dot")
+            except:
+                # Fall back to spring layout
+                pos_layout = nx.spring_layout(G, k=2.5, iterations=100, seed=42)
+
+            # Scale positions to use the spacing parameters
+            x_coords = [p[0] for p in pos_layout.values()]
+            y_coords = [p[1] for p in pos_layout.values()]
+            x_range = max(x_coords) - min(x_coords) if len(x_coords) > 1 else 1
+            y_range = max(y_coords) - min(y_coords) if len(y_coords) > 1 else 1
+
+            pos = {}
+            for cell_num, (x, y) in pos_layout.items():
+                # Normalize and scale
+                x_norm = (x - min(x_coords)) / x_range if x_range > 0 else 0.5
+                y_norm = (y - min(y_coords)) / y_range if y_range > 0 else 0.5
+                pos[cell_num] = (
+                    x_norm * cell_spacing_x * max(len(cells) - 1, 1),
+                    y_norm * cell_spacing_y * max(len(cells) - 1, 1),
                 )
-                for _, _, d in edge_list
-            ]
-            return (
-                nx.draw_networkx_edges(
-                    G,
-                    pos,
-                    edgelist=et,
-                    edge_color=colors,
-                    style=style,
-                    width=widths,
-                    alpha=alpha,
-                    arrowsize=18,
-                    ax=ax,
-                ),
-                edge_list,
+        else:
+            # Map provided positions to cell numbers
+            pos_mapped = {}
+            for cell, (cell_num, _, _, original_id) in cell_to_info.items():
+                if original_id in pos:
+                    pos_mapped[cell_num] = pos[original_id]
+            pos = pos_mapped if pos_mapped else pos
+
+        # Draw directed arrows first (so they appear behind boxes)
+        box_width = 3.0
+        box_height = 1.8
+
+        for src, dst in G.edges():
+            if src in pos and dst in pos:
+                x1, y1 = pos[src]
+                x2, y2 = pos[dst]
+
+                # Calculate direction vector
+                dx = x2 - x1
+                dy = y2 - y1
+                dist = np.sqrt(dx**2 + dy**2)
+
+                if dist > 0:
+                    # Normalize
+                    dx_norm = dx / dist
+                    dy_norm = dy / dist
+
+                    # Adjust start and end points to box edges
+                    start_x = x1 + dx_norm * (box_width / 2 + 0.1)
+                    start_y = y1 + dy_norm * (box_height / 2 + 0.1)
+                    end_x = x2 - dx_norm * (box_width / 2 + 0.1)
+                    end_y = y2 - dy_norm * (box_height / 2 + 0.1)
+
+                    # Create directed arrow with proper arrowhead
+                    arrow = FancyArrowPatch(
+                        (start_x, start_y),
+                        (end_x, end_y),
+                        arrowstyle="->",  # Directed arrow
+                        mutation_scale=25,
+                        linewidth=2.0,
+                        color="#333333",
+                        connectionstyle="arc3,rad=0.15",
+                        zorder=1,
+                        alpha=0.8,
+                    )
+                    ax.add_patch(arrow)
+
+        # Draw cells (boxes)
+        for cell in cells:
+            # Get cell info from appropriate dict
+            if cell in cell_to_info:
+                cell_num, cell_type, lanes, original_id = cell_to_info[cell]
+            elif cell in node_to_info:
+                cell_num, cell_type, lanes, original_id = node_to_info[cell]
+            else:
+                continue
+
+            if cell_num not in pos:
+                continue
+
+            x, y = pos[cell_num]
+            fill_color, edge_color = get_cell_color(cell_type)
+
+            # Create rounded rectangle
+            box = FancyBboxPatch(
+                (x - box_width / 2, y - box_height / 2),
+                box_width,
+                box_height,
+                boxstyle="round,pad=0.1",
+                facecolor=fill_color,
+                edgecolor=edge_color,
+                linewidth=2.5,
+                zorder=2,
+            )
+            ax.add_patch(box)
+
+            # Create label with ID substring
+            id_display = truncate_id(original_id)
+            label_lines = [f"Cell {cell_num}", f"[{id_display}]"]
+
+            if cell_type == "NODE":
+                label_lines.append("(NODE)")
+            elif lanes > 1:
+                label_lines.append(f"({lanes} lanes)")
+                label_lines.append(f"({cell_type})")
+            elif lanes == 1:
+                label_lines.append(f"({lanes} lane)")
+                label_lines.append(f"({cell_type})")
+            else:
+                label_lines.append(f"({cell_type})")
+
+            label = "\n".join(label_lines)
+
+            # Add text
+            ax.text(
+                x,
+                y,
+                label,
+                ha="center",
+                va="center",
+                fontsize=9,
+                fontweight="normal",
+                zorder=3,
             )
 
-        # draw edge groups and collect artists
-        for result in [
-            _draw_group(motorway_edges, "solid", 2.5),
-            _draw_group(onramp_edges, "dashed", 2.0, 0.85),
-            _draw_group(offramp_edges, "dashdot", 2.0, 0.85),
-            _draw_group(origin_edges, "dotted", 1.8, 0.8),
-            _draw_group(destination_edges, "dotted", 1.8, 0.8),
-            _draw_group(other_edges, "solid", 1.0, 0.7),
-        ]:
-            if result:
-                edge_artists.append(result)
+        # Set axis limits with margins
+        if pos:
+            x_coords = [p[0] for p in pos.values()]
+            y_coords = [p[1] for p in pos.values()]
 
-        # create legend with visual style consistent with plot
-        legend_elements = []
-        type_order = ["Motorway", "Onramp", "Offramp", "Origin", "Destination", "Other"]
+            x_margin = box_width * 1.5
+            y_margin = box_height * 1.5
 
-        for ltype in type_order:
-            for _, _, d in edges:
-                if d.get("ltype") == ltype:
-                    color = d.get("color", "#333333")
-                    width = d.get("width", 1.0)
+            ax.set_xlim(min(x_coords) - x_margin, max(x_coords) + x_margin)
+            ax.set_ylim(min(y_coords) - y_margin, max(y_coords) + y_margin)
 
-                    # determine line style
-                    if ltype == "Motorway":
-                        style = "solid"
-                        lw = 2.5
-                    elif ltype == "Onramp":
-                        style = "dashed"
-                        lw = 2.0
-                    elif ltype == "Offramp":
-                        style = "dashdot"
-                        lw = 2.0
-                    elif ltype in ["Origin", "Destination"]:
-                        style = "dotted"
-                        lw = 1.8
-                    else:
-                        style = "solid"
-                        lw = 1.0
-
-                    legend_elements.append(
-                        Line2D(
-                            [0], [0], color=color, lw=lw, linestyle=style, label=ltype
-                        )
-                    )
-                    break
-
-        ax.legend(
-            handles=legend_elements,
-            title="Link Types",
-            loc="upper right",
-            framealpha=0.95,
-            edgecolor="gray",
-            fontsize=9,
-        )
-
-        ax.set_title("Traffic Network Topology", fontsize=14, fontweight="bold", pad=15)
+        ax.set_aspect("equal", adjustable="box")
         ax.set_axis_off()
-
-        # add subtle grid for better readability
-        ax.grid(True, alpha=0.15, linestyle=":", linewidth=0.5)
-        ax.set_axis_off()
-        plt.tight_layout()
+        plt.tight_layout(pad=1.0)
 
         if save_path is not None:
             plt.savefig(save_path, dpi=200, bbox_inches="tight")
