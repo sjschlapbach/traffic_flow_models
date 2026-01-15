@@ -59,6 +59,7 @@ class TestMETANET:
         previous_density_sx = casadi.SX.sym("previous_density", 1, 1)  # type: ignore
         downstream_density_sx = casadi.SX.sym("downstream_density", 1, 1)  # type: ignore
         upstream_speed_sx = casadi.SX.sym("upstream_speed", 1, 1)  # type: ignore
+        upstream_onramp_inflows_sx = casadi.SX.sym("upstream_onramp_inflows", 1, 1)  # type: ignore
         previous_speed_sx = casadi.SX.sym("previous_speed", 1, 1)  # type: ignore
 
         upstream_flow = 100.0
@@ -84,6 +85,7 @@ class TestMETANET:
             previous_density=previous_density_sx,
             downstream_density=downstream_density_sx,  # no density gradient
             upstream_speed=upstream_speed_sx,
+            upstream_onramp_inflows=upstream_onramp_inflows_sx,
             previous_speed=previous_speed_sx,
             dt=dt,
         )
@@ -98,6 +100,7 @@ class TestMETANET:
                 previous_density_sx,
                 downstream_density_sx,
                 upstream_speed_sx,
+                upstream_onramp_inflows_sx,
                 previous_speed_sx,
             ],
             [next_density_sx, next_speed_sx, next_flow_sx],
@@ -110,6 +113,7 @@ class TestMETANET:
             previous_density,
             previous_density,  # no density gradient
             previous_speed,
+            0.0,  # scenario does not contain an onramp upstream of the link
             previous_speed,
         )
         next_density = np.array(res).flatten()[0]
@@ -222,6 +226,7 @@ class TestMETANET:
         previous_density_sx = casadi.SX.sym("previous_density", 1, 1)  # type: ignore
         downstream_density_sx = casadi.SX.sym("downstream_density", 1, 1)  # type: ignore
         upstream_speed_sx = casadi.SX.sym("upstream_speed", 1, 1)  # type: ignore
+        upstream_onramp_inflows_sx = casadi.SX.sym("upstream_onramp_inflows", 1, 1)  # type: ignore
         previous_speed_sx = casadi.SX.sym("previous_speed", 1, 1)  # type: ignore
 
         sx_params = model.set_up_symbolic_model_params(network=network)
@@ -241,6 +246,7 @@ class TestMETANET:
             previous_density=previous_density_sx,
             downstream_density=downstream_density_sx,
             upstream_speed=upstream_speed_sx,
+            upstream_onramp_inflows=upstream_onramp_inflows_sx,
             previous_speed=previous_speed_sx,
             dt=dt,
         )
@@ -254,6 +260,7 @@ class TestMETANET:
                 previous_density_sx,
                 downstream_density_sx,
                 upstream_speed_sx,
+                upstream_onramp_inflows_sx,
                 previous_speed_sx,
             ],
             [next_density_sx, next_speed_sx, next_flow_sx],
@@ -266,6 +273,7 @@ class TestMETANET:
             previous_density[0],
             previous_density[1],
             previous_speed[0],
+            flow[onramp.id][0],
             previous_speed[0],
         )
         next_density_direct = np.array(res).flatten()[0]
