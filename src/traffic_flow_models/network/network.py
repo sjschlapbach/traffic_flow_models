@@ -709,19 +709,21 @@ class Network:
         if not has_destination:
             raise ValueError("Network must contain at least one destination.")
 
-        # check that every node connected to an origin only has a single motorway link
-        # as an outgoing link to ensure the correct computation of boundary constraints
+        # check that every node connected to an origin or onramp only has a single motorway
+        # link as an outgoing link to ensure the correct computation of boundary constraints
         for node in self.list_nodes():
-            incoming_origins = [
-                link for link in node.incoming if isinstance(link, Origin)
+            incoming_inflows = [
+                link
+                for link in node.incoming
+                if (isinstance(link, Origin) or isinstance(link, Onramp))
             ]
 
-            if len(incoming_origins) > 0 and (
+            if len(incoming_inflows) > 0 and (
                 len(node.outgoing) != 1
                 or not isinstance(node.outgoing[0], MotorwayLink)
             ):
                 raise ValueError(
-                    f"Node {node.id} connected to an origin must have exactly one outgoing motorway link."
+                    f"Node {node.id} connected to an origin or onramp must have exactly one outgoing motorway link."
                 )
 
         # check that every offramp has a destination
