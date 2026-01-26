@@ -78,7 +78,15 @@ class METANET:
             if isinstance(params["alpha"], dict)
             else params["alpha"]
         )
-        return lane_capacity / (free_flow_speed * (casadi.exp(-1 / (alpha)) if isinstance(alpha, casadi.SX) else np.exp(-1 / (alpha))))  # type: ignore
+
+        return lane_capacity / (
+            free_flow_speed
+            * (
+                casadi.exp(-1 / alpha)
+                if isinstance(alpha, casadi.SX)
+                else np.exp(-1 / alpha)
+            )
+        )
 
     def backward_wave_speed(
         self,
@@ -453,9 +461,9 @@ class METANET:
                     raise TypeError(f"Unknown outgoing link type {type(out_link)}")
 
             # combine the different downstream densities (e.g., weighted average)
-            numer = casadi.vertcat(*[d**2 for d in out_densities])
-            denom = casadi.vertcat(*out_densities)
-            node_downstream_density = casadi.sum(numer) / casadi.sum(denom)
+            numer = casadi.sum(casadi.vertcat(*[d**2 for d in out_densities]))
+            denom = casadi.sum(casadi.vertcat(*out_densities))
+            node_downstream_density = casadi.if_else(denom == 0, 0, numer / denom)
 
             # for multiple outgoing links, the virtual downstream jam density
             # and backward wave speed are not well-defined
@@ -581,23 +589,36 @@ class METANET:
                 node_upstream_speed = casadi.SX(
                     min(inc.vf for inc in node.incoming if isinstance(inc, Onramp))
                 )
+
+            # if only an origin is connected as an incoming link (and correspondingly only one outgoing
+            # motorway link is allowed), choose the free-flow speed of the outgoing motorway link
+            # for consistency (origin does not have free flow speed defined)
             else:
-                node_upstream_speed = casadi.SX(
-                    min(
-                        out.vf for out in node.outgoing if isinstance(out, MotorwayLink)
+                if (
+                    len(node.incoming) != 1
+                    or not isinstance(node.incoming[0], Origin)
+                    or len(node.outgoing) != 1
+                    or not isinstance(node.outgoing[0], MotorwayLink)
+                ):
+                    raise ValueError(
+                        "Encountered node without expected types of input links (more than one Origin / more than one outgoing link for origin-linked node)."
                     )
-                )
+
+                node_upstream_speed = casadi.SX(node.outgoing[0].vf)
+
         else:
-            nom_terms = []
+            numer_terms = []
             denom_terms = []
             for inc in node.incoming:
                 if isinstance(inc, MotorwayLink):
                     # motorway link: use the last cell speed and flow for upstream speed
-                    nom_terms.append(speeds[inc.id][-1] * flows[inc.id][-1])
+                    numer_terms.append(speeds[inc.id][-1] * flows[inc.id][-1])
                     denom_terms.append(flows[inc.id][-1])
 
-            node_upstream_speed = casadi.sum(casadi.vertcat(*nom_terms)) / casadi.sum(
-                casadi.vertcat(*denom_terms)
+            numer_sum = casadi.sum(casadi.vertcat(*numer_terms))
+            denom_sum = casadi.sum(casadi.vertcat(*denom_terms))
+            node_upstream_speed = casadi.if_else(
+                denom_sum == 0, 0, numer_sum / denom_sum
             )
 
         return node_outflows, node_upstream_speed
@@ -719,7 +740,7 @@ class METANET:
         Returns:
             Tuple[casadi.SX, casadi.SX, casadi.SX]: Three CasADi column vectors
             of length equal to the number of cells on `link` containing the
-            next-step densities, speeds and outflows respectively.
+            virtual downstream link densities, speeds and outflows respectively.
 
         Raises:
             ValueError: If no node outflow has been computed for `link.id`.
@@ -745,9 +766,9 @@ class METANET:
                 link=link,
                 cell=cell,
                 upstream_flow=(
-                    node_outflows[link.id]
-                    if cell.upstream is None
-                    else link_flows[i - 1]
+                    link_flows[i - 1]
+                    if cell.upstream is not None
+                    else node_outflows[link.id]
                 ),
                 previous_flow=link_flows[i],
                 previous_density=link_densities[i],
