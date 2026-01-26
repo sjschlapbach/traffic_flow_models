@@ -25,7 +25,6 @@ from .controller.alinea import AlineaController
 from .simulator.sumo_simulation import SUMOSimulation
 from .simulator.sumo_pipeline import SUMOPipeline
 
-
 __all__ = [
     "Cell",
     "Origin",

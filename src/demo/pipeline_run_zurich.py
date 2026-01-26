@@ -1,6 +1,5 @@
 from traffic_flow_models import SUMOPipeline, SUMOSimulation
 
-
 if __name__ == "__main__":
     # scenario definitions
     name = "zurich"

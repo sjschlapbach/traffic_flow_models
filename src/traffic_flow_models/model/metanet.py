@@ -382,9 +382,10 @@ class METANET:
     def _compute_virtual_downstream_density(
         self,
         node: Node,
+        params: METANETSymbolicParams,
         densities: dict[str, casadi.SX],
         boundary_conditions: dict[str, casadi.SX],
-    ) -> casadi.SX:
+    ) -> Tuple[casadi.SX, Union[float, None], Union[float, None]]:
         """Determine a node's virtual downstream density for METANET updates.
 
         The virtual downstream density is used when computing boundary and
@@ -404,28 +405,37 @@ class METANET:
         Args:
             node (Node): Network node for which to compute the downstream
                 density.
+            params (METANETSymbolicParams): METANET model parameters (CasADi SX).
             densities (dict[str, casadi.SX]): Mapping link id -> vector of
                 cell densities (CasADi SX) for motorway links.
             boundary_conditions (dict[str, casadi.SX]): Mapping of link or
                 destination id to boundary density (CasADi SX).
 
         Returns:
-            casadi.SX: Virtual downstream density to be used in downstream
-            anticipation and supply computations.
+            Tuple[casadi.SX, Union[casadi.SX, None], Union[casadi.SX, None]]: A tuple containing:
+                - The virtual downstream density of the node (CasADi SX).
+                - The virtual downstream jam density of the node (CasADi SX or None).
+                - The virtual downstream backward wave speed of the node (CasADi SX or None).
 
         Raises:
             ValueError: If the node has no outgoing links or an offramp has
                 no destination defined.
             TypeError: If an outgoing link has an unexpected type.
         """
-        # determine the virtual downstream density of the node based on the outgoing links = q_m,N_m+1(k)
+        # initialize variables
         node_downstream_density = None
+        node_downstream_jam_density = None
+        node_downstream_backward_wave_speed = None
+
+        # determine the virtual downstream density of the node based on the outgoing links = q_m,N_m+1(k)
         if len(node.outgoing) > 1:
             out_densities: list[casadi.SX] = []
+
             for out_link in node.outgoing:
                 if isinstance(out_link, MotorwayLink):
                     # motorway link: use the density of the first cell as downstream density
                     out_densities.append(densities[out_link.id][0])
+
                 elif isinstance(out_link, Offramp):
                     # offramp link: the store-and-forward model does not model density / speed on offramps
                     # -> directly use the boundary condition of the connected destination as downstream density
@@ -435,9 +445,11 @@ class METANET:
                         )
 
                     out_densities.append(boundary_conditions[out_link.destination.id])
+
                 elif isinstance(out_link, Destination):
                     # destination link: density is provided as boundary condition
                     out_densities.append(boundary_conditions[out_link.id])
+
                 else:
                     raise TypeError(f"Unknown outgoing link type {type(out_link)}")
 
@@ -446,12 +458,28 @@ class METANET:
             denom = casadi.vertcat(*out_densities)
             node_downstream_density = casadi.sum(numer) / casadi.sum(denom)
 
+            # for multiple outgoing links, the virtual downstream jam density
+            # and backward wave speed are not well-defined
+            node_downstream_jam_density = None
+            node_downstream_backward_wave_speed = None
+
+        # single outgoing link: directly use its downstream density
         elif len(node.outgoing) == 1:
             out_link = node.outgoing[0]
 
             if isinstance(out_link, MotorwayLink):
                 # motorway link: use the density of the first cell as downstream density
                 node_downstream_density = densities[out_link.id][0]
+                node_downstream_jam_density = out_link.rho_jam
+                node_downstream_backward_wave_speed = self.backward_wave_speed(
+                    params=params,
+                    link_id=out_link.id,
+                    capacity=out_link.lane_capacity * out_link.lanes,
+                    lane_capacity=out_link.lane_capacity,
+                    jam_density=out_link.rho_jam,
+                    free_flow_speed=out_link.vf,
+                )
+
             elif isinstance(out_link, Offramp):
                 # offramp link: the store-and-forward model does not model density / speed on offramps
                 # -> directly use the boundary condition of the connected destination as downstream density
@@ -461,15 +489,23 @@ class METANET:
                     )
 
                 node_downstream_density = boundary_conditions[out_link.destination.id]
+                node_downstream_jam_density = None  # no downstream jam density defined -> handling on calling level required
+                node_downstream_backward_wave_speed = None  # no downstream backward wave speed defined -> handling on calling level required
             elif isinstance(out_link, Destination):
                 # destination link: density is provided as boundary condition
                 node_downstream_density = boundary_conditions[out_link.id]
+                node_downstream_jam_density = None  # no downstream jam density defined -> handling on calling level required
+                node_downstream_backward_wave_speed = None  # no downstream backward wave speed defined -> handling on calling level required
             else:
                 raise TypeError(f"Unknown outgoing link type {type(out_link)}")
         else:
             raise ValueError(f"No outgoing links defined for node {node.id}")
 
-        return node_downstream_density
+        return (
+            node_downstream_density,
+            node_downstream_jam_density,
+            node_downstream_backward_wave_speed,
+        )
 
     def _compute_node_outflows_upstream_speed(
         self,
@@ -976,19 +1012,30 @@ class METANET:
             for inc in node.incoming:
                 # compute the virtual downstream density for the current node
                 # -> required for onramp and origin store-and-forward state updates
-                node_virtual_downstream_density = (
-                    self._compute_virtual_downstream_density(
-                        node=node,
-                        densities=densities,
-                        boundary_conditions=boundary_conditions,
-                    )
+                (
+                    node_virtual_downstream_density,
+                    node_virtual_downstream_jam_density,
+                    node_virtual_downstream_backward_wave_speed,
+                ) = self._compute_virtual_downstream_density(
+                    node=node,
+                    params=params,
+                    densities=densities,
+                    boundary_conditions=boundary_conditions,
                 )
 
                 if isinstance(inc, Origin):
                     next_inflow, next_queue = store_and_forward_update(
                         capacity=casadi.inf,
-                        jam_density=casadi.inf,
-                        backward_wave_speed=casadi.inf,
+                        jam_density=(
+                            node_virtual_downstream_jam_density
+                            if node_virtual_downstream_jam_density is not None
+                            else casadi.inf
+                        ),
+                        backward_wave_speed=(
+                            node_virtual_downstream_backward_wave_speed
+                            if node_virtual_downstream_backward_wave_speed is not None
+                            else casadi.inf
+                        ),
                         density=node_virtual_downstream_density,
                         demand=origin_demands[inc.id],
                         queue=origin_queues[inc.id],
@@ -1089,9 +1136,10 @@ class METANET:
                             f"Motorway link {out.id} does not have a valid destination node defined."
                         )
 
-                    node_downstream_virtual_downstream_density = (
+                    node_downstream_virtual_downstream_density, _, _ = (
                         self._compute_virtual_downstream_density(
                             node=destination_node,
+                            params=params,
                             densities=densities,
                             boundary_conditions=boundary_conditions,
                         )
