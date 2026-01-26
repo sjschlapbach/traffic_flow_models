@@ -116,6 +116,51 @@ class TestNetwork:
         with pytest.raises(ValueError):
             net.validate()
 
+    def test_validate_origin_node_multiple_motorway_outgoing_raises(self):
+        """Test that a node connected to an origin can only have one motorway link as outgoing."""
+        # create a node with Origin incoming and two MotorwayLinks outgoing (invalid)
+        origin = Origin()
+        main1 = MotorwayLink(
+            length=1.0, lanes=2, lane_capacity=1500, free_flow_speed=80, jam_density=140
+        )
+        main2 = MotorwayLink(
+            length=1.0, lanes=2, lane_capacity=1500, free_flow_speed=80, jam_density=140
+        )
+        dest1 = Destination()
+        dest2 = Destination()
+
+        node1 = Node(
+            id="n1", incoming=[origin], outgoing=[main1, main2]
+        )  # Invalid: multiple motorway links
+        node2 = Node(id="n2", incoming=[main1], outgoing=[dest1])
+        node3 = Node(id="n3", incoming=[main2], outgoing=[dest2])
+
+        net = Network(nodes=[node1, node2, node3])
+
+        with pytest.raises(ValueError):
+            net.validate()
+
+    def test_validate_origin_no_motorway_outgoing_raises(self):
+        """Test that a node connected to an origin must have at least one motorway link as outgoing."""
+        # create a node with Origin incoming and no MotorwayLink outgoing (invalid)
+        origin = Origin()
+        offramp = Offramp(
+            lanes=1,
+            lane_capacity=2000,
+            free_flow_speed=100,
+            jam_density=180,
+            destination=Destination(),
+        )
+
+        node1 = Node(
+            id="n1", incoming=[origin], outgoing=[offramp]
+        )  # Invalid: no motorway link
+
+        net = Network(nodes=[node1])
+
+        with pytest.raises(ValueError):
+            net.validate()
+
     def test_validate_onramp_without_origin_passes(self):
         # create mainline and an onramp feeding into it (no Origin present)
         main = MotorwayLink(

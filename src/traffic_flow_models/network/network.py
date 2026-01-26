@@ -666,6 +666,7 @@ class Network:
             - Each network must have at least one origin link or onramp
             - Each network must have at least one destination
             - Each offramp needs to be connected to a destination
+            - A node connected to an origin may only have one outgoing link (motorway link)
             - Each node needs to have at least one incoming and one outgoing link
             - All nodes in the network must be connected through links
 
@@ -707,6 +708,21 @@ class Network:
 
         if not has_destination:
             raise ValueError("Network must contain at least one destination.")
+
+        # check that every node connected to an origin only has a single motorway link
+        # as an outgoing link to ensure the correct computation of boundary constraints
+        for node in self.list_nodes():
+            incoming_origins = [
+                link for link in node.incoming if isinstance(link, Origin)
+            ]
+
+            if len(incoming_origins) > 0 and (
+                len(node.outgoing) != 1
+                or not isinstance(node.outgoing[0], MotorwayLink)
+            ):
+                raise ValueError(
+                    f"Node {node.id} connected to an origin must have exactly one outgoing motorway link."
+                )
 
         # check that every offramp has a destination
         for node in self.list_nodes():
@@ -2932,6 +2948,7 @@ class Network:
                 )
                 for _, _, d in edge_list
             ]
+
             return (
                 nx.draw_networkx_edges(
                     G,
