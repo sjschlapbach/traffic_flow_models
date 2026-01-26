@@ -430,23 +430,11 @@ class METANET:
         # determine the virtual downstream density of the node based on the outgoing links = q_m,N_m+1(k)
         if len(node.outgoing) > 1:
             out_densities: list[casadi.SX] = []
-            out_jam_densities: list[float] = []
-            out_backward_wave_speeds: list[float] = []
+
             for out_link in node.outgoing:
                 if isinstance(out_link, MotorwayLink):
                     # motorway link: use the density of the first cell as downstream density
                     out_densities.append(densities[out_link.id][0])
-                    out_jam_densities.append(out_link.rho_jam)
-                    out_backward_wave_speeds.append(
-                        self.backward_wave_speed(
-                            params=params,
-                            link_id=out_link.id,
-                            capacity=out_link.lane_capacity * out_link.lanes,
-                            lane_capacity=out_link.lane_capacity,
-                            jam_density=out_link.rho_jam,
-                            free_flow_speed=out_link.vf,
-                        )
-                    )
 
                 elif isinstance(out_link, Offramp):
                     # offramp link: the store-and-forward model does not model density / speed on offramps
@@ -457,14 +445,10 @@ class METANET:
                         )
 
                     out_densities.append(boundary_conditions[out_link.destination.id])
-                    out_jam_densities.append(np.inf)
-                    out_backward_wave_speeds.append(np.inf)
 
                 elif isinstance(out_link, Destination):
                     # destination link: density is provided as boundary condition
                     out_densities.append(boundary_conditions[out_link.id])
-                    out_jam_densities.append(np.inf)
-                    out_backward_wave_speeds.append(np.inf)
 
                 else:
                     raise TypeError(f"Unknown outgoing link type {type(out_link)}")
@@ -474,20 +458,10 @@ class METANET:
             denom = casadi.vertcat(*out_densities)
             node_downstream_density = casadi.sum(numer) / casadi.sum(denom)
 
-            # choose the minimum downstream jam density / backward wave speed among the outgoing links
-            # set the value to None, if no finite value is available
-            finite_jam_densities = [d for d in out_jam_densities if d < np.inf]
-            node_downstream_jam_density = (
-                min(finite_jam_densities) if len(finite_jam_densities) > 0 else None
-            )
-            finite_backward_wave_speeds = [
-                s for s in out_backward_wave_speeds if s < np.inf
-            ]
-            node_downstream_backward_wave_speed = (
-                min(finite_backward_wave_speeds)
-                if len(finite_backward_wave_speeds) > 0
-                else None
-            )
+            # for multiple outgoing links, the virtual downstream jam density
+            # and backward wave speed are not well-defined
+            node_downstream_jam_density = None
+            node_downstream_backward_wave_speed = None
 
         # single outgoing link: directly use its downstream density
         elif len(node.outgoing) == 1:
