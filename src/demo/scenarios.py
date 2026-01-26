@@ -53,16 +53,27 @@ def setup_network_ab() -> tuple[Network, dict]:
 
     # three motorway segments approximating the original 6 cells (0.5 km each)
     m1 = MotorwayLink(
-        length=1.0, lanes=3, lane_capacity=2000, free_flow_speed=100, jam_density=180
+        id="m1",
+        length=1.0,
+        lanes=3,
+        lane_capacity=2000,
+        free_flow_speed=100,
+        jam_density=180,
     )
     m2 = MotorwayLink(
-        length=2.0, lanes=3, lane_capacity=2000, free_flow_speed=100, jam_density=180
+        id="m2",
+        length=2.0,
+        lanes=3,
+        lane_capacity=2000,
+        free_flow_speed=100,
+        jam_density=180,
     )
 
     # add origin, destination and onramp
-    origin = Origin()
-    destination = Destination()
+    origin = Origin(id="origin")
+    destination = Destination(id="destination")
     onr = Onramp(
+        id="onramp",
         lanes=1,
         lane_capacity=2000,
         free_flow_speed=100,
@@ -71,9 +82,9 @@ def setup_network_ab() -> tuple[Network, dict]:
     )
 
     # connect the links through nodes and build the network structure
-    n0 = Node(incoming=[origin], outgoing=[m1])
-    n1 = Node(incoming=[m1, onr], outgoing=[m2])
-    n2 = Node(incoming=[m2], outgoing=[destination])
+    n0 = Node(id="n1", incoming=[origin], outgoing=[m1])
+    n1 = Node(id="n2", incoming=[m1, onr], outgoing=[m2])
+    n2 = Node(id="n3", incoming=[m2], outgoing=[destination])
     net = Network(nodes=[n0, n1, n2])
 
     splits = {
@@ -106,22 +117,43 @@ def setup_network_c() -> tuple[Network, dict]:
 
     # motorway segments with a lane drop downstream
     m1 = MotorwayLink(
-        length=1.0, lanes=3, lane_capacity=2000, free_flow_speed=100, jam_density=180
+        id="m1",
+        length=1.0,
+        lanes=3,
+        lane_capacity=2000,
+        free_flow_speed=100,
+        jam_density=180,
     )
     m2 = MotorwayLink(
-        length=1.0, lanes=3, lane_capacity=2000, free_flow_speed=100, jam_density=180
+        id="m2",
+        length=1.0,
+        lanes=3,
+        lane_capacity=2000,
+        free_flow_speed=100,
+        jam_density=180,
     )
     m3 = MotorwayLink(
-        length=0.5, lanes=1, lane_capacity=2000, free_flow_speed=100, jam_density=180
+        id="m3",
+        length=0.5,
+        lanes=1,
+        lane_capacity=2000,
+        free_flow_speed=100,
+        jam_density=180,
     )
     m4 = MotorwayLink(
-        length=0.5, lanes=3, lane_capacity=2000, free_flow_speed=100, jam_density=180
+        id="m4",
+        length=0.5,
+        lanes=3,
+        lane_capacity=2000,
+        free_flow_speed=100,
+        jam_density=180,
     )
 
     # add origin, destination and onramp
-    origin = Origin()
-    destination = Destination()
+    origin = Origin(id="origin")
+    destination = Destination(id="destination")
     onr = Onramp(
+        id="onramp",
         lanes=1,
         lane_capacity=2000,
         free_flow_speed=100,
@@ -130,11 +162,11 @@ def setup_network_c() -> tuple[Network, dict]:
     )
 
     # connect the links through nodes and build the network structure
-    n0 = Node(incoming=[origin], outgoing=[m1])
-    n1 = Node(incoming=[m1, onr], outgoing=[m2])
-    n2 = Node(incoming=[m2], outgoing=[m3])
-    n3 = Node(incoming=[m3], outgoing=[m4])
-    n4 = Node(incoming=[m4], outgoing=[destination])
+    n0 = Node(id="n0", incoming=[origin], outgoing=[m1])
+    n1 = Node(id="n1", incoming=[m1, onr], outgoing=[m2])
+    n2 = Node(id="n2", incoming=[m2], outgoing=[m3])
+    n3 = Node(id="n3", incoming=[m3], outgoing=[m4])
+    n4 = Node(id="n4", incoming=[m4], outgoing=[destination])
     net = Network(nodes=[n0, n1, n2, n3, n4])
 
     splits = {
@@ -177,19 +209,35 @@ def setup_network_d() -> tuple[Network, dict]:
 
     # create segments: upstream 2 cells, middle (onramp), downstream with offramp
     m1 = MotorwayLink(
-        length=1.0, lanes=3, lane_capacity=2000, free_flow_speed=100, jam_density=180
+        id="m1",
+        length=1.0,
+        lanes=3,
+        lane_capacity=2000,
+        free_flow_speed=100,
+        jam_density=180,
     )
     m2 = MotorwayLink(
-        length=1.0, lanes=3, lane_capacity=2000, free_flow_speed=100, jam_density=180
+        id="m2",
+        length=1.0,
+        lanes=3,
+        lane_capacity=2000,
+        free_flow_speed=100,
+        jam_density=180,
     )
     m3 = MotorwayLink(
-        length=1.5, lanes=2, lane_capacity=2000, free_flow_speed=100, jam_density=180
+        id="m3",
+        length=1.5,
+        lanes=2,
+        lane_capacity=2000,
+        free_flow_speed=100,
+        jam_density=180,
     )
 
     # add origin, destination, onramp and offramp
-    origin = Origin()
-    destination = Destination()
+    origin = Origin(id="origin")
+    destination = Destination(id="destination")
     onr = Onramp(
+        id="onramp",
         lanes=1,
         lane_capacity=2000,
         free_flow_speed=100,
@@ -197,6 +245,7 @@ def setup_network_d() -> tuple[Network, dict]:
         controller=None,
     )
     offr = Offramp(
+        id="offramp",
         lanes=1,
         lane_capacity=2000,
         free_flow_speed=100,
@@ -205,10 +254,10 @@ def setup_network_d() -> tuple[Network, dict]:
     )
 
     # connect the links through nodes and build the network structure
-    n0 = Node(incoming=[origin], outgoing=[m1])
-    n1 = Node(incoming=[m1, onr], outgoing=[m2])
-    n2 = Node(incoming=[m2], outgoing=[m3, offr])
-    n3 = Node(incoming=[m3], outgoing=[destination])
+    n0 = Node(id="n0", incoming=[origin], outgoing=[m1])
+    n1 = Node(id="n1", incoming=[m1, onr], outgoing=[m2])
+    n2 = Node(id="n2", incoming=[m2], outgoing=[m3, offr])
+    n3 = Node(id="n3", incoming=[m3], outgoing=[destination])
     net = Network(nodes=[n0, n1, n2, n3])
 
     # splits at node2: motorway keeps 0.8, offramp 0.2
