@@ -14,7 +14,6 @@ from demo.scenarios import (
     setup_network_d,
 )
 
-
 if __name__ == "__main__":
     # ! simulation configuration parameters
     scenario = "A"
