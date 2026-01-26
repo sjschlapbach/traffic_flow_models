@@ -162,8 +162,8 @@ class TestNetwork:
             net.validate()
 
     def test_validate_onramp_node_multiple_motorway_outgoing_raises(self):
-        """Test that a node connected to an onramp can only have one motorway link as incoming."""
-        # create a node with Onramp outgoing and two MotorwayLinks incoming (invalid)
+        """Test that a node connected to an onramp can only have one motorway link as outgoing."""
+        # create a node with Onramp outgoing and two MotorwayLinks outgoing (invalid)
         onramp = Onramp(
             lanes=1, lane_capacity=2000, free_flow_speed=100, jam_density=180
         )

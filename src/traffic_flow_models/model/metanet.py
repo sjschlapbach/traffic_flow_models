@@ -1,7 +1,6 @@
 import numpy as np
 import casadi
-import warnings
-from typing import Callable, Tuple, TypedDict, cast, Union
+from typing import Tuple, TypedDict, cast, Union
 from numpy.typing import NDArray
 
 
