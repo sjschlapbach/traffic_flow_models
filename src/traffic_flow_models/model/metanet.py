@@ -1,7 +1,6 @@
 import numpy as np
 import casadi
-import warnings
-from typing import Callable, Tuple, TypedDict, cast, Union
+from typing import Tuple, TypedDict, cast, Union
 from numpy.typing import NDArray
 
 
@@ -1049,14 +1048,15 @@ class METANET:
                     # TODO: include possibility here for ramp metering controller (e.g. through ramp metering rate input)
                     next_inflow, next_queue = store_and_forward_update(
                         capacity=inc.Qc,
-                        jam_density=inc.rho_jam,
-                        backward_wave_speed=self.backward_wave_speed(
-                            params=params,
-                            link_id=inc.id,
-                            capacity=inc.Qc,
-                            lane_capacity=inc.Qc_lane,
-                            jam_density=inc.rho_jam,
-                            free_flow_speed=inc.vf,
+                        jam_density=(
+                            node_virtual_downstream_jam_density
+                            if node_virtual_downstream_jam_density is not None
+                            else casadi.inf
+                        ),
+                        backward_wave_speed=(
+                            node_virtual_downstream_backward_wave_speed
+                            if node_virtual_downstream_backward_wave_speed is not None
+                            else casadi.inf
                         ),
                         density=node_virtual_downstream_density,
                         demand=onramp_demands[inc.id],
