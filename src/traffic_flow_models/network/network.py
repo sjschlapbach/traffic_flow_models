@@ -322,6 +322,7 @@ class Network:
                         )
 
                     # count destination connected to offramp for disturbance vector sizing
+                    # flows are not tracked explicitly for offramp destinations
                     if link.destination is not None:
                         num_destinations += 1
 
