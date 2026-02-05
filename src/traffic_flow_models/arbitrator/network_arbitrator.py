@@ -1,7 +1,6 @@
 import xml.etree.ElementTree as ET
 import networkx as nx
 import math
-import logging
 import sys
 from traffic_flow_models.network.node import Node
 from traffic_flow_models.network.motorway_link import MotorwayLink
@@ -9,10 +8,6 @@ from traffic_flow_models.network.cell import Cell
 from traffic_flow_models.network.origin import Origin
 from traffic_flow_models.network.destination import Destination
 from traffic_flow_models.network.network import Network
-
-
-# Configure logging
-logging.basicConfig(level=logging.INFO, format='%(message)s')
 
 
 class NetworkArbitrator:
@@ -49,10 +44,11 @@ class NetworkArbitrator:
         }
     }
     
+
     def __init__(self, net_xml_path, hwy_filter=None):
        
         self.path = net_xml_path
-        self.target_cell_length = 0.5  #500m
+        self.target_cell_length = 0.3 
         self.G = nx.MultiDiGraph()
         self.roundabouts = []
         self.found_types = set()
@@ -64,36 +60,28 @@ class NetworkArbitrator:
             self.hwy_filter = hwy_filter
         else:
             self.hwy_filter = [["motorway", "motorway_link"], ["trunk", "trunk_link"], ["primary", "primary_link"], ["secondary", "secondary_link"], ["tertiary", "tertiary_link"] ]        
-        
-        logging.info(f"Initialized NetworkArbitrator for {net_xml_path}")
-        logging.info(f"Target cell length: {self.target_cell_length} km")
+
 
     def run(self):
-        """Execute the complete transformation pipeline."""
-        logging.info("Starting SUMO to METANET transformation...")
         
         self.parse_sumo_xml()
         
         if self.G.number_of_edges() == 0:
-            logging.error("No edges found in network after parsing. Check highway filter.")
             sys.exit(1)
-        
-        logging.info(f"Parsed network: {self.G.number_of_nodes()} nodes, {self.G.number_of_edges()} edges")
         
         self.eliminate_roundabouts()
         self.filter()
         self.merge_serial_edges()
         
-        logging.info(f"After processing: {self.G.number_of_nodes()} nodes, {self.G.number_of_edges()} edges")
-        
         metanet_network = self.instantiate_network()
         
         self._log_network_statistics(metanet_network)
         
-        return metanet_network
+        return metanet_network, self.metadata 
 
+    #Parse SUMO .net.xml file and extract network topology.
     def parse_sumo_xml(self):
-        """Parse SUMO .net.xml file and extract network topology."""
+       
         tree = ET.parse(self.path)
         root = tree.getroot()
 
@@ -161,8 +149,8 @@ class NetworkArbitrator:
                 continue
 
             # Convert SUMO units to METANET units
-            length_km = float(lanes[0].get('length')) / 1000.0  # m -> km
-            speed_kmh = float(lanes[0].get('speed')) * 3.6      # m/s -> km/h
+            length_km = float(lanes[0].get('length')) / 1000.0  
+            speed_kmh = float(lanes[0].get('speed')) * 3.6     
         
             self.G.add_edge(
                 edge.get('from'),
@@ -174,10 +162,8 @@ class NetworkArbitrator:
                 type=edge_type
             )
 
+    #Collapse roundabouts into single nodes.
     def eliminate_roundabouts(self):
-        """
-        Collapse roundabouts into single nodes.
-        """
         for nodes in self.roundabouts:
             valid_nodes = [n for n in nodes if self.G.has_node(n)]
             if len(valid_nodes) <= 1:
@@ -214,42 +200,49 @@ class NetworkArbitrator:
                 if u == pivot or v == pivot:
                     data['length'] += extra_length
 
-        logging.info(f"Eliminated {len(self.roundabouts)} roundabouts")
 
+    #Remove isolated nodes and keep only the largest connected component.
     def filter(self):
-        """Remove isolated nodes and keep only the largest connected component."""
         self.G.remove_nodes_from(list(nx.isolates(self.G)))
 
         if self.G.number_of_nodes() > 0 and not nx.is_weakly_connected(self.G):
             largest = max(nx.weakly_connected_components(self.G), key=len)
             self.G = self.G.subgraph(largest).copy()
-            logging.info("Filtered to largest connected component")
 
+
+    #Merge serial edges, preserving junction structure.
     def merge_serial_edges(self):
-        """
-        Merge serial edges with similar characteristics. 
-        """
         merge_count = 0
-        while True:
+        MAX_ITERATIONS = 500
+        
+        for iteration in range(MAX_ITERATIONS):
             candidates = [
                 n for n in self.G.nodes()
                 if self.G.in_degree(n) == 1 and self.G.out_degree(n) == 1
             ]
             merged = False
-
+            
             for n in candidates:
+                nearby_is_complex = False
+                for neighbor in list(self.G.predecessors(n)) + list(self.G.successors(n)):
+                    if self.G.in_degree(neighbor) > 1 or self.G.out_degree(neighbor) > 1:
+                        nearby_is_complex = True
+                        break
+                
+                if nearby_is_complex:
+                    continue  
+                
                 in_edges = list(self.G.in_edges(n, data=True))
                 out_edges = list(self.G.out_edges(n, data=True))
                 u, _, d_in = in_edges[0]
                 _, v, d_out = out_edges[0]
-
-                # Check if edges can be merged (similar characteristics)
+                
                 same_lanes = d_in['lanes'] == d_out['lanes']
                 same_speed = abs(d_in['speed'] - d_out['speed']) < 5.0
-
+                
                 if same_lanes and same_speed:
                     new_attr = {
-                        'id': f"merged_{d_in['id']}",
+                        'id': f"merged_{d_in['id']}_{d_out['id']}",
                         'length': d_in['length'] + d_out['length'],
                         'speed': min(d_in['speed'], d_out['speed']),
                         'lanes': d_in['lanes'],
@@ -267,28 +260,22 @@ class NetworkArbitrator:
             
             if not merged:
                 break
-        
-        logging.info(f"Merged {merge_count} serial edges")
+
 
 
     def instantiate_network(self):
-        """
-        Create METANET network objects with proper parameters. 
-        """
+        
         metanet_nodes = {}
         total_cells = 0
 
-        # Create Node objects
         for nid in self.G.nodes():
             n_obj = Node(id=str(nid))
             n_obj.x, n_obj.y = self.node_coordinates.get(nid, (0, 0))
             metanet_nodes[nid] = n_obj
 
-        # Create MotorwayLink objects with cells
         for u, v, data in self.G.edges(data=True):
             edge_type = data.get('type', 'default').lower()
             
-            # Match road type parameters
             params = next(
                 (val for key, val in self.ROAD_PARAMS.items() if key in edge_type),
                 self.ROAD_PARAMS["default"]
@@ -297,11 +284,8 @@ class NetworkArbitrator:
             link_id = str(data['id'])
             num_lanes = data['lanes']
             
-            # Calculate critical density: rho_crit = C / (v_free * lambda)
-            # where C is capacity per lane, v_free is free-flow speed, lambda is number of lanes
             critical_density = params['cap'] / params['speed']
             
-            # Store all parameters for this link
             self.link_metanet_params[link_id] = {
                 'alpha': params['alpha'],
                 'tau': params['tau'],
@@ -310,7 +294,6 @@ class NetworkArbitrator:
                 'critical_density': critical_density
             }
 
-            # Create MotorwayLink with METANET parameters
             self.link_metanet_params[link_id] = {
                 'alpha': params['alpha'],
                 'tau': params['tau'],
@@ -330,7 +313,6 @@ class NetworkArbitrator:
                 destination_node_id=str(v)
             )
             
-            # Discretize link into cells 
             num_cells = max(1, math.ceil(data['length'] / self.target_cell_length))
             cell_len = data['length'] / num_cells
             
@@ -339,11 +321,11 @@ class NetworkArbitrator:
             
             total_cells += num_cells
             
-            # Add to node connections
+
             metanet_nodes[u].outgoing.append(link)
             metanet_nodes[v].incoming.append(link)
 
-        # Set up origins and destinations
+
         for nid, node_obj in metanet_nodes.items():
             if not node_obj.incoming:
                 orig = Origin(id=f"Origin_{nid}", destination_node_id=str(nid))
@@ -356,23 +338,45 @@ class NetworkArbitrator:
                 node_obj.set_outgoing([dest])
             else:
                 node_obj.set_outgoing(list(node_obj.outgoing))
-
-        logging.info(f"Created {total_cells} cells across {self.G.number_of_edges()} links")
-        logging.info(f"METANET parameters stored for {len(self.link_metanet_params)} links")
         
+        origin_ids = [
+        node_obj.incoming[0].id 
+        for node_obj in metanet_nodes.values()
+        if node_obj.incoming and isinstance(node_obj.incoming[0], Origin)
+        ]
+        
+        destination_ids = [
+            node_obj.outgoing[0].id
+            for node_obj in metanet_nodes.values()
+            if node_obj.outgoing and isinstance(node_obj.outgoing[0], Destination)
+        ]
+        
+        onramp_ids = [
+            f"onramp_{nid}"
+            for nid, node_obj in metanet_nodes.items()
+            if len([l for l in node_obj.incoming if isinstance(l, MotorwayLink)]) >= 2
+        ]
+        
+        splits = {}
+        for nid, node_obj in metanet_nodes.items():
+            outgoing_links = [l for l in node_obj.outgoing if isinstance(l, MotorwayLink)]
+            if len(outgoing_links) >= 2:
+                total_lanes = sum(l.lanes for l in outgoing_links)
+                splits[str(nid)] = {l.id: l.lanes / total_lanes for l in outgoing_links}
+        
+        self.metadata = {
+            "origin_ids": origin_ids,
+            "onramp_ids": onramp_ids,
+            "destination_ids": destination_ids,
+            "splits": splits
+        }
+
         return Network(nodes=list(metanet_nodes.values()))
 
     def get_link_params(self, link_id):
-        """
-        Retrieve METANET parameters for a specific link.
-        
-        Returns:
-            dict with keys: alpha, tau, eta, kappa, critical_density
-        """
         return self.link_metanet_params.get(link_id, {})
 
     def _log_network_statistics(self, network):
-        """Log comprehensive network statistics."""
         num_nodes = len(network._nodes)
         num_links = sum(len(node.outgoing) for node in network._nodes 
                        if not isinstance(node.outgoing[0], Destination))
@@ -387,24 +391,13 @@ class NetworkArbitrator:
             if isinstance(link, MotorwayLink)
         )
         
-        logging.info("=" * 60)
-        logging.info("METANET Network Statistics:")
-        logging.info(f"  Nodes: {num_nodes}")
-        logging.info(f"  Links: {num_links}")
-        logging.info(f"  Origins: {num_origins}")
-        logging.info(f"  Destinations: {num_destinations}")
-        logging.info(f"  Total network length: {total_length:.2f} km")
-        logging.info("=" * 60)
+        print("=" * 60)
+        print("METANET Network Statistics:")
+        print(f"  Nodes: {num_nodes}")
+        print(f"  Links: {num_links}")
+        print(f"  Origins: {num_origins}")
+        print(f"  Destinations: {num_destinations}")
+        print(f"  Total network length: {total_length:.2f} km")
+        print("=" * 60)
 
 
-"""
-if __name__ == "__main__":
-    # Example usage with enhanced configuration
-    arbitrator = NetworkArbitrator(
-        "Zurich.net.xml",
-        simulation_timestep=1  # timestep
-    )
-    metanet_net = arbitrator.run()
-    
-    logging.info("METANET network transformation completed successfully!")
-"""

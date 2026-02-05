@@ -1,155 +1,185 @@
 import xml.etree.ElementTree as ET
-from typing import Set, Dict, List
-import logging
-import os
-from collections import defaultdict
-from traffic_flow_models.arbitrator.network_arbitrator import NetworkArbitrator
-
+import csv
+import networkx as nx
+from typing import List, Tuple, Set, Dict
 
 class LoopDetectorGenerator:
-    def __init__(self, consolidated_network, urban_network_path :str):
-        self.consolidated_network = consolidated_network
-        self.urban_network_path = urban_network_path
-
-        self.consolidated_nodes: Set[str] = set()
-
-        self.urban_tree = None
-        self.urban_root = None
-        self.edges = {}
-
-        self.onramp_edges: Dict[str, Dict] = {}
-        self.offramp_edges: Dict[str, Dict] = {}
-
-
-    def extract_consolidated_nodes(self):
+  
+    def __init__(
+        self,
+        sumo_network_path,
+        metadata,
+        output_dir = "results/zurich"):
         
-        if hasattr(self.consolidated_network, "list_nodes"):
-            nodes_iter = self.consolidated_network.list_nodes()
+        self.sumo_network_path = sumo_network_path
+        self.metadata = metadata
+        self.output_dir = output_dir
         
-        elif hasattr(self.consolidated_network, "_nodes"):
-            nodes_iter = self.consolidated_network._nodes
+        self.backbone_nodes = self._extract_backbone_nodes(metadata)
         
-        elif hasattr(self.consolidated_network, "nodes"):
-            nodes_iter = self.consolidated_network.nodes
+    
+        self.interface_edges = []  
+        self.edge_detectors = []
         
-        else:
-            raise AttributeError("The consollidated_network has no accessible nodes.")
+    #Extracts all the nodes from the consolidated network metadata
+    def _extract_backbone_nodes(self, metadata):
+        backbone = set()
+        
+        for oid in metadata.get("origin_ids", []):
+            backbone.add(oid.replace("Origin_", ""))
+        
+        # Add onramp nodes
+        for oid in metadata.get("onramp_ids", []):
+            backbone.add(oid.replace("onramp_", ""))
+        
+        # Add destination nodes
+        for did in metadata.get("destination_ids", []):
+            backbone.add(did.replace("Dest_", ""))
+        
+        return backbone
 
-
-        for node in nodes_iter:
-            self.consolidated_nodes.add(str(node.id))
 
     
-    def load_urban_network(self):
-
-        self.urban_tree = ET.parse(self.urban_network_path)
-        self.urban_root = self.urban_tree.getroot()
-
-# Identifies the locations to place loop detectors on the urban network
-    def identify_interface_edges(self):
+    def find_motorway_edges(self) -> Set[str]:
         
-        for edge in self.urban_root.findall('edge'):
+        motorway_edges = set()
+        
+        tree = ET.parse(self.sumo_network_path)
+        root = tree.getroot()
+        
+        for edge in root.findall('edge'):
             if edge.get('function') == 'internal':
                 continue
+            
+            edge_type = edge.get('type', '').lower()
+            if 'motorway' in edge_type:
+                motorway_edges.add(edge.get('id'))
+        
+        return motorway_edges
 
+
+    #Finds the points where the juxtaposed macroscopic network meets the microscopic network
+    def find_interface_edges(self) -> None:
+        
+        tree = ET.parse(self.sumo_network_path)
+        root = tree.getroot()
+        
+        motorway_edges = self.find_motorway_edges()
+        
+        inflow_count = 0
+        outflow_count = 0
+        
+        for edge in root.findall('edge'):
+            if edge.get('function') == 'internal':
+                continue
+            
             edge_id = edge.get('id')
-            from_j = edge.get('from')
-            to_j = edge.get('to')
-
-            from_in = from_j in self.consolidated_nodes
-            to_in = to_j in self.consolidated_nodes
-
-            #onramp
-            if not from_in and to_in:
-                self.onramp_edges[edge_id] = {'from': from_j, 'to': to_j}
-
-            #offramp
-            elif from_in and not to_in:
-                self.offramp_edges[edge_id] = {'from': from_j, 'to': to_j}
-
-
-    def create_detector(self, edge_id, lane_index):
-        
-        detector_id = f"detector_{edge_id}_{lane_index}"
-        lane_id = f"{edge_id}_{lane_index}" 
-
-        detector = ET.Element('laneAreaDetector')
-        detector.set('id', detector_id)
-        detector.set('lane', lane_id)
-        detector.set('pos', '0.1')    
-        detector.set('length', '1.0')
-        detector.set('freq', '60')
-        detector.set('file', 'detectors_output.xml')
-        
-        return detector
-    
-
-    #creates an addtional file with all the detector positions
-    def create_additional_file(self, output_path):
-        additional_root = ET.Element('additional')
-        total_detector_count = 0
-
-        interface_edges = list(self.onramp_edges.keys()) + list(self.offramp_edges.keys())
-
-        for edge_id in interface_edges:
-            edge_element = self.urban_root.find(f".//edge[@id='{edge_id}']")
+            edge_type = edge.get('type', '').lower()
+            from_node = edge.get('from')
+            to_node = edge.get('to')
             
-            if edge_element is not None:
-                lanes = edge_element.findall('lane')
-    
-                for i in range(len(lanes)):
-                    detector = self.create_detector(edge_id, i)
-                    additional_root.append(detector)
-                    total_detector_count += 1
-
-        tree = ET.ElementTree(additional_root)
-        tree.write(output_path, encoding='utf-8', xml_declaration=True)
-
-        return output_path
-    
-
-    #creates a csv file with all the detector positions
-    def write_detector_spec(self):
-        
-        base = self.urban_network_path.replace('.net.xml', '')
-        spec_path = f"{base}_detectors_spec.csv"
-        
-        with open(spec_path, 'w') as f:
-            f.write("detector_id,edge_id,type,from,to,measurement\n")
+            is_motorway = 'motorway' in edge_type
+            to_is_backbone = to_node in self.backbone_nodes
+            from_is_backbone = from_node in self.backbone_nodes
             
-            for edge_id, info in self.onramp_edges.items():
-                det_id = f"detector_{edge_id}_0"
-                f.write(f'"{det_id}","{edge_id}","onramp","{info["from"]}","{info["to"]}","origin demand"\n')
+            detector_type = None
+            detector_node = None
             
-            for edge_id, info in self.offramp_edges.items():
-                det_id = f"detector_{edge_id}_0"
-                f.write(f'"{det_id}","{edge_id}","offramp","{info["from"]}","{info["to"]}","destination demand"\n')
+            # Urban → Motorway (INFLOW)
+            if to_is_backbone and not is_motorway:
+                detector_type = 'inflow'
+                detector_node = to_node
+                inflow_count += 1
+            
+            # Motorway → Urban (OUTFLOW)
+            elif from_is_backbone and not is_motorway:
+                detector_type = 'outflow'
+                detector_node = from_node
+                outflow_count += 1
+            
+            # Direct backbone interface (ramps connecting to backbone)
+            elif edge_id.endswith('_link') or 'link' in edge_type:
+                if to_is_backbone:
+                    detector_type = 'ramp_inflow'
+                    detector_node = to_node
+                    inflow_count += 1
+                elif from_is_backbone:
+                    detector_type = 'ramp_outflow'
+                    detector_node = from_node
+                    outflow_count += 1
+            
+            if detector_type:
+                lanes = edge.findall('lane')
+                for lane_idx, lane in enumerate(lanes):
+                    lane_id = lane.get('id')
+                    lane_length = float(lane.get('length'))
+                    
+                    # Place detector near end of edge (90%)
+                    detector_pos = lane_length * 0.9
+                    
+                    self.edge_detectors.append({
+                        'edge_id': edge_id,
+                        'lane_id': lane_id,
+                        'lane_index': lane_idx,
+                        'position': detector_pos,
+                        'node_id': detector_node,
+                        'type': detector_type,
+                        'from_node': from_node,
+                        'to_node': to_node
+                    })
+
+    def write_detector_xml(self) -> str:
+        output_file = f"{self.output_dir}/_detectors.xml"
         
-        return spec_path
-    
+        root = ET.Element('additional')
+        
+        for det in self.edge_detectors:
+            det_id = f"detector_{det['edge_id']}_{det['lane_index']}"
+            
+            detector = ET.SubElement(root, 'inductionLoop')
+            detector.set('id', det_id)
+            detector.set('lane', det['lane_id'])
+            detector.set('pos', f"{det['position']:.2f}")
+            detector.set('freq', '900') 
+            detector.set('file', "_detectors.xml")
+        
+        tree = ET.ElementTree(root)
+        ET.indent(tree, space="  ")
+        tree.write(output_file, encoding='utf-8', xml_declaration=True)
+        
+        return output_file
+
+
+    def write_detector_spec_csv(self):
+        output_file = f"{self.output_dir}/_detectors_spec.csv"
+        
+        with open(output_file, 'w', newline='') as f:
+            writer = csv.DictWriter(
+                f, 
+                fieldnames=['detector_id', 'type', 'from', 'to', 'edge_id', 'backbone_node']
+            )
+            writer.writeheader()
+            
+            for det in self.edge_detectors:
+                det_id = f"detector_{det['edge_id']}_{det['lane_index']}"
+                
+                writer.writerow({
+                    'detector_id': det_id,
+                    'type': det['type'],
+                    'from': det['from_node'],
+                    'to': det['to_node'],
+                    'edge_id': det['edge_id'],
+                    'backbone_node': det['node_id']
+                })
+        
+
+        return output_file
+
 
     def generate(self):
-       
-        self.extract_consolidated_nodes()
-        self.load_urban_network()
-        self.identify_interface_edges()
+        self.find_interface_edges()
         
-        base = self.urban_network_path.replace('.net.xml', '')
-        additional_path = f"{base}_detectors.xml"
-        additional_path = self.create_additional_file(additional_path)
+        detector_xml = self.write_detector_xml()
+        detector_csv = self.write_detector_spec_csv()
         
-        spec_path = self.write_detector_spec()
-        
-        return additional_path, spec_path
-    
-
-"""
-if __name__ == "__main__":
-
-    arbitrator = NetworkArbitrator("Zurich.net.xml")
-    consolidated_network = arbitrator.run()
-    
-    gen = LoopDetectorGenerator(consolidated_network, "Zurich.net.xml")
-    additional_path, spec_path = gen.generate()
-"""    
-
+        return detector_xml, detector_csv
