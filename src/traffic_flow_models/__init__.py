@@ -26,7 +26,7 @@ from .simulator.sumo_simulation import SUMOSimulation
 from .simulator.sumo_pipeline import SUMOPipeline
 
 # re-export arbitrator components
-from .arbitrator import NetworkArbitrator, LoopDetectorGenerator
+from .arbitrator import NetworkArbitrator, LoopDetectorGenerator, DemandAggregator
 
 
 __all__ = [
@@ -46,5 +46,6 @@ __all__ = [
     "SUMOSimulation",
     "SUMOPipeline",
     "NetworkArbitrator", 
-    "LoopDetectorGenerator"
+    "LoopDetectorGenerator",
+    "DemandAggregator"
 ]
