@@ -53,7 +53,7 @@ class Offramp:
         )  # identifier for the offramp link
         self.lanes: int = lanes  # number of lanes
         self.Qc_lane: float = lane_capacity  # in vehicles per hour per lane
-        self.Qc: float = lane_capacity * lanes  # total cell capacity
+        self.Qc: float = lane_capacity * lanes  # total capacity in vehicles per hour
         self.vf: float = free_flow_speed  # in kilometers per hour
         self.rho_jam: float = jam_density  # in vehicles per kilometer per lane
         self.destination: Destination | None = destination
