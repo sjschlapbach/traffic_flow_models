@@ -8,9 +8,10 @@ class Offramp:
 
     Attributes:
         lanes: Number of lanes on the offramp.
-        lane_capacity: Capacity per lane in vehicles per hour.
-        free_flow_speed: Free-flow speed in km/h.
-        jam_density: Jam density in vehicles per km per lane.
+        Qc_lane: Capacity per lane in vehicles per hour.
+        Qc: Total offramp capacity in vehicles per hour.
+        vf: Free-flow speed in km/h.
+        rho_jam: Jam density in vehicles per km per lane.
         destination: Optional linked `Destination` instance.
     """
 

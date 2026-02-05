@@ -19,7 +19,9 @@ class MotorwayLink:
     Attributes:
         length (float): Total link length in kilometers.
         lanes (int): Number of lanes on the motorway link.
-        lane_capacity (float): Capacity per lane in vehicles per time.
+        Qc_lane (float): Capacity per lane in vehicles per time (also called
+            lane capacity).
+        Qc (float): Total link capacity in vehicles per time (``Qc_lane * lanes``).
         vf (float): Free-flow speed for the link (length per time).
         rho_jam (float): Jam density (vehicles per length per lane).
         id (str): Unique identifier for the link.

@@ -9,9 +9,10 @@ class Onramp:
     Attributes:
         id: Identifier for the origin link (for demand assignment).
         lanes: Number of lanes on the onramp.
-        lane_capacity: Capacity per lane in vehicles per hour.
-        free_flow_speed: Free-flow speed in km/h.
-        jam_density: Jam density in vehicles per km per lane.
+        Qc_lane: Capacity per lane in vehicles per hour.
+        Qc: Total onramp capacity in vehicles per hour.
+        vf: Free-flow speed in km/h.
+        rho_jam: Jam density in vehicles per km per lane.
     """
 
     def __init__(
