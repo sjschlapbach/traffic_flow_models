@@ -320,7 +320,9 @@ class TestCTM:
             }
         }
 
-        normalized = model._compute_normalized_splits(node=node, splits=splits)
+        normalized = model._compute_normalized_splits(
+            node=node, node_splits=splits[node.id]
+        )
 
         # verify normalization
         total = float(normalized[link1.id] + normalized[link2.id])
