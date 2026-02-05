@@ -219,8 +219,8 @@ class CTM:
             q_demand = link.vf * next_densities_list[j] * link.lanes
             q_supply = (
                 self.backward_wave_speed(
-                    capacity=link.lane_capacity * link.lanes,
-                    lane_capacity=link.lane_capacity,
+                    capacity=link.Qc,
+                    lane_capacity=link.Qc_lane,
                     jam_density=link.rho_jam,
                     free_flow_speed=link.vf,
                 )
@@ -230,7 +230,7 @@ class CTM:
             )
 
             next_flows_list[j] = casadi.fmin(
-                casadi.fmin(casadi.SX(link.lane_capacity * link.lanes), q_demand),
+                casadi.fmin(casadi.SX(link.Qc), q_demand),
                 q_supply,
             )
 
@@ -347,8 +347,8 @@ class CTM:
                     maximum_supported_node_outflow,
                     (
                         self.backward_wave_speed(
-                            capacity=out.lane_capacity * out.lanes,
-                            lane_capacity=out.lane_capacity,
+                            capacity=out.Qc,
+                            lane_capacity=out.Qc_lane,
                             jam_density=out.rho_jam,
                             free_flow_speed=out.vf,
                         )

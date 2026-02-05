@@ -2201,9 +2201,7 @@ class Network:
 
         # calculate max values for y-axis scaling
         max_density = max(np.max(densities) * 1.1, link.rho_jam * 1.1)
-        max_flow = max(
-            np.max(flows[:, :-1]) * 1.1, link.lane_capacity * link.lanes * 1.1
-        )
+        max_flow = max(np.max(flows[:, :-1]) * 1.1, link.Qc * 1.1)
         max_speed = max(np.max(speeds[:, :-1]) * 1.1, link.vf * 1.1)
 
         # figure 1: Density
@@ -2254,12 +2252,11 @@ class Network:
             axes2 = axes2.flatten()
 
         for i, _ in link.enumerate_cells():
-            Qc = link.lane_capacity * link.lanes
             axes2[i].plot(
                 time_seconds[:-1], flows[i, :-1], linewidth=1.5, label="Cell outflow"
             )
-            axes2[i].axhline(Qc, color="red", linestyle="--", linewidth=1)
-            axes2[i].set_ylim([0, max(Qc * 1.1, max_flow)])
+            axes2[i].axhline(link.Qc, color="red", linestyle="--", linewidth=1)
+            axes2[i].set_ylim([0, max(link.Qc * 1.1, max_flow)])
             axes2[i].set_xlim([0, actual_duration])
             axes2[i].set_xlabel("time (s)")
             axes2[i].set_ylabel("flow (veh/h)")
@@ -2512,7 +2509,7 @@ class Network:
 
         # calculate max values
         max_rho_jam = link.rho_jam
-        max_capacity = link.lane_capacity * link.lanes
+        max_capacity = link.Qc
         max_vf = link.vf
 
         fig = plt.figure(figsize=(18, 6))

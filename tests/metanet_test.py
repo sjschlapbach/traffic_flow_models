@@ -48,7 +48,7 @@ class TestMETANET:
         previous_speed = model.stationary_velocity(
             params=model_params,
             link_id=link.id,
-            lane_capacity=link.lane_capacity,
+            lane_capacity=link.Qc_lane,
             free_flow_speed=link.vf,
             density=previous_density,
         )
@@ -304,23 +304,21 @@ class TestMETANET:
             "alpha": {link.id: const_alpha},
         }
 
-        expected_rho_cr = link.lane_capacity / (link.vf * np.exp(-1 / const_alpha))
+        expected_rho_cr = link.Qc_lane / (link.vf * np.exp(-1 / const_alpha))
         computed_rho_cr = model.critical_density(
             params=model_params,
             link_id=link.id,
-            lane_capacity=link.lane_capacity,
+            lane_capacity=link.Qc_lane,
             free_flow_speed=link.vf,
         )
         assert np.isclose(computed_rho_cr, expected_rho_cr)
 
-        expected_w = (link.lane_capacity * link.lanes) / (
-            link.rho_jam - expected_rho_cr
-        )
+        expected_w = link.Qc / (link.rho_jam - expected_rho_cr)
         computed_w = model.backward_wave_speed(
             params=model_params,
             link_id=link.id,
-            capacity=link.lane_capacity * link.lanes,
-            lane_capacity=link.lane_capacity,
+            capacity=link.Qc,
+            lane_capacity=link.Qc_lane,
             jam_density=link.rho_jam,
             free_flow_speed=link.vf,
         )
