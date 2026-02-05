@@ -1,28 +1,36 @@
 from __future__ import annotations
 
-import numpy as np
+import os
+import math
+import json
 import warnings
 import casadi
-import json
+import numpy as np
 import networkx as nx
 import matplotlib.pyplot as plt
-from matplotlib.lines import Line2D
-from typing import TYPE_CHECKING, Iterator, Callable, Mapping, Optional, Tuple, cast
 from numpy.typing import NDArray
-import math
-import os
 from datetime import datetime
+from matplotlib.lines import Line2D
+from typing import (
+    cast,
+    Iterator,
+    Callable,
+    Mapping,
+    Optional,
+    Tuple,
+    Union,
+)
 
-from traffic_flow_models.network.node import Node
-from traffic_flow_models.network.origin import Origin
-from traffic_flow_models.network.onramp import Onramp
-from traffic_flow_models.network.destination import Destination
-from traffic_flow_models.network.offramp import Offramp
-from traffic_flow_models.network.motorway_link import MotorwayLink
 
-if TYPE_CHECKING:
-    from traffic_flow_models.model.ctm import CTM
-    from traffic_flow_models.model.metanet import METANET, METANETParams
+from traffic_flow_models.network import (
+    Node,
+    MotorwayLink,
+    Origin,
+    Onramp,
+    Offramp,
+    Destination,
+)
+from traffic_flow_models.model import CTM, METANET, METANETParams
 
 
 class Network:
@@ -314,6 +322,7 @@ class Network:
                         )
 
                     # count destination connected to offramp for disturbance vector sizing
+                    # flows are not tracked explicitly for offramp destinations
                     if link.destination is not None:
                         num_destinations += 1
 
@@ -1316,8 +1325,8 @@ class Network:
         dest_boundary_conditions_dict: dict,
         origin_demands: dict,
         onramp_demands: dict,
-        model,
-        model_params,
+        model: Union["CTM", "METANET"],
+        model_params: Union[METANETParams, None],
     ):
         """Execute the discrete-time simulation loop for the network.
 
@@ -1404,7 +1413,22 @@ class Network:
             )
 
             # obtain the model parameters in vector form for the model update
-            params = model.model_params_to_vec(network=self, model_params=model_params)
+            if model_params is not None and isinstance(model, METANET):
+                params = model.model_params_to_vec(
+                    network=self, model_params=model_params
+                )
+            elif model_params is None and isinstance(model, METANET):
+                raise ValueError(
+                    "METANET model requires model_params to be provided for simulation."
+                )
+            elif model_params is not None and isinstance(model, CTM):
+                raise ValueError(
+                    "CTM model does not support model_params to be provided for simulation."
+                )
+            else:
+                params = np.array(
+                    [], dtype=np.float64
+                )  # empty array for models that don't require parameters
 
             # perform the state update
             x_next = system(params, state_history[:, t], d)
@@ -1419,9 +1443,7 @@ class Network:
         self,
         duration: float,
         dt: float,
-        # model: Union["CTM", "METANET"], # TODO: re-introduce this union of models as soon as CTM supports the new network structure (also update model params type)
-        model: METANET,
-        model_params: METANETParams,
+        model: Union["CTM", "METANET"],
         origin_demands: dict[
             str, Callable[[float], float]
         ],  # for each origin id, provide a callable function returning the demand at time t
@@ -1434,6 +1456,9 @@ class Network:
         destination_boundary_conditions: dict[
             str, Callable[[float], float]
         ],  # for each destination id, provide a callable function returning the downstream density at time t
+        model_params: Union[
+            METANETParams, None
+        ] = None,  # model parameters for models that require this -> CTM is fully defined by link parameters
         initial_flows: (
             dict[str, float | NDArray[np.float64]] | None
         ) = None,  # for each link id, provide either a float (uniform initial flow) or an array of floats (per-cell initial flows; default: 0)
@@ -1498,7 +1523,8 @@ class Network:
         """
         # ! 1 - validate all inputs as required
         # validate that all required model parameters are provided
-        model.validate_model_params(model_params)
+        if isinstance(model, METANET) and model_params is not None:
+            model.validate_model_params(model_params=model_params)
 
         # validate that all required initial conditions are provided
         self._validate_initial_conditions_numerical(

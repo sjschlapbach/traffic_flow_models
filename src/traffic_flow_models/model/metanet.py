@@ -1,20 +1,22 @@
 import numpy as np
 import casadi
-from typing import Tuple, TypedDict, cast, Union
+from typing import cast, TYPE_CHECKING, Tuple, TypedDict, Union
 from numpy.typing import NDArray
 
 
-from traffic_flow_models.network.motorway_link import MotorwayLink
-from traffic_flow_models.network.onramp import Onramp
-from traffic_flow_models.network.origin import Origin
-from traffic_flow_models.network.offramp import Offramp
-from traffic_flow_models.network.destination import Destination
-from traffic_flow_models.network.network import Network
-from traffic_flow_models.network.node import Node
-from traffic_flow_models.network.cell import Cell
-from .helpers import (
-    store_and_forward_update,
+from traffic_flow_models.network import (
+    MotorwayLink,
+    Origin,
+    Onramp,
+    Offramp,
+    Destination,
+    Node,
+    Cell,
 )
+from .helpers import store_and_forward_update
+
+if TYPE_CHECKING:
+    from traffic_flow_models.network.network import Network
 
 
 class METANETParams(TypedDict):
@@ -228,7 +230,7 @@ class METANET:
 
     def model_params_to_vec(
         self,
-        network: Network,
+        network: "Network",
         model_params: METANETParams,
     ) -> NDArray[np.float64]:
         """Convert a METANET parameter dictionary to a numerical vector.
@@ -290,7 +292,7 @@ class METANET:
 
     def model_params_vec_to_dict(
         self,
-        network: Network,
+        network: "Network",
         model_params_vec: NDArray[np.float64] | casadi.SX,
     ) -> METANETParams | METANETSymbolicParams:
         """Convert a packed parameter vector into a METANET parameter dict.
@@ -349,7 +351,7 @@ class METANET:
 
     def set_up_symbolic_model_params(
         self,
-        network: Network,
+        network: "Network",
     ) -> casadi.SX:
         """Create a CasADi symbolic vector for METANET model parameters.
 
@@ -930,7 +932,7 @@ class METANET:
 
     def network_update_function(
         self,
-        network: Network,
+        network: "Network",
         num_flows: int,
         num_densities: int,
         num_speeds: int,
