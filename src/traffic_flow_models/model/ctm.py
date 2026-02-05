@@ -102,12 +102,12 @@ class CTM:
 
     # ! Network update helper functions
     # region
-    def _get_upstream_node_outflows(
+    def _get_node_outflow_link(
         self,
         network: "Network",
         link: MotorwayLink,
         flows: dict[str, casadi.SX],
-        splits: dict[str, dict[str, casadi.SX]],
+        node_splits: dict[str, casadi.SX],
     ) -> casadi.SX:
         """Compute the flow entering a motorway link from its upstream node.
 
@@ -151,7 +151,7 @@ class CTM:
         upstream_inflow_sum: casadi.SX = casadi.sum(
             casadi.vertcat(*[flows[inc.id][-1] for inc in upstream_node.incoming])
         )
-        upstream_node_split_link = splits[upstream_node.id][link.id]
+        upstream_node_split_link = node_splits[link.id]
         if upstream_node_split_link is None:
             raise ValueError(
                 f"No split ratio defined for outgoing link {link.id} at node {upstream_node.id}"
@@ -290,9 +290,12 @@ class CTM:
 
     def _compute_node_maximum_outflows(
         self,
+        network: "Network",
         node: "Node",
         densities: dict[str, casadi.SX],
-        normalized_node_splits: dict[str, casadi.SX],
+        flows: dict[str, casadi.SX],
+        node_splits: dict[str, casadi.SX],
+        dt: float,
     ) -> casadi.SX:
         """Compute the maximum outflow the node can support given supplies.
 
@@ -306,13 +309,17 @@ class CTM:
         and backward wave speed.
 
         Args:
+            network (Network): The network containing nodes and links.
             node (Node): Node for which the maximum supported outflow is
                 computed.
             densities (dict[str, casadi.SX]): Current-step densities for
                 links (mapping link id -> density vector, CasADi SX).
-            normalized_node_splits (dict[str, casadi.SX]): Normalized split
+            flows (dict[str, casadi.SX]): Current-step flows for links
+                (mapping link id -> flow vector, CasADi SX).
+            node_splits (dict[str, casadi.SX]): Normalized split
                 ratios for the node's outgoing links (mapping link id ->
                 CasADi SX).
+            dt (float): Time step size.
 
         Returns:
             casadi.SX: The maximum supported outflow for the node (CasADi
@@ -335,14 +342,26 @@ class CTM:
                 # -> only the offramp capacity becomes a limiting factor for potential spillback
                 maximum_supported_node_outflow = casadi.fmin(
                     maximum_supported_node_outflow,
-                    out.Qc / normalized_node_splits[out.id],
+                    out.Qc / node_splits[out.id],
                 )
             elif isinstance(out, MotorwayLink):
-                # ! IMPORTANT TO FIX FOR CONSISTENT MODEL!
-                # TODO: investigate a potential causality / consistency issue where we would actually have to use
-                # the next-step density of the first cell of the outgoing link -> with the current computation
-                # approach / loop, we cannot be sure that this value has already been computed...
-                # (currently, the previous step density is used in its place)
+                # compute the outflow from the currently considered node into the considered
+                # motorway link as a basis for the computation of the first cell next-step
+                # density value (to be used as a supply restriction)
+                node_outflow_link = self._get_node_outflow_link(
+                    network=network,
+                    link=out,
+                    flows=flows,
+                    node_splits=node_splits,
+                )
+
+                # compute the next-step density of the first cell of the outgoing link
+                first_cell = out.get_cell(0)
+                first_cell_next_density = densities[out.id][0] + dt / (
+                    first_cell.length * out.lanes
+                ) * (node_outflow_link - flows[out.id][0])
+
+                # compute the outflow supply limit imposed through the outgoing motorway link
                 maximum_supported_node_outflow = casadi.fmin(
                     maximum_supported_node_outflow,
                     (
@@ -352,9 +371,9 @@ class CTM:
                             jam_density=out.rho_jam,
                             free_flow_speed=out.vf,
                         )
-                        * (out.rho_jam - densities[out.id][0])
+                        * (out.rho_jam - first_cell_next_density)
                     )
-                    / normalized_node_splits[out.id],
+                    / node_splits[out.id],
                 )
 
         return maximum_supported_node_outflow
@@ -532,8 +551,11 @@ class CTM:
             for inc in node.incoming:
                 if isinstance(inc, MotorwayLink):
                     # compute outflow of the upstream node into this link
-                    upstream_node_outflow_link = self._get_upstream_node_outflows(
-                        network=network, link=inc, flows=flows, splits=splits
+                    upstream_node_outflow_link = self._get_node_outflow_link(
+                        network=network,
+                        link=inc,
+                        flows=flows,
+                        node_splits=splits[node.id],
                     )
 
                     # step through the cells of the link and update the flows, densities and speeds accordingly
@@ -586,9 +608,12 @@ class CTM:
                 node=node, splits=splits
             )
             maximum_supported_node_outflow = self._compute_node_maximum_outflows(
+                network=network,
                 node=node,
                 densities=densities,
-                normalized_node_splits=normalized_node_splits,
+                flows=flows,
+                node_splits=normalized_node_splits,
+                dt=dt,
             )
 
             # ! 3) If the maximum outflow is larger than the currently computed sum of desired inflows,
