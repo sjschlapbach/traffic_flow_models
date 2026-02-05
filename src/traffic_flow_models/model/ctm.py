@@ -244,7 +244,7 @@ class CTM:
         return next_densities_list, next_speeds_list, next_flows_list
 
     def _compute_normalized_splits(
-        self, node: "Node", splits: dict[str, dict[str, casadi.SX]]
+        self, node: "Node", node_splits: dict[str, casadi.SX]
     ) -> dict[str, casadi.SX]:
         """Return normalized split ratios for a node's outgoing links.
 
@@ -256,9 +256,8 @@ class CTM:
         Args:
             node (Node): Node whose outgoing split ratios are to be
                 normalized.
-            splits (dict[str, dict[str, casadi.SX]]): Nested mapping of node
-                id -> outgoing link id -> (possibly unnormalized) split
-                ratio (CasADi SX).
+            node_splits (dict[str, casadi.SX]): Mapping of outgoing link id to
+                (possibly unnormalized) split ratio (CasADi SX).
 
         Returns:
             dict[str, casadi.SX]: Mapping from outgoing link id to the
@@ -267,20 +266,18 @@ class CTM:
         Raises:
             ValueError: If any outgoing split ratio for `node` is `None`.
         """
-        if any([splits[node.id][out.id] is None for out in node.outgoing]):
+        if any([node_splits[out.id] is None for out in node.outgoing]):
             raise ValueError(
                 f"Not all split ratios defined for outgoing links at node {node.id}."
             )
 
         splits_sum = casadi.sum(
-            casadi.vertcat(
-                *[splits[node.id][outgoing.id] for outgoing in node.outgoing]
-            )
+            casadi.vertcat(*[node_splits[outgoing.id] for outgoing in node.outgoing])
         )
         normalized_node_splits: dict[str, casadi.SX] = {
             out.id: casadi.if_else(
                 splits_sum > 0,
-                splits[node.id][out.id] / splits_sum,
+                node_splits[out.id] / splits_sum,
                 casadi.SX(1 / len(node.outgoing)),
             )
             for out in node.outgoing
@@ -550,12 +547,28 @@ class CTM:
             total_node_inflow = casadi.SX(0)
             for inc in node.incoming:
                 if isinstance(inc, MotorwayLink):
+                    if inc.origin_node_id is None:
+                        raise ValueError(
+                            f"Motorway link {inc.id} does not have a well-defined origin node."
+                        )
+
+                    # compute the normalized node splits for the upstream node
+                    upstream_node = network.get_node(inc.origin_node_id)
+                    if upstream_node is None:
+                        raise ValueError(
+                            f"Origin node {inc.origin_node_id} of motorway link {inc.id} not found in network."
+                        )
+                    normalized_upstream_node_splits = self._compute_normalized_splits(
+                        node=upstream_node,
+                        node_splits=splits[inc.origin_node_id],
+                    )
+
                     # compute outflow of the upstream node into this link
                     upstream_node_outflow_link = self._get_node_outflow_link(
                         network=network,
                         link=inc,
                         flows=flows,
-                        node_splits=splits[node.id],
+                        node_splits=normalized_upstream_node_splits,
                     )
 
                     # step through the cells of the link and update the flows, densities and speeds accordingly
@@ -605,7 +618,7 @@ class CTM:
             # -> since CTM focusses on accumulations, this would correspond to a spillback scenario across the node
             # (assuming that the split ratios are not affected by changing traffic conditions on individual links)
             normalized_node_splits = self._compute_normalized_splits(
-                node=node, splits=splits
+                node=node, node_splits=splits[node.id]
             )
             maximum_supported_node_outflow = self._compute_node_maximum_outflows(
                 network=network,
