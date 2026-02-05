@@ -162,6 +162,36 @@ class CTM:
 
         return upstream_node_outflow_link
 
+    def _compute_next_density(
+        self,
+        density: casadi.SX,
+        inflow: casadi.SX,
+        outflow: casadi.SX,
+        cell_length: float,
+        link_lanes: int,
+        dt: float,
+    ) -> casadi.SX:
+        """
+        Compute the next-step density for a single cell using conservation.
+
+        Applies the first-order CTM conservation update:
+
+            rho_next = rho + dt / (cell_length * link_lanes) * (inflow - outflow)
+
+        Args:
+            density (casadi.SX): Current cell density (vehicles per length per lane).
+            inflow (casadi.SX): Flow entering the cell (vehicles per time).
+            outflow (casadi.SX): Flow leaving the cell (vehicles per time).
+            cell_length (float): Length of the cell (same length units as densities).
+            link_lanes (int): Number of lanes on the link.
+            dt (float): Simulation timestep (time units consistent with flows).
+
+        Returns:
+            casadi.SX: The updated cell density (vehicles per length per lane).
+        """
+        next_density = density + dt / (cell_length * link_lanes) * (inflow - outflow)
+        return next_density
+
     def _update_motorway_link(
         self,
         link: MotorwayLink,
@@ -206,13 +236,23 @@ class CTM:
             # compute the new density in the cell based on the flows at the previous timestep
             # -> onramp and offramp flows do not need to be considered anymore -> handled through nodes
             if i == 0:
-                next_densities_list[i] = link_densities[i] + dt / (
-                    cell.length * link.lanes
-                ) * (upstream_node_outflow_link - link_flows[i])
+                next_densities_list[i] = self._compute_next_density(
+                    density=link_densities[i],
+                    inflow=upstream_node_outflow_link,
+                    outflow=link_flows[i],
+                    cell_length=cell.length,
+                    link_lanes=link.lanes,
+                    dt=dt,
+                )
             else:
-                next_densities_list[i] = link_densities[i] + dt / (
-                    cell.length * link.lanes
-                ) * (link_flows[i - 1] - link_flows[i])
+                next_densities_list[i] = self._compute_next_density(
+                    density=link_densities[i],
+                    inflow=link_flows[i - 1],
+                    outflow=link_flows[i],
+                    cell_length=cell.length,
+                    link_lanes=link.lanes,
+                    dt=dt,
+                )
 
         for j, cell in link.enumerate_cells():
             # compute the new flows based on the updated density (first-order model)
@@ -354,9 +394,14 @@ class CTM:
 
                 # compute the next-step density of the first cell of the outgoing link
                 first_cell = out.get_cell(0)
-                first_cell_next_density = densities[out.id][0] + dt / (
-                    first_cell.length * out.lanes
-                ) * (node_outflow_link - flows[out.id][0])
+                first_cell_next_density = self._compute_next_density(
+                    density=densities[out.id][0],
+                    inflow=node_outflow_link,
+                    outflow=flows[out.id][0],
+                    cell_length=first_cell.length,
+                    link_lanes=out.lanes,
+                    dt=dt,
+                )
 
                 # compute the outflow supply limit imposed through the outgoing motorway link
                 maximum_supported_node_outflow = casadi.fmin(
