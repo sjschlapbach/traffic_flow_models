@@ -1417,6 +1417,14 @@ class Network:
                 params = model.model_params_to_vec(
                     network=self, model_params=model_params
                 )
+            elif model_params is None and isinstance(model, METANET):
+                raise ValueError(
+                    "METANET model requires model_params to be provided for simulation."
+                )
+            elif model_params is not None and isinstance(model, CTM):
+                raise ValueError(
+                    "CTM model does not support model_params to be provided for simulation."
+                )
             else:
                 params = np.array(
                     [], dtype=np.float64
@@ -1515,14 +1523,8 @@ class Network:
         """
         # ! 1 - validate all inputs as required
         # validate that all required model parameters are provided
-        if model_params is not None:
-            # check if the model is one of the models requiring parameters
-            if isinstance(model, METANET):
-                model.validate_model_params(model_params=model_params)
-            else:
-                raise ValueError(
-                    f"The provided model of type {type(model)} does not accept any model parameters."
-                )
+        if isinstance(model, METANET) and model_params is not None:
+            model.validate_model_params(model_params=model_params)
 
         # validate that all required initial conditions are provided
         self._validate_initial_conditions_numerical(

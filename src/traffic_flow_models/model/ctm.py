@@ -1,14 +1,13 @@
 import casadi
 from typing import TYPE_CHECKING, Tuple
 
-from .helpers import store_and_forward_update
+from .helpers import store_and_forward_update, update_queue
 from traffic_flow_models.network import (
     MotorwayLink,
     Origin,
     Onramp,
     Offramp,
     Destination,
-    node,
 )
 
 if TYPE_CHECKING:
@@ -17,7 +16,26 @@ if TYPE_CHECKING:
 
 class CTM:
     """
-    # TODO: add docstring
+    Cell Transmission Model (CTM) implementation.
+
+    Provides a first-order CTM update for motorway links together with
+    store-and-forward handling for origins, onramps and offramps. The
+    class exposes helpers for fundamental diagram quantities (critical
+    density, backward wave speed) and node/link update routines used to
+    assemble a full-network CasADi `Function` via
+    `network_update_function`.
+
+    Notes:
+        - Motorway links are advanced using a first-order CTM-style
+            density/flow update in `_update_motorway_link`.
+        - Origins, onramps and offramps are represented with
+            store-and-forward logic (see `_compute_offramp_outflows`).
+        - Split normalization, node-level supply checks and proportional
+            flow reductions are handled in the node update logic.
+
+    The implementation assumes network state/disturbance dictionaries
+    are provided by the `Network` helpers and uses CasADi `SX` for the
+    symbolic formulation.
     """
 
     def __init__(self):
@@ -595,12 +613,18 @@ class CTM:
                     # update the virtual queues on origins and onramps accordingly
                     # (based on the difference between desired and actual flow)
                     if isinstance(inc, Origin):
-                        next_origin_queues[inc.id] = origin_queues[inc.id] + dt * (
-                            origin_demands[inc.id] - next_flows[inc.id]
+                        next_origin_queues[inc.id] = update_queue(
+                            queue_length=origin_queues[inc.id],
+                            demand=origin_demands[inc.id],
+                            flow=next_flows[inc.id],
+                            dt=dt,
                         )
                     else:
-                        next_onramp_queues[inc.id] = onramp_queues[inc.id] + dt * (
-                            onramp_demands[inc.id] - next_flows[inc.id]
+                        next_onramp_queues[inc.id] = update_queue(
+                            queue_length=onramp_queues[inc.id],
+                            demand=onramp_demands[inc.id],
+                            flow=next_flows[inc.id],
+                            dt=dt,
                         )
 
                 elif isinstance(inc, MotorwayLink):
