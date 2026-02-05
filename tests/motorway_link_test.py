@@ -20,7 +20,8 @@ class TestMotorwayLink:
         assert isinstance(l, Cell)
         assert l.length == 2.0
         assert link.lanes == 3
-        assert link.lane_capacity == 2000
+        assert link.Qc_lane == 2000
+        assert link.Qc == 6000
         assert link.vf == 100
         assert link.rho_jam == 150
 

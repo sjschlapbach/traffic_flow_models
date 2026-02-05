@@ -483,8 +483,8 @@ class METANET:
                 node_downstream_backward_wave_speed = self.backward_wave_speed(
                     params=params,
                     link_id=out_link.id,
-                    capacity=out_link.lane_capacity * out_link.lanes,
-                    lane_capacity=out_link.lane_capacity,
+                    capacity=out_link.Qc,
+                    lane_capacity=out_link.Qc_lane,
                     jam_density=out_link.rho_jam,
                     free_flow_speed=out_link.vf,
                 )
@@ -878,7 +878,7 @@ class METANET:
                 self.stationary_velocity(
                     params=params,
                     link_id=link.id,
-                    lane_capacity=link.lane_capacity,
+                    lane_capacity=link.Qc_lane,
                     free_flow_speed=link.vf,
                     density=previous_density,
                 )
@@ -915,7 +915,7 @@ class METANET:
                 * self.critical_density(
                     params=params,
                     link_id=link.id,
-                    lane_capacity=link.lane_capacity,
+                    lane_capacity=link.Qc_lane,
                     free_flow_speed=link.vf,
                 )
             )

@@ -8,9 +8,10 @@ class Offramp:
 
     Attributes:
         lanes: Number of lanes on the offramp.
-        lane_capacity: Capacity per lane in vehicles per hour.
-        free_flow_speed: Free-flow speed in km/h.
-        jam_density: Jam density in vehicles per km per lane.
+        Qc_lane: Capacity per lane in vehicles per hour.
+        Qc: Total offramp capacity in vehicles per hour.
+        vf: Free-flow speed in km/h.
+        rho_jam: Jam density in vehicles per km per lane.
         destination: Optional linked `Destination` instance.
     """
 
@@ -53,7 +54,7 @@ class Offramp:
         )  # identifier for the offramp link
         self.lanes: int = lanes  # number of lanes
         self.Qc_lane: float = lane_capacity  # in vehicles per hour per lane
-        self.Qc: float = lane_capacity * lanes  # total cell capacity
+        self.Qc: float = lane_capacity * lanes  # total capacity in vehicles per hour
         self.vf: float = free_flow_speed  # in kilometers per hour
         self.rho_jam: float = jam_density  # in vehicles per kilometer per lane
         self.destination: Destination | None = destination

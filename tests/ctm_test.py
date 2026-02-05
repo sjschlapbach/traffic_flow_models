@@ -28,19 +28,17 @@ class TestCTM:
         model = CTM()
 
         # CTM critical density: Qc_lane / vf
-        expected_rho_cr = link.lane_capacity / link.vf
+        expected_rho_cr = link.Qc_lane / link.vf
         computed_rho_cr = model.critical_density(
-            lane_capacity=link.lane_capacity, free_flow_speed=link.vf
+            lane_capacity=link.Qc_lane, free_flow_speed=link.vf
         )
         assert np.isclose(computed_rho_cr, expected_rho_cr)
 
         # CTM backward wave speed: Qc / (rho_jam - rho_cr)
-        expected_w = (link.lane_capacity * link.lanes) / (
-            link.rho_jam - expected_rho_cr
-        )
+        expected_w = (link.Qc) / (link.rho_jam - expected_rho_cr)
         computed_w = model.backward_wave_speed(
-            capacity=link.lane_capacity * link.lanes,
-            lane_capacity=link.lane_capacity,
+            capacity=link.Qc,
+            lane_capacity=link.Qc_lane,
             jam_density=link.rho_jam,
             free_flow_speed=link.vf,
         )
@@ -392,7 +390,7 @@ class TestCTM:
             flow, _, _, _, _, _ = network.state_vec_to_network_dict(states[:, t])
 
             # verify that flow never exceeds capacity
-            capacity = link.lane_capacity * link.lanes
+            capacity = link.Qc
             assert np.all(
                 flow[link.id] <= capacity + 1e-6
             )  # allow small numerical error

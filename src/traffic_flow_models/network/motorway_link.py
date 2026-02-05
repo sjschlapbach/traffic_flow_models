@@ -19,7 +19,9 @@ class MotorwayLink:
     Attributes:
         length (float): Total link length in kilometers.
         lanes (int): Number of lanes on the motorway link.
-        lane_capacity (float): Capacity per lane in vehicles per time.
+        Qc_lane (float): Capacity per lane in vehicles per time (also called
+            lane capacity).
+        Qc (float): Total link capacity in vehicles per time (``Qc_lane * lanes``).
         vf (float): Free-flow speed for the link (length per time).
         rho_jam (float): Jam density (vehicles per length per lane).
         id (str): Unique identifier for the link.
@@ -68,7 +70,10 @@ class MotorwayLink:
         # set link parameters
         self.length: float = length  # in kilometers
         self.lanes: int = lanes  # number of lanes
-        self.lane_capacity: float = lane_capacity  # in vehicles per hour per lane
+        self.Qc_lane: float = lane_capacity  # in vehicles per hour per lane
+        self.Qc: float = (
+            lane_capacity * lanes
+        )  # total link capacity in vehicles per hour
         self.vf: float = free_flow_speed  # in kilometers per hour
         self.rho_jam: float = jam_density  # in vehicles per kilometer per lane
 
