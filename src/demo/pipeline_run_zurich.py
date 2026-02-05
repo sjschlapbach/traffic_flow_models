@@ -11,9 +11,10 @@ if __name__ == "__main__":
     network = SUMOPipeline(name, location)
     network.fetch_OSM()
     network.covert_to_sumo()
+    network.generate_detectors()
     network.generate_demand(vehicle_demand)
 
     # run the SUMO simulation
-    sim = SUMOSimulation(name, network.net_file, network.rou_file, network.output_dir)
+    sim = SUMOSimulation(name, network.net_file, network.detector_file, network.rou_file, network.output_dir)
     sim.write_config()
     sim.run_simulation()

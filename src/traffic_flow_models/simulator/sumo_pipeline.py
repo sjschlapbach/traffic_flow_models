@@ -5,6 +5,8 @@ import shutil
 import osmnx as ox
 from functools import wraps
 import matplotlib.pyplot as plt
+from traffic_flow_models.arbitrator.loop_detector_generator import LoopDetectorGenerator
+from traffic_flow_models.arbitrator.network_arbitrator import NetworkArbitrator
 
 
 def skip_if_exists(attr_name):
@@ -30,6 +32,7 @@ class SUMOPipeline:
         output_dir: Directory where output files are stored.
         osm_file: Path to the downloaded OSM file.
         net_file: Path to the SUMO network file.
+        detector_file: Path to the SUMO loop detectors file.
         rou_file: Path to the SUMO route file.
     """
 
@@ -51,7 +54,12 @@ class SUMOPipeline:
 
         self.osm_file = os.path.join(self.output_dir, f"{name}.osm")
         self.net_file = os.path.join(self.output_dir, f"{name}.net.xml")
+        self.detector_file = os.path.join(self.output_dir, f"{name}_detectors.xml")
         self.rou_file = os.path.join(self.output_dir, f"{name}.rou.xml")
+
+        self.detector_spec_path = os.path.join(self.output_dir, f"{name}_detectors_spec.csv")
+        self.consolidated_network = None
+        self.arbitrator = None
 
     @skip_if_exists("osm_file")
     def fetch_OSM(self):
@@ -158,3 +166,21 @@ class SUMOPipeline:
                 os.remove("temp_trips.xml")
         except subprocess.CalledProcessError as e:
             print(f"An error occurred while generating demand: {e}")
+
+
+    def generate_detectors(self):
+        self.arbitrator = NetworkArbitrator(os.path.normpath(self.net_file))
+        self.consolidated_network = self.arbitrator.run()
+
+        generator = LoopDetectorGenerator(self.consolidated_network, self.net_file)
+        self.detector_file, self.detector_spec_path = generator.generate()
+
+        return self.detector_file
+    
+
+    def get_consolidated_network(self):
+        
+        if self.consolidated_network is None:
+            raise ValueError("Must call generate_detectors() first to create consolidated network")
+        
+        return self.consolidated_network

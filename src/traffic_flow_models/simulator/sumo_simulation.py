@@ -9,13 +9,14 @@ class SUMOSimulation:
     Attributes:
         name: Name identifier for the simulation.
         net_file: Path to the SUMO network file.
+        detector_file: Path to the SUMO loop detectors file.
         rou_file: Path to the SUMO route file.
         output_dir: Directory where simulation outputs are stored.
         cfg_file: Path to the SUMO configuration file.
         stats_file: Path to the simulation statistics output file.
     """
 
-    def __init__(self, name, net_file, rou_file, output_dir):
+    def __init__(self, name, net_file, detector_file, rou_file, output_dir):
         """Initialize the SUMO simulation.
 
         Args:
@@ -26,6 +27,7 @@ class SUMOSimulation:
         """
         self.name = name
         self.net_file = net_file
+        self.detector_file = detector_file
         self.rou_file = rou_file
         self.output_dir = output_dir
         self.cfg_file = os.path.join(self.output_dir, f"{name}.sumocfg")
@@ -41,6 +43,7 @@ class SUMOSimulation:
         <configuration>
             <input>
                 <net-file value="{os.path.basename(self.net_file)}"/>
+                <additional-files value="{os.path.basename(self.detector_file)}"/>
                 <route-files value="{os.path.basename(self.rou_file)}"/>
             </input>
             <output>
