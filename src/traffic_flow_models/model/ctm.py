@@ -104,63 +104,48 @@ class CTM:
     # region
     def _get_node_outflow_link(
         self,
-        network: "Network",
+        node: "Node",
         link: MotorwayLink,
         flows: dict[str, casadi.SX],
         node_splits: dict[str, casadi.SX],
     ) -> casadi.SX:
-        """Compute the flow entering a motorway link from its upstream node.
+        """Compute the portion of a node's outflow routed into a motorway link.
 
-        This helper finds the upstream (origin) node for the provided
-        `link`, sums the outgoing contributions from that node, applies the
-        split ratio for the considered link and returns the resulting
-        upstream-to-link flow as a CasADi `SX` expression.
+        Using the provided `node` and its outgoing split ratios (`node_splits`),
+        this helper sums the last-cell flows of all incoming links to the node
+        and returns the fraction directed into `link` according to the split
+        ratio for `link.id`.
 
         Args:
-            network (Network): The network containing nodes and links.
-            link (MotorwayLink): The motorway link whose upstream inflow is
-                to be computed.
+            node (Node): The node whose incoming contributions are considered.
+            link (MotorwayLink): The downstream motorway link receiving a
+                portion of the node outflow.
             flows (dict[str, casadi.SX]): Mapping from link id to the
                 current-step flow vector (CasADi SX) for that link.
-            splits (dict[str, dict[str, casadi.SX]]): Nested mapping of node
-                id -> outgoing link id -> split ratio (CasADi SX).
+            node_splits (dict[str, casadi.SX]): Mapping of outgoing link id
+                to the split ratio used at `node` (CasADi SX).
 
         Returns:
-            casadi.SX: The computed inflow from the upstream node into the
-                specified motorway link (CasADi SX).
+            casadi.SX: Flow portion directed into `link` (vehicles / time).
 
         Raises:
-            ValueError: If the link does not have a defined `origin_node_id`,
-                if the upstream node cannot be found in `network`, or if no
-                split ratio is defined for the outgoing link at the upstream
-                node.
+            ValueError: If no split ratio is defined for `link.id` in
+                `node_splits`.
         """
-        if link.origin_node_id is None:
-            raise ValueError(
-                f"Motorway link {link.id} does not have a well-defined origin node."
-            )
-
-        # identify the origin node of this link
-        upstream_node = network.get_node(id=link.origin_node_id)
-        if upstream_node is None:
-            raise ValueError(
-                f"Origin node {link.origin_node_id} of motorway link {link.id} not found in network."
-            )
-
         # compute the outflow from the upstream node into this link
-        upstream_inflow_sum: casadi.SX = casadi.sum(
-            casadi.vertcat(*[flows[inc.id][-1] for inc in upstream_node.incoming])
+        inflow_sum: casadi.SX = casadi.sum(
+            casadi.vertcat(*[flows[inc.id][-1] for inc in node.incoming])
         )
-        upstream_node_split_link = node_splits[link.id]
-        if upstream_node_split_link is None:
+        node_split_link = node_splits[link.id]
+        if node_split_link is None:
             raise ValueError(
-                f"No split ratio defined for outgoing link {link.id} at node {upstream_node.id}"
+                f"No split ratio defined for outgoing link {link.id} at node {node.id}"
             )
-        upstream_node_outflow_link = (
-            upstream_node_split_link * upstream_inflow_sum
+        node_outflow_link = (
+            node_split_link * inflow_sum
         )  # = q_0(k) for this motorway link
 
-        return upstream_node_outflow_link
+        return node_outflow_link
 
     def _compute_next_density(
         self,
@@ -327,7 +312,6 @@ class CTM:
 
     def _compute_node_maximum_outflows(
         self,
-        network: "Network",
         node: "Node",
         densities: dict[str, casadi.SX],
         flows: dict[str, casadi.SX],
@@ -346,7 +330,6 @@ class CTM:
         and backward wave speed.
 
         Args:
-            network (Network): The network containing nodes and links.
             node (Node): Node for which the maximum supported outflow is
                 computed.
             densities (dict[str, casadi.SX]): Current-step densities for
@@ -386,7 +369,7 @@ class CTM:
                 # motorway link as a basis for the computation of the first cell next-step
                 # density value (to be used as a supply restriction)
                 node_outflow_link = self._get_node_outflow_link(
-                    network=network,
+                    node=node,
                     link=out,
                     flows=flows,
                     node_splits=node_splits,
@@ -610,7 +593,7 @@ class CTM:
 
                     # compute outflow of the upstream node into this link
                     upstream_node_outflow_link = self._get_node_outflow_link(
-                        network=network,
+                        node=upstream_node,
                         link=inc,
                         flows=flows,
                         node_splits=normalized_upstream_node_splits,
@@ -666,7 +649,6 @@ class CTM:
                 node=node, node_splits=splits[node.id]
             )
             maximum_supported_node_outflow = self._compute_node_maximum_outflows(
-                network=network,
                 node=node,
                 densities=densities,
                 flows=flows,
