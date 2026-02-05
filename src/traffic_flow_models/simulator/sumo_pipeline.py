@@ -178,13 +178,12 @@ class SUMOPipeline:
 
     def generate_detectors(self):
         if not hasattr(self, 'consolidated_network') or self.consolidated_network is None:
-        # If not, create it now
+            # If not, create it now
             self.create_consolidated_network()
     
         # Generate detectors
         generator = LoopDetectorGenerator(
             sumo_network_path=self.net_file,
-            consolidated_network=self.consolidated_network,
             metadata=self.metadata,
             output_dir=self.output_dir
         )

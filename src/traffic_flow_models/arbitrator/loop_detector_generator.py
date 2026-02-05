@@ -9,11 +9,13 @@ class LoopDetectorGenerator:
         self,
         sumo_network_path,
         metadata,
-        output_dir = "results/zurich"):
+        output_dir = "results/zurich",
+        detection_freq=900):
         
         self.sumo_network_path = sumo_network_path
         self.metadata = metadata
         self.output_dir = output_dir
+        self.detection_freq = detection_freq
         
         self.backbone_nodes = self._extract_backbone_nodes(metadata)
         
@@ -39,32 +41,12 @@ class LoopDetectorGenerator:
         return backbone
 
 
-    
-    def find_motorway_edges(self) -> Set[str]:
-        
-        motorway_edges = set()
-        
-        tree = ET.parse(self.sumo_network_path)
-        root = tree.getroot()
-        
-        for edge in root.findall('edge'):
-            if edge.get('function') == 'internal':
-                continue
-            
-            edge_type = edge.get('type', '').lower()
-            if 'motorway' in edge_type:
-                motorway_edges.add(edge.get('id'))
-        
-        return motorway_edges
-
-
     #Finds the points where the juxtaposed macroscopic network meets the microscopic network
-    def find_interface_edges(self) -> None:
+    def find_interface_edges(self):
         
         tree = ET.parse(self.sumo_network_path)
         root = tree.getroot()
         
-        motorway_edges = self.find_motorway_edges()
         
         inflow_count = 0
         outflow_count = 0
@@ -99,11 +81,11 @@ class LoopDetectorGenerator:
             
             # Direct backbone interface (ramps connecting to backbone)
             elif edge_id.endswith('_link') or 'link' in edge_type:
-                if to_is_backbone:
+                if to_is_backbone and not from_is_backbone:
                     detector_type = 'ramp_inflow'
                     detector_node = to_node
                     inflow_count += 1
-                elif from_is_backbone:
+                elif from_is_backbone and not to_is_backbone:
                     detector_type = 'ramp_outflow'
                     detector_node = from_node
                     outflow_count += 1
@@ -114,8 +96,12 @@ class LoopDetectorGenerator:
                     lane_id = lane.get('id')
                     lane_length = float(lane.get('length'))
                     
-                    # Place detector near end of edge (90%)
-                    detector_pos = lane_length * 0.9
+                    # Place detector near end of edge 
+                    if lane_length < 10:  # Less than 10 meters
+                        print(f"  Skipping short lane {lane_id} (length={lane_length}m)")
+                        continue
+
+                    detector_pos = min(lane_length * 0.9, lane_length - 5)
                     
                     self.edge_detectors.append({
                         'edge_id': edge_id,
@@ -127,9 +113,11 @@ class LoopDetectorGenerator:
                         'from_node': from_node,
                         'to_node': to_node
                     })
+        return inflow_count, outflow_count
 
-    def write_detector_xml(self) -> str:
-        output_file = f"{self.output_dir}/_detectors.xml"
+
+    def write_detector_xml(self):
+        output_file = f"{self.output_dir}/detectors.xml"
         
         root = ET.Element('additional')
         
@@ -140,8 +128,8 @@ class LoopDetectorGenerator:
             detector.set('id', det_id)
             detector.set('lane', det['lane_id'])
             detector.set('pos', f"{det['position']:.2f}")
-            detector.set('freq', '900') 
-            detector.set('file', "_detectors.xml")
+            detector.set('freq', str(self.detection_freq)) 
+            detector.set('file','detectors_output.xml')
         
         tree = ET.ElementTree(root)
         ET.indent(tree, space="  ")

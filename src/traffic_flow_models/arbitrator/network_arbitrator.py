@@ -67,7 +67,7 @@ class NetworkArbitrator:
         self.parse_sumo_xml()
         
         if self.G.number_of_edges() == 0:
-            sys.exit(1)
+            raise ValueError("No edges found after parsing SUMO network. Check the network file or highway filter.")
         
         self.eliminate_roundabouts()
         self.filter()
@@ -294,13 +294,6 @@ class NetworkArbitrator:
                 'critical_density': critical_density
             }
 
-            self.link_metanet_params[link_id] = {
-                'alpha': params['alpha'],
-                'tau': params['tau'],
-                'eta': params['eta'],
-                'kappa': params['kappa'],
-                'critical_density': critical_density
-            }
 
             link = MotorwayLink(
                 id=link_id,

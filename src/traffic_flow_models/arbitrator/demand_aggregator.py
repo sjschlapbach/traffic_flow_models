@@ -135,9 +135,7 @@ class DemandAggregator:
         all_metanet_vehicles = sum(
             sum(aggregated_bins.values()) 
             for demands in [origin_demands, onramp_demands]
-            for func in demands.values()
-            for aggregated_bins in [self._extract_bins_from_function(func)]
-        )
+            for func in demands.values())
         
     
         print(f"AGGREGATION SUMMARY:")
@@ -177,8 +175,8 @@ class DemandAggregator:
                 if G.has_node(node) and G.has_node(target_node):
                     if nx.has_path(G, node, target_node):
                         upstream_nodes.add(node)
-            except:
-                pass
+            except nx.NetworkXError:
+                continue
         
         return upstream_nodes
 
@@ -210,44 +208,14 @@ class DemandAggregator:
 
     def run(self, metadata, sumo_network_path, aggregate_upstream):
     
+        if not metadata:
+            raise ValueError("metadata is required")
+    
+        if aggregate_upstream and not sumo_network_path:
+            raise ValueError("sumo_network_path is required when aggregate_upstream=True")
+    
         self.parse_detector_output()
         self.classify_and_map()
         self.aggregate_spatially()
         
-        if not metadata:
-            raise ValueError("metadata parameter is required")
-        
-       
-        if aggregate_upstream:
-            if not sumo_network_path:
-                raise ValueError("sumo_network_path is required for upstream aggregation")
-            return self.aggregate_upstream_to_metanet(metadata, sumo_network_path)
-        else:
-           
-            return self.create_demand_functions_direct(metadata)
-
-
-"""
-if __name__ == "__main__":
-    
-    agg = DemandAggregator(
-        detector_output_path="results/zurich/zurich_detectors.xml",
-        detector_spec_path="results/zurich/zurich_detectors_spec.csv",
-        time_period_minutes=15
-    )
-    
-    agg.parse_detector_output()
-    agg.classify_and_map()
-    agg.aggregate_spatially()
-    
-   
-    for node_id in list(agg.node_counts.keys())[:3]:
-        total = sum(agg.node_counts[node_id].values())
-        print(f"  Node {node_id}: {total} total vehicles")
-        for time_bin in range(min(4, len(agg.node_counts[node_id]))):
-            count = agg.node_counts[node_id].get(time_bin, 0)
-            print(f"    Bin {time_bin} ({time_bin*15}-{(time_bin+1)*15} min): {count} veh")
-    
-
-    print("  agg.run(metadata=network_metadata, sumo_network_path='path.net.xml')")
-"""
+        return self.aggregate_upstream_to_metanet(metadata, sumo_network_path)
