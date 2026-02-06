@@ -57,7 +57,9 @@ class SUMOPipeline:
         self.detector_file = os.path.join(self.output_dir, f"{name}_detectors.xml")
         self.rou_file = os.path.join(self.output_dir, f"{name}.rou.xml")
 
-        self.detector_spec_path = os.path.join(self.output_dir, f"{name}_detectors_spec.csv")
+        self.detector_spec_path = os.path.join(
+            self.output_dir, f"{name}_detectors_spec.csv"
+        )
         self.consolidated_network = None
         self.arbitrator = None
 
@@ -167,34 +169,37 @@ class SUMOPipeline:
         except subprocess.CalledProcessError as e:
             print(f"An error occurred while generating demand: {e}")
 
-
     def create_consolidated_network(self):
         """Create consolidated METANET network."""
-        
+
         self.arbitrator = NetworkArbitrator(os.path.normpath(self.net_file))
         self.consolidated_network, self.metadata = self.arbitrator.run()
-        
+
         return self.consolidated_network, self.metadata
 
     def generate_detectors(self):
-        if not hasattr(self, 'consolidated_network') or self.consolidated_network is None:
+        if (
+            not hasattr(self, "consolidated_network")
+            or self.consolidated_network is None
+        ):
             # If not, create it now
             self.create_consolidated_network()
-    
+
         # Generate detectors
         generator = LoopDetectorGenerator(
             sumo_network_path=self.net_file,
             metadata=self.metadata,
-            output_dir=self.output_dir
+            output_dir=self.output_dir,
         )
         self.detector_file, self.detector_spec_path = generator.generate()
-        
+
         return self.detector_file, self.detector_spec_path
-    
 
     def get_consolidated_network(self):
-        
+
         if self.consolidated_network is None:
-            raise ValueError("Must call generate_detectors() or create_consolidated_network() first")
-    
+            raise ValueError(
+                "Must call generate_detectors() or create_consolidated_network() first"
+            )
+
         return self.consolidated_network, self.metadata

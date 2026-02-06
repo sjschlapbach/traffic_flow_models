@@ -14,6 +14,12 @@ if __name__ == "__main__":
     network.generate_demand(vehicle_demand)
 
     # run the SUMO simulation
-    sim = SUMOSimulation(name, network.net_file, network.detector_file, network.rou_file, network.output_dir)
+    sim = SUMOSimulation(
+        name,
+        net_file=network.net_file,
+        detector_file=network.detector_file,
+        rou_file=network.rou_file,
+        output_dir=network.output_dir,
+    )
     sim.write_config()
     sim.run_simulation()

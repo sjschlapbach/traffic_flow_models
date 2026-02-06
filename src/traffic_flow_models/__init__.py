@@ -28,7 +28,6 @@ from .simulator.sumo_pipeline import SUMOPipeline
 # re-export arbitrator components
 from .arbitrator import NetworkArbitrator, LoopDetectorGenerator, DemandAggregator
 
-
 __all__ = [
     "Cell",
     "Origin",
@@ -45,7 +44,7 @@ __all__ = [
     "AlineaController",
     "SUMOSimulation",
     "SUMOPipeline",
-    "NetworkArbitrator", 
+    "NetworkArbitrator",
     "LoopDetectorGenerator",
-    "DemandAggregator"
+    "DemandAggregator",
 ]

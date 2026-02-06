@@ -16,7 +16,7 @@ class SUMOSimulation:
         stats_file: Path to the simulation statistics output file.
     """
 
-    def __init__(self, name, net_file, detector_file, rou_file, output_dir):
+    def __init__(self, name, net_file, rou_file, output_dir, detector_file=None):
         """Initialize the SUMO simulation.
 
         Args:
