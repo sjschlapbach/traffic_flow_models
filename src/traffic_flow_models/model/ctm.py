@@ -720,6 +720,7 @@ class CTM:
                     next_flows[out.id] = (
                         normalized_node_splits[out.id] * total_capped_inflow
                     )
+
                 elif isinstance(out, Offramp):
                     # offramps are modeled as store-and-forward links with the mainline outflow given as a demand
                     # and a virtual queue that takes up excess demand if the offramp capacity is exceeded or
@@ -739,17 +740,10 @@ class CTM:
                     )
 
                     # set the offramp flow and the queue on the offramp (part of store-and-forward link)
+                    # flow for the connected destination is not set => equal to the offramp flow
                     next_flows[out.id] = next_outflow
                     next_offramp_queues[out.id] = next_queue
 
-                    # TODO: MAKE SURE THAT THESE VALUES ARE ACTUALLY NOT LOST DURING FROM AND TO VEC CONVERSION -> SAME LOGIC USED IN METANET
-                    # the flow of the connected destination is equal to the offramp outflow
-                    if out.destination is not None:
-                        next_flows[out.destination.id] = next_outflow
-                    else:
-                        raise ValueError(
-                            f"Offramp {out.id} does not have a destination defined."
-                        )
                 elif isinstance(out, MotorwayLink):
                     # motorway links are processed at nodes where they are incoming
                     pass

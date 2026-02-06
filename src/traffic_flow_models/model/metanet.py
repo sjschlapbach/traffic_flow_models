@@ -1089,6 +1089,7 @@ class METANET:
                         node_splits=splits[node.id],
                     )
                     next_flows[out.id] = next_node_outflows[out.id]
+
                 elif isinstance(out, Offramp):
                     # previous-step flows are used for the computation of the next-step offramp
                     # flow and queue since the offramp keeps its own flow state and queue with
@@ -1103,16 +1104,9 @@ class METANET:
                     )
 
                     # set the offramp flow and the queue on the offramp (part of store-and-forward link)
+                    # flow for the connected destination is not set => equal to the offramp flow
                     next_flows[out.id] = next_outflow
                     next_offramp_queues[out.id] = next_queue
-
-                    # the flow of the connected destination is equal to the offramp outflow
-                    if out.destination is not None:
-                        next_flows[out.destination.id] = next_outflow
-                    else:
-                        raise ValueError(
-                            f"Offramp {out.id} does not have a destination defined."
-                        )
 
                 # ! 4) update the outgoing motorway links connected to this node (including all cells)
                 elif isinstance(out, MotorwayLink):
