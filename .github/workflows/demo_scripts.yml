@@ -30,8 +30,7 @@ jobs:
           sudo apt-get install -y software-properties-common
           sudo add-apt-repository -y ppa:sumo/stable
           sudo apt-get install -y sumo sumo-tools
-          echo "export SUMO_HOME=/usr/share/sumo" >> ~/.bashrc
-          source ~/.bashrc
+          echo "SUMO_HOME=/usr/share/sumo" >> $GITHUB_ENV
       - name: Verify that installation was successful
         run: |
           sumo --version
