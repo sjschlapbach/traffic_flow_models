@@ -13,7 +13,7 @@ from traffic_flow_models.network import (
     Node,
     Cell,
 )
-from .helpers import store_and_forward_update
+from .helpers import store_and_forward_update, compute_node_outflows
 
 if TYPE_CHECKING:
     from traffic_flow_models.network.network import Network
@@ -516,13 +516,12 @@ class METANET:
             node_downstream_backward_wave_speed,
         )
 
-    def _compute_node_outflows_upstream_speed(
+    def _compute_node_upstream_speed(
         self,
         node: Node,
         flows: dict[str, casadi.SX],
         speeds: dict[str, casadi.SX],
-        splits: dict[str, dict[str, casadi.SX]],
-    ) -> Tuple[dict[str, casadi.SX], casadi.SX]:
+    ) -> casadi.SX:
         """Compute the node outflows and virtual upstream speed for METANET updates.
 
         The method computes the total available flow into the node by summing
@@ -540,48 +539,10 @@ class METANET:
                 offramps.
             speeds (dict[str, casadi.SX]): Mapping link id -> vector of cell
                 speeds (CasADi SX) for motorway links.
-            splits (dict[str, dict[str, casadi.SX]]): Mapping of node id to
-                mapping of outgoing link id to split ratio (CasADi SX).
 
         Returns:
-            Tuple[dict[str, casadi.SX], casadi.SX]: A tuple containing:
-                - A dictionary mapping outgoing link id to computed outflow
-                  (CasADi SX).
-                - The virtual upstream speed (CasADi SX) used in speed updates.
+            casadi.SX: The virtual upstream speed (CasADi SX) used in speed updates.
         """
-        Qn = casadi.SX(0)
-        for inc in node.incoming:
-            if isinstance(inc, MotorwayLink):
-                # motorway link: use the last cell flow as upstream flow
-                Qn += flows[inc.id][-1]
-            elif isinstance(inc, Origin):
-                # origin link: use the flow entering the origin (from state vector) - demand -> flow update separate
-                Qn += flows[inc.id][0]
-            elif isinstance(inc, Onramp):
-                # onramp link: use the flow entering the onramp (from state vector) - demand -> flow update separate
-                Qn += flows[inc.id][0]
-            else:
-                raise TypeError("Unknown incoming link type")
-
-        # compute the node outflows based on the total available flow and the splits
-        # node outflows = q_m,0(k) - dictionary with one value per outgoing edge
-        node_outflows = {}
-        node_splits = splits[node.id]
-
-        if node_splits is None:
-            raise ValueError(f"No split ratios defined for node {node.id}")
-
-        for out in node.outgoing:
-            out_split = node_splits[out.id]
-            if out_split is None:
-                raise ValueError(
-                    f"No split ratio defined for outgoing link {out.id} (type: {type(out)}) at node {node.id}"
-                )
-
-            # re-normalize turning rates to make sure that they properly sum up to 1
-            total_splits = casadi.sum(casadi.vertcat(*list(node_splits.values())))
-            node_outflows[out.id] = Qn * out_split / casadi.fmax(total_splits, 1.0)
-
         # determine the virtual upstream speed of the node (for outgoing motorway links) = v_m,0(k)
         # since a speed parameter is required, only incoming motorway links are considered
         # if all incoming links are origins, assume free flow conditions upstream
@@ -634,7 +595,7 @@ class METANET:
                 denom_sum == 0, min_vf, numer_sum / denom_sum
             )
 
-        return node_outflows, node_upstream_speed
+        return node_upstream_speed
 
     def _compute_offramp_outflows(
         self,
@@ -1104,13 +1065,15 @@ class METANET:
             # ! 2) compute the required boundary conditions based on the combined incoming / outgoing quantities
             # -> this includes the upstream speed, downstream density, etc. that are required by the model udpate
             # sum up the last cell flows of all incoming links, onramps and origins
-            node_outflows, node_upstream_speed = (
-                self._compute_node_outflows_upstream_speed(
-                    node=node,
-                    flows=flows,
-                    speeds=speeds,
-                    splits=splits,
-                )
+            node_outflows = compute_node_outflows(
+                node=node,
+                flows=flows,
+                node_splits=splits[node.id],
+            )
+            node_upstream_speed = self._compute_node_upstream_speed(
+                node=node,
+                flows=flows,
+                speeds=speeds,
             )
 
             for out in node.outgoing:
@@ -1118,8 +1081,18 @@ class METANET:
                 if isinstance(out, Destination):
                     # destinations are assumed to consume all incoming flow
                     # (only impact the mainstream through the density boundary condition)
-                    next_flows[out.id] = node_outflows[out.id]
+                    # Note: the next-step flows are already used, since the destination is
+                    # only a virtual sink that does not have a flow state itself and no length
+                    next_node_outflows = compute_node_outflows(
+                        node=node,
+                        flows=next_flows,
+                        node_splits=splits[node.id],
+                    )
+                    next_flows[out.id] = next_node_outflows[out.id]
                 elif isinstance(out, Offramp):
+                    # previous-step flows are used for the computation of the next-step offramp
+                    # flow and queue since the offramp keeps its own flow state and queue with
+                    # store-and-forward dynamics
                     next_outflow, next_queue = self._compute_offramp_outflows(
                         params=params,
                         offramp=out,
