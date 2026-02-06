@@ -730,7 +730,7 @@ class CTM:
                     )
 
                     # offramp outflows are updated with the current step flows, since the offramp
-                    # keeps track of it's own queue and flow and has a physical length
+                    # keeps track of its own queue and flow and has a physical length
                     next_outflow, next_queue = self._compute_offramp_outflows(
                         offramp=out,
                         node_outflow=node_outflows[out.id],

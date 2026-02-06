@@ -522,7 +522,7 @@ class METANET:
         flows: dict[str, casadi.SX],
         speeds: dict[str, casadi.SX],
     ) -> casadi.SX:
-        """Compute the node outflows and virtual upstream speed for METANET updates.
+        """Compute the virtual upstream speed for METANET updates.
 
         The method computes the total available flow into the node by summing
         the last cell flows of all incoming motorway links as well as the
@@ -532,8 +532,7 @@ class METANET:
         used in the speed update equations for outgoing motorway links.
 
         Args:
-            node (Node): Network node for which to compute outflows and
-                upstream speed.
+            node (Node): Network node for which to compute the virtual upstream speed.
             flows (dict[str, casadi.SX]): Mapping link id -> vector of cell
                 flows (CasADi SX) for motorway links, origins, onramps and
                 offramps.
@@ -1085,7 +1084,7 @@ class METANET:
                     # only a virtual sink that does not have a flow state itself and no length
                     next_node_outflows = compute_node_outflows(
                         node=node,
-                        flows=next_flows,
+                        flows=next_flows,  # all incoming flows for this node have already been updated at this point
                         node_splits=splits[node.id],
                     )
                     next_flows[out.id] = next_node_outflows[out.id]

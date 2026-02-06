@@ -94,7 +94,6 @@ def compute_node_outflows(
 
     Raises:
         ValueError: If an outgoing link has no split defined.
-            has no split defined.
         TypeError: If an incoming link has an unexpected type.
     """
     if node_splits is None:
@@ -114,6 +113,9 @@ def compute_node_outflows(
         else:
             raise TypeError("Unknown incoming link type")
 
+    # compute the sum of all split ratios
+    total_splits = casadi.sum(casadi.vertcat(*list(node_splits.values())))
+
     # compute the node outflows based on the total available flow and the splits
     # node outflows = q_m,0(k) - dictionary with one value per outgoing edge
     node_outflows = {}
@@ -125,7 +127,6 @@ def compute_node_outflows(
             )
 
         # re-normalize turning rates to make sure that they properly sum up to 1
-        total_splits = casadi.sum(casadi.vertcat(*list(node_splits.values())))
         node_outflows[out.id] = (
             Qn * out_split / casadi.if_else(total_splits == 0, 1.0, total_splits)
         )
