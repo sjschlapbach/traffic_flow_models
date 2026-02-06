@@ -1,52 +1,106 @@
 import xml.etree.ElementTree as ET
 import csv
+from typing import Tuple
 
 
 class LoopDetectorGenerator:
+    """Generate loop detectors at macroscopic-microscopic network interface points.
+
+    This class identifies interface edges between the consolidated macroscopic network
+    and the detailed microscopic SUMO network, then generates loop detector
+    configurations to measure traffic flow at these boundaries. Detectors are
+    placed strategically to capture inflow and outflow at network interfaces.
+
+    Attributes:
+        sumo_network_path: Path to the SUMO network XML file.
+        metadata: macroscopic network metadata containing node information.
+        output_dir: Directory for output files.
+        detection_freq: Detector measurement frequency in seconds.
+        detector_filename: Name of the detector configuration XML file.
+        spec_filename: Name of the detector specification CSV file.
+        output_xml_filename: Name of the detector output XML file.
+        backbone_nodes: Set of nodes belonging to the macroscopic backbone.
+        interface_edges: List of edges at the network interface.
+        edge_detectors: List of detector specifications.
+    """
 
     def __init__(
         self,
-        sumo_network_path,
-        metadata,
-        output_dir="results/zurich",
-        detection_freq=900,
-        detector_filename="detector.xml",
-        spec_filename="_detectors_spec.csv",
-        output_xml_filename="detectors_output.xml",
+        sumo_network_path: str,
+        metadata: dict,
+        output_dir: str,
+        detection_freq: int = 900,
+        detector_filename: str = "detector.xml",
+        spec_filename: str = "_detectors_spec.csv",
+        output_xml_filename: str = "detectors_output.xml",
     ):
+        """Initialize the loop detector generator.
 
-        self.sumo_network_path = sumo_network_path
-        self.metadata = metadata
-        self.output_dir = output_dir
-        self.detection_freq = detection_freq
-        self.detector_filename = detector_filename
-        self.spec_filename = spec_filename
-        self.output_xml_filename = output_xml_filename
+        Args:
+            sumo_network_path: Path to the SUMO network XML file.
+            metadata: Dictionary containing macroscopic network metadata.
+            output_dir: Directory where output files will be written.
+            detection_freq: Measurement frequency in seconds (default: 900).
+            detector_filename: Output detector XML filename (default: "detector.xml").
+            spec_filename: Output specification CSV filename (default: "_detectors_spec.csv").
+            output_xml_filename: Detector output XML filename (default: "detectors_output.xml").
+        """
 
-        self.backbone_nodes = self._extract_backbone_nodes(metadata)
+        self.sumo_network_path: str = sumo_network_path
+        self.metadata: dict = metadata
+        self.output_dir: str = output_dir
+        self.detection_freq: int = detection_freq
+        self.detector_filename: str = detector_filename
+        self.spec_filename: str = spec_filename
+        self.output_xml_filename: str = output_xml_filename
 
-        self.interface_edges = []
-        self.edge_detectors = []
+        self.backbone_nodes: set[str] = self._extract_backbone_nodes(metadata)
+        self.interface_edges: list = []
+        self.edge_detectors: list[dict] = []
 
-    # Extracts all the nodes from the consolidated network metadata
-    def _extract_backbone_nodes(self, metadata):
+    # TODO: add proper typing once metadata is typed
+    def _extract_backbone_nodes(self, metadata: dict) -> set[str]:
+        """Extract all nodes from the consolidated network metadata.
+
+        Identifies nodes that are part of the macroscopic backbone network by
+        processing origin, onramp, and destination node IDs from metadata.
+        These nodes represent the macroscopic network structure.
+
+        Args:
+            metadata: Dictionary containing 'origin_ids', 'onramp_ids', and
+                'destination_ids' keys.
+
+        Returns:
+            Set of node IDs belonging to the macroscopic backbone network.
+        """
         backbone = set()
 
         for oid in metadata.get("origin_ids", []):
-            backbone.add(oid.replace("Origin_", ""))
+            backbone.add(oid.replace("origin_", ""))
 
-        # Add onramp nodes
+        # add onramp nodes
         for oid in metadata.get("onramp_ids", []):
             backbone.add(oid.replace("onramp_", ""))
 
-        # Add destination nodes
+        # add destination nodes
         for did in metadata.get("destination_ids", []):
-            backbone.add(did.replace("Dest_", ""))
+            backbone.add(did.replace("dest_", ""))
 
         return backbone
 
-    # Finds the points where the juxtaposed macroscopic network meets the microscopic network
-    def find_interface_edges(self):
+    def find_interface_edges(self) -> Tuple[int, int]:
+        """Find interface points between macroscopic and microscopic networks.
+
+        Identifies edges where the macroscopic backbone network interfaces with
+        the detailed microscopic SUMO network. Classifies interface edges as
+        inflow (entering backbone), outflow (leaving backbone), or ramp
+        connections. Places detectors on each lane of interface edges.
+
+        Returns:
+            A tuple containing:
+                - inflow_count: Number of inflow detectors created.
+                - outflow_count: Number of outflow detectors created.
+        """
 
         tree = ET.parse(self.sumo_network_path)
         root = tree.getroot()
@@ -70,19 +124,22 @@ class LoopDetectorGenerator:
             detector_type = None
             detector_node = None
 
-            # Urban → Motorway (INFLOW)
+            if edge_id is None:
+                raise ValueError("Edge is missing 'id' attribute")
+
+            # urban → motorway (macroscopic network inflow)
             if to_is_backbone and not is_motorway:
                 detector_type = "inflow"
                 detector_node = to_node
                 inflow_count += 1
 
-            # Motorway → Urban (OUTFLOW)
+            # motorway → urban (macroscopic network outflow)
             elif from_is_backbone and not is_motorway:
                 detector_type = "outflow"
                 detector_node = from_node
                 outflow_count += 1
 
-            # Direct backbone interface (ramps connecting to backbone)
+            # direct backbone interface (ramps connecting to backbone)
             elif edge_id.endswith("_link") or "link" in edge_type:
                 if to_is_backbone and not from_is_backbone:
                     detector_type = "ramp_inflow"
@@ -102,8 +159,8 @@ class LoopDetectorGenerator:
                         continue
                     lane_length = float(length_str)
 
-                    # Place detector near end of edge
-                    if lane_length < 10:  # Less than 10 meters
+                    # place detector near end of edge
+                    if lane_length < 10:  # less than 10 meters
                         print(
                             f"  Skipping short lane {lane_id} (length={lane_length}m)"
                         )
@@ -125,7 +182,16 @@ class LoopDetectorGenerator:
                     )
         return inflow_count, outflow_count
 
-    def write_detector_xml(self):
+    def write_detector_xml(self) -> str:
+        """Write SUMO loop detector configuration XML file.
+
+        Generates the SUMO additional file containing induction loop elements
+        for all identified interface detectors. Each detector is configured
+        with its lane position, measurement frequency, and output file.
+
+        Returns:
+            Path to the generated detector XML file.
+        """
         output_file = f"{self.output_dir}/{self.detector_filename}"
 
         root = ET.Element("additional")
@@ -146,7 +212,17 @@ class LoopDetectorGenerator:
 
         return output_file
 
-    def write_detector_spec_csv(self):
+    def write_detector_spec_csv(self) -> str:
+        """Write detector specification CSV file.
+
+        Creates a CSV file documenting each detector's metadata including
+        detector ID, type (inflow/outflow/ramp), edge topology (from/to nodes),
+        and associated backbone node. This specification is used by the
+        demand aggregator to map detector readings to network nodes.
+
+        Returns:
+            Path to the generated detector specification CSV file.
+        """
         output_file = f"{self.output_dir}/{self.spec_filename}"
 
         with open(output_file, "w", newline="") as f:
@@ -179,9 +255,19 @@ class LoopDetectorGenerator:
 
         return output_file
 
-    def generate(self):
-        self.find_interface_edges()
+    def generate(self) -> Tuple[str, str]:
+        """Execute the complete detector generation pipeline.
 
+        Orchestrates the full workflow: finding interface edges, generating
+        detector configurations, and writing both the SUMO XML file and
+        the specification CSV file.
+
+        Returns:
+            A tuple containing:
+                - detector_xml: Path to the generated detector XML file.
+                - detector_csv: Path to the generated specification CSV file.
+        """
+        self.find_interface_edges()
         detector_xml = self.write_detector_xml()
         detector_csv = self.write_detector_spec_csv()
 

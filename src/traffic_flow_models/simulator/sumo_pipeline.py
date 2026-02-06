@@ -5,8 +5,10 @@ import shutil
 import osmnx as ox
 from functools import wraps
 import matplotlib.pyplot as plt
+from typing import Optional, Tuple
 from traffic_flow_models.arbitrator.loop_detector_generator import LoopDetectorGenerator
 from traffic_flow_models.arbitrator.network_arbitrator import NetworkArbitrator
+from traffic_flow_models.network.network import Network
 
 
 def skip_if_exists(attr_name):
@@ -36,35 +38,36 @@ class SUMOPipeline:
         rou_file: Path to the SUMO route file.
     """
 
-    def __init__(self, name, location):
+    def __init__(self, name: str, location: str):
         """Initialize the SUMO pipeline.
 
         Args:
             name: Name identifier for the simulation.
             location: Geographic location to fetch OSM data from.
         """
-        self.name = name
-        self.location = location
+        self.name: str = name
+        self.location: str = location
 
         # set up output directory
-        self.output_dir = os.path.join("results", name)
+        self.output_dir: str = os.path.join("results", name)
         if os.path.exists(self.output_dir):
             shutil.rmtree(self.output_dir)
         os.makedirs(self.output_dir, exist_ok=True)
 
-        self.osm_file = os.path.join(self.output_dir, f"{name}.osm")
-        self.net_file = os.path.join(self.output_dir, f"{name}.net.xml")
-        self.detector_file = os.path.join(self.output_dir, f"{name}detectors.xml")
-        self.rou_file = os.path.join(self.output_dir, f"{name}.rou.xml")
+        self.osm_file: str = os.path.join(self.output_dir, f"{name}.osm")
+        self.net_file: str = os.path.join(self.output_dir, f"{name}.net.xml")
+        self.detector_file: str = os.path.join(self.output_dir, f"{name}detectors.xml")
+        self.rou_file: str = os.path.join(self.output_dir, f"{name}.rou.xml")
 
-        self.detector_spec_path = os.path.join(
+        self.detector_spec_path: str = os.path.join(
             self.output_dir, f"{name}_detectors_spec.csv"
         )
-        self.consolidated_network = None
-        self.arbitrator = None
+        self.consolidated_network: Optional[Network] = None
+        self.arbitrator: Optional[NetworkArbitrator] = None
+        self.metadata: Optional[dict] = None
 
     @skip_if_exists("osm_file")
-    def fetch_OSM(self):
+    def fetch_OSM(self) -> None:
         """Download OSM data for the specified location.
 
         Fetches road network data from OpenStreetMap, plots the network,
@@ -89,7 +92,7 @@ class SUMOPipeline:
         print(f"OSM data downloaded for {self.location}")
 
     @skip_if_exists("net_file")
-    def covert_to_sumo(self):
+    def covert_to_sumo(self) -> None:
         """Convert OSM file to SUMO network format.
 
         Converts the downloaded OSM data to a SUMO .net.xml file using netconvert
@@ -128,7 +131,7 @@ class SUMOPipeline:
         print(f"{self.net_file} file generated.")
 
     # @skip_if_exists('rou_file')
-    def generate_demand(self, vehicle_count):
+    def generate_demand(self, vehicle_count: int) -> None:
         """Generate traffic demand and create route file.
 
         Creates random trips using SUMO's randomTrips.py tool and generates
@@ -169,23 +172,54 @@ class SUMOPipeline:
         except subprocess.CalledProcessError as e:
             print(f"An error occurred while generating demand: {e}")
 
-    def create_consolidated_network(self):
-        """Create consolidated METANET network."""
+    def create_consolidated_network(self) -> Tuple[Network, dict]:
+        """Create consolidated network from SUMO network.
 
+        Instantiates a NetworkArbitrator to convert the SUMO microscopic network
+        into a consolidated macroscopic network. The arbitration process includes
+        filtering roads, merging serial edges, handling roundabouts, and
+        assigning appropriate parameters.
+
+        Returns:
+            A tuple containing:
+                - consolidated_network: Network object representing the macroscopic network.
+                - metadata: Dictionary with keys 'origin_ids', 'onramp_ids',
+                  'destination_ids', and 'splits'.
+        """
         self.arbitrator = NetworkArbitrator(os.path.normpath(self.net_file))
         self.consolidated_network, self.metadata = self.arbitrator.run()
 
         return self.consolidated_network, self.metadata
 
-    def generate_detectors(self):
-        if self.consolidated_network is None:
-            self.create_consolidated_network()
+    def generate_detectors(self) -> Tuple[str, str]:
+        """Generate loop detectors at network interface points.
 
-        # Also ensure metadata exists
+        Creates loop detectors at the boundaries between the macroscopic network
+        and the SUMO microscopic network. Detectors are placed to measure inflow
+        and outflow at these interface points, enabling demand aggregation for
+        the macroscopic flow simulation.
+
+        If the consolidated network has not been created yet, this method will
+        automatically create it first.
+
+        Returns:
+            A tuple containing:
+                - detector_file: Path to the generated SUMO detector XML file.
+                - detector_spec_path: Path to the detector specification CSV file.
+
+        Raises:
+            ValueError: If metadata has not been initialized.
+        """
+        if self.consolidated_network is None:
+            raise ValueError(
+                "Please first generate the consolidated network using the create_consolidated_network() method before generating detectors."
+            )
+
+        # ensure metadata exists
         if not hasattr(self, "metadata") or self.metadata is None:
             raise ValueError("metadata must be initialized before generating detectors")
 
-        # Generate detectors
+        # generate detectors
         generator = LoopDetectorGenerator(
             sumo_network_path=self.net_file,
             metadata=self.metadata,
@@ -195,11 +229,24 @@ class SUMOPipeline:
 
         return self.detector_file, self.detector_spec_path
 
-    def get_consolidated_network(self):
+    def get_consolidated_network(self) -> Tuple[Network, dict]:
+        """Retrieve the consolidated macroscopic network and metadata.
 
+        Provides access to the previously generated network and its
+        associated metadata. This method should be called after either
+        generate_detectors() or create_consolidated_network() has been executed.
+
+        Returns:
+            A tuple containing:
+                - consolidated_network: Network object representing the macroscopic network.
+                - metadata: Dictionary containing network metadata.
+
+        Raises:
+            ValueError: If consolidated network has not been created yet.
+        """
         if self.consolidated_network is None:
             raise ValueError(
-                "Must call generate_detectors() or create_consolidated_network() first"
+                "Please first compute the consolidated network using the create_consolidated_network() method."
             )
 
         return self.consolidated_network, self.metadata

@@ -7,15 +7,16 @@ if __name__ == "__main__":
     vehicle_demand = 2000
 
     # run the pipeline to generate files for the SUMO simulation
-    network = SUMOPipeline(name, location)
+    network = SUMOPipeline(name=name, location=location)
     network.fetch_OSM()
     network.covert_to_sumo()
+    network.create_consolidated_network()
     network.generate_detectors()
-    network.generate_demand(vehicle_demand)
+    network.generate_demand(vehicle_count=vehicle_demand)
 
     # run the SUMO simulation
     sim = SUMOSimulation(
-        name,
+        name=name,
         net_file=network.net_file,
         detector_file=network.detector_file,
         rou_file=network.rou_file,

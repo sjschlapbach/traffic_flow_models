@@ -1394,7 +1394,6 @@ class Network:
             destination_density_bc_dict,
         )
 
-    # TODO: improve typing of this function with typed dicts
     def _run_simulation_loop(
         self,
         system: casadi.Function,

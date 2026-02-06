@@ -1,6 +1,6 @@
 import uuid
 import warnings
-from typing import Iterable, List, Any
+from typing import Iterable, List, Tuple, Any
 
 from traffic_flow_models.network.motorway_link import MotorwayLink
 from traffic_flow_models.network.onramp import Onramp
@@ -41,6 +41,9 @@ class Node:
         self.id: str = id if id is not None else str(uuid.uuid4())  # node identifier
         self.incoming: List[Any] = []  # list of incoming links
         self.outgoing: List[Any] = []  # list of outgoing links
+
+        # optional position coordinates (mainly for illustration purposes)
+        self.position: Tuple[float, float] | None = None
 
         # attach any provided links using the public helpers to ensure validation
         if incoming is not None:
@@ -101,6 +104,16 @@ class Node:
 
         for link in self.outgoing:
             self._validate_link_type(link, self._allowed_outgoing_types())
+
+    def set_position(self, x: float, y: float) -> None:
+        """
+        Set the position coordinates of the node.
+
+        Args:
+            x: X-coordinate of the node's position.
+            y: Y-coordinate of the node's position.
+        """
+        self.position = (x, y)
 
     def _set_origin_node_to_self(self, link: Any) -> None:
         """
