@@ -64,7 +64,7 @@ class DemandAggregator:
             det_id = interval.get("id")
             begin_str = interval.get("begin")
 
-            # Skip malformed entries
+            # skip malformed entries
             if det_id is None or begin_str is None:
                 continue
 

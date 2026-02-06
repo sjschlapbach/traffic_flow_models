@@ -14,7 +14,7 @@ if __name__ == "__main__":
     # run the pipeline to generate files for the SUMO simulation
     pipeline = SUMOPipeline(name=name, location=location)
     pipeline.fetch_OSM()
-    pipeline.covert_to_sumo()
+    pipeline.convert_to_sumo()
     pipeline.create_consolidated_network()
     detector_file, spec_file = pipeline.generate_detectors()
     pipeline.generate_demand(vehicle_count=vehicle_demand)

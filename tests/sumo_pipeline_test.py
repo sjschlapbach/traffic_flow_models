@@ -33,7 +33,7 @@ class TestSUMOPipeline:
         captured = capsys.readouterr()
         assert ".osm already exists" in captured.out
 
-    def test_covert_to_sumo_runs_netconvert(self, monkeypatch, tmp_path):
+    def test_convert_to_sumo_runs_netconvert(self, monkeypatch, tmp_path):
         monkeypatch.chdir(tmp_path)
         p = SUMOPipeline("convtest", "Loc")
 
@@ -47,7 +47,7 @@ class TestSUMOPipeline:
             lambda cmd, capture_output, text, check: called.__setitem__("cmd", cmd),
         )
 
-        p.covert_to_sumo()
+        p.convert_to_sumo()
         assert "cmd" in called
         assert called["cmd"][0] == "netconvert"
 
@@ -99,11 +99,11 @@ class TestSUMOPipeline:
         # command should contain path to our fake randomTrips.py
         assert any(str(random_trips) in str(c) for c in called["cmd"])
 
-    def test_covert_to_sumo_skips_when_net_exists(self, monkeypatch, tmp_path, capsys):
+    def test_convert_to_sumo_skips_when_net_exists(self, monkeypatch, tmp_path, capsys):
         monkeypatch.chdir(tmp_path)
         p = SUMOPipeline("convskip", "Place")
 
-        # create the net file so covert_to_sumo should be skipped
+        # create the net file so convert_to_sumo should be skipped
         os.makedirs(os.path.dirname(p.net_file), exist_ok=True)
         open(p.net_file, "w").write("exists")
 
@@ -113,6 +113,6 @@ class TestSUMOPipeline:
             lambda *a, **k: (_ for _ in ()).throw(RuntimeError("should_not_be_called")),
         )
 
-        p.covert_to_sumo()
+        p.convert_to_sumo()
         captured = capsys.readouterr()
         assert ".net.xml already exists." in captured.out

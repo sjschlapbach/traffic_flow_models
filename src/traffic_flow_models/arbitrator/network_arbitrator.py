@@ -255,6 +255,7 @@ class NetworkArbitrator:
                 warnings.warn(
                     f"Edge {edge.get('id')} has non-positive length or speed. Skipping."
                 )
+                continue
 
             # add edge to graph with attributes
             self.graph.add_edge(
@@ -533,8 +534,8 @@ class NetworkArbitrator:
                 # splits[str(nid)] = {
                 #     link.id: link.lanes / total_lanes for link in outgoing_links
                 # }
-                splits[str(nid)] = lambda t, ol=outgoing_links: {
-                    link.id: link.lanes / total_lanes for link in ol
+                splits[str(nid)] = lambda t, ol=outgoing_links, tl=total_lanes: {
+                    link.id: link.lanes / tl for link in ol
                 }
 
         return (

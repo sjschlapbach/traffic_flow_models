@@ -101,7 +101,7 @@ class SUMOPipeline:
         print(f"OSM data downloaded for {self.location}")
 
     @skip_if_exists("net_file")
-    def covert_to_sumo(self) -> None:
+    def convert_to_sumo(self) -> None:
         """Convert OSM file to SUMO network format.
 
         Converts the downloaded OSM data to a SUMO .net.xml file using netconvert
