@@ -136,8 +136,11 @@ class DemandAggregator:
                 time_bin = int(begin / self.time_period_sec)
                 self.node_counts[node_id][time_bin] += count
 
-    def aggregate_upstream_to_metanet(
-        self, metadata: dict, sumo_network_path: str
+    def aggregate_urban_inflows(
+        self,
+        origin_ids: list[str],
+        onramp_ids: list[str],
+        sumo_network_path: str,
     ) -> Tuple[
         dict[str, Callable[[float], float]], dict[str, Callable[[float], float]]
     ]:
@@ -149,8 +152,8 @@ class DemandAggregator:
         full demand from the microscopic network feeding into the macroscopic model.
 
         Args:
-            metadata: Dictionary containing macroscopic network metadata with keys
-                'origin_ids', 'onramp_ids', 'destination_ids', and 'splits'.
+            origin_ids: List of origin node IDs in the network.
+            onramp_ids: List of onramp node IDs in the network.
             sumo_network_path: Path to the SUMO network XML file used for
                 topology analysis.
 
@@ -158,20 +161,11 @@ class DemandAggregator:
             A tuple containing:
                 - origin_demands: Dictionary mapping origin IDs to demand functions.
                 - onramp_demands: Dictionary mapping onramp IDs to demand functions.
-
-        Raises:
-            ValueError: If metadata parameter is not provided.
         """
-        if not metadata:
-            raise ValueError("metadata parameter is required")
-
         graph = self._build_network_graph(sumo_network_path)
 
-        metanet_origins = metadata.get("origin_ids", [])
-        metanet_onramps = metadata.get("onramp_ids", [])
-
-        origin_node_ids = [oid.replace("Origin_", "") for oid in metanet_origins]
-        onramp_node_ids = [oid.replace("onramp_", "") for oid in metanet_onramps]
+        origin_node_ids = [oid.replace("origin_", "") for oid in origin_ids]
+        onramp_node_ids = [oid.replace("onramp_", "") for oid in onramp_ids]
 
         origin_demands = {}
 
@@ -179,8 +173,8 @@ class DemandAggregator:
             upstream_nodes = self._find_upstream_nodes(graph, origin_node)
             aggregated_bins = self._aggregate_demand(upstream_nodes)
 
-            metanet_id = f"Origin_{origin_node}"
-            origin_demands[metanet_id] = self._make_demand_function(aggregated_bins)
+            origin_id = f"origin_{origin_node}"
+            origin_demands[origin_id] = self._make_demand_function(aggregated_bins)
 
         onramp_demands = {}
 
@@ -188,8 +182,8 @@ class DemandAggregator:
             upstream_nodes = self._find_upstream_nodes(graph, onramp_node)
             aggregated_bins = self._aggregate_demand(upstream_nodes)
 
-            metanet_id = f"onramp_{onramp_node}"
-            onramp_demands[metanet_id] = self._make_demand_function(aggregated_bins)
+            onramp_id = f"onramp_{onramp_node}"
+            onramp_demands[onramp_id] = self._make_demand_function(aggregated_bins)
 
         all_detector_vehicles = sum(
             sum(bins.values()) for bins in self.node_counts.values()
@@ -198,7 +192,7 @@ class DemandAggregator:
         print("AGGREGATION SUMMARY:")
         print(f"  Total detector nodes: {len(self.node_counts)}")
         print(f"  Total detector vehicles: {all_detector_vehicles}")
-        print(f"  METANET entry points: {len(origin_demands) + len(onramp_demands)}")
+        print(f"  Network entry points: {len(origin_demands) + len(onramp_demands)}")
         return origin_demands, onramp_demands
 
     def _build_network_graph(self, sumo_network_path: str) -> nx.DiGraph:
@@ -306,7 +300,10 @@ class DemandAggregator:
         )
 
     def run(
-        self, metadata: dict, sumo_network_path: str
+        self,
+        origin_ids: list[str],
+        onramp_ids: list[str],
+        sumo_network_path: str,
     ) -> Tuple[
         dict[str, Callable[[float], float]], dict[str, Callable[[float], float]]
     ]:
@@ -317,7 +314,8 @@ class DemandAggregator:
         upstream demand functions for all macroscopic model entry points.
 
         Args:
-            metadata: Dictionary containing macroscopic network metadata.
+            origin_ids: List of origin node IDs in the network.
+            onramp_ids: List of onramp node IDs in the network.
             sumo_network_path: Path to the SUMO network XML file.
 
         Returns:
@@ -326,11 +324,8 @@ class DemandAggregator:
                 - onramp_demands: Dictionary mapping onramp IDs to demand functions.
 
         Raises:
-            ValueError: If metadata or sumo_network_path is not provided.
+            ValueError: If sumo_network_path is not provided.
         """
-        if not metadata:
-            raise ValueError("metadata is required")
-
         if not sumo_network_path:
             raise ValueError("sumo_network_path is required")
 
@@ -338,4 +333,4 @@ class DemandAggregator:
         self.classify_and_map()
         self.aggregate_spatially()
 
-        return self.aggregate_upstream_to_metanet(metadata, sumo_network_path)
+        return self.aggregate_urban_inflows(origin_ids, onramp_ids, sumo_network_path)

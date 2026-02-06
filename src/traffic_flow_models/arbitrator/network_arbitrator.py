@@ -2,7 +2,7 @@ import math
 import warnings
 import networkx as nx
 import xml.etree.ElementTree as ET
-from typing import Union, Tuple
+from typing import Union, Tuple, Callable
 
 from traffic_flow_models.network.node import Node
 from traffic_flow_models.network.motorway_link import MotorwayLink
@@ -107,7 +107,13 @@ class NetworkArbitrator:
 
     def run(
         self,
-    ) -> Tuple[Network, list[str], list[str], list[str], dict[str, dict[str, float]]]:
+    ) -> Tuple[
+        Network,
+        list[str],
+        list[str],
+        list[str],
+        dict[str, Callable[[float], dict[str, float]]],
+    ]:
         """Execute the complete network arbitration pipeline.
 
         Orchestrates the full workflow: parsing SUMO XML, eliminating roundabouts,
@@ -120,7 +126,8 @@ class NetworkArbitrator:
                 - origin_ids: List of origin node IDs in the network.
                 - onramp_ids: List of onramp node IDs in the network.
                 - destination_ids: List of destination node IDs in the network.
-                - splits: Dictionary mapping node IDs to their outgoing link split ratios.
+                - splits: Dictionary mapping node IDs to their outgoing link split ratios
+                    as time-dependent callable functions.
 
         Raises:
             ValueError: If no edges are found after parsing or if no matching road types exist.
@@ -413,7 +420,13 @@ class NetworkArbitrator:
 
     def instantiate_network(
         self,
-    ) -> Tuple[Network, list[str], list[str], list[str], dict[str, dict[str, float]]]:
+    ) -> Tuple[
+        Network,
+        list[str],
+        list[str],
+        list[str],
+        dict[str, Callable[[float], dict[str, float]]],
+    ]:
         """Create macroscopic network objects from the processed graph.
 
         Converts the NetworkX graph representation into macroscopic network objects
@@ -435,7 +448,8 @@ class NetworkArbitrator:
                 - origin_ids: List of origin node IDs in the network.
                 - onramp_ids: List of onramp node IDs in the network.
                 - destination_ids: List of destination node IDs in the network.
-                - splits: Dictionary mapping node IDs to their outgoing link split ratios.
+                - splits: Dictionary mapping node IDs to their outgoing link split ratios
+                    as time-dependent callable functions.
         """
 
         macro_nodes = {}
@@ -506,7 +520,9 @@ class NetworkArbitrator:
             >= 2
         ]
 
-        splits: dict[str, dict[str, float]] = {}
+        # TODO: splits should not be computed based on the number of lanes but on the actual traffic distribution observed from the micro simulation
+        # TODO: additionally, turning rates should be time-dependent callable functions (like demand)
+        splits: dict[str, Callable[[float], dict[str, float]]] = {}
         for nid, node_obj in macro_nodes.items():
             outgoing_links = [
                 link for link in node_obj.outgoing if isinstance(link, MotorwayLink)
@@ -514,8 +530,11 @@ class NetworkArbitrator:
 
             if len(outgoing_links) >= 2:
                 total_lanes = sum(link.lanes for link in outgoing_links)
-                splits[str(nid)] = {
-                    link.id: link.lanes / total_lanes for link in outgoing_links
+                # splits[str(nid)] = {
+                #     link.id: link.lanes / total_lanes for link in outgoing_links
+                # }
+                splits[str(nid)] = lambda t, ol=outgoing_links: {
+                    link.id: link.lanes / total_lanes for link in ol
                 }
 
         return (

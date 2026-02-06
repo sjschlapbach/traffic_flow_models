@@ -5,7 +5,7 @@ import shutil
 import osmnx as ox
 from functools import wraps
 import matplotlib.pyplot as plt
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Callable
 from traffic_flow_models.arbitrator.loop_detector_generator import LoopDetectorGenerator
 from traffic_flow_models.arbitrator.network_arbitrator import NetworkArbitrator
 from traffic_flow_models.network.network import Network
@@ -73,7 +73,7 @@ class SUMOPipeline:
         self.origin_ids: Optional[list[str]] = None
         self.onramp_ids: Optional[list[str]] = None
         self.destination_ids: Optional[list[str]] = None
-        self.splits: Optional[dict[str, dict[str, float]]] = None
+        self.splits: Optional[dict[str, Callable[[float], dict[str, float]]]] = None
 
     @skip_if_exists("osm_file")
     def fetch_OSM(self) -> None:
@@ -183,7 +183,13 @@ class SUMOPipeline:
 
     def create_consolidated_network(
         self,
-    ) -> Tuple[Network, list[str], list[str], list[str], dict[str, dict[str, float]]]:
+    ) -> Tuple[
+        Network,
+        list[str],
+        list[str],
+        list[str],
+        dict[str, Callable[[float], dict[str, float]]],
+    ]:
         """Create consolidated network from SUMO network.
 
         Instantiates a NetworkArbitrator to convert the SUMO microscopic network
@@ -197,7 +203,7 @@ class SUMOPipeline:
                 - origin_ids: List of origin node IDs in the network.
                 - onramp_ids: List of onramp node IDs in the network.
                 - destination_ids: List of destination node IDs in the network.
-                - splits: Dictionary mapping node IDs to their outgoing link split ratios.
+                - splits: Dictionary mapping node IDs to their outgoing link split ratios as functions of time.
         """
         self.arbitrator = NetworkArbitrator(os.path.normpath(self.net_file))
         (
@@ -264,7 +270,13 @@ class SUMOPipeline:
 
     def get_consolidated_network(
         self,
-    ) -> Tuple[Network, list[str], list[str], list[str], dict[str, dict[str, float]]]:
+    ) -> Tuple[
+        Network,
+        list[str],
+        list[str],
+        list[str],
+        dict[str, Callable[[float], dict[str, float]]],
+    ]:
         """Retrieve the consolidated macroscopic network and metadata.
 
         Provides access to the previously generated network and its
@@ -277,7 +289,8 @@ class SUMOPipeline:
                 - origin_ids: List of origin node IDs in the network.
                 - onramp_ids: List of onramp node IDs in the network.
                 - destination_ids: List of destination node IDs in the network.
-                - splits: Dictionary mapping node IDs to their outgoing link split ratios.
+                - splits: Dictionary mapping node IDs to their outgoing link split ratios
+                    as a time-varying function.
 
         Raises:
             ValueError: If consolidated network has not been created yet.
@@ -293,9 +306,7 @@ class SUMOPipeline:
             or self.destination_ids is None
             or self.splits is None
         ):
-            raise ValueError(
-                "Network parameters have not been properly initialized."
-            )
+            raise ValueError("Network parameters have not been properly initialized.")
 
         return (
             self.consolidated_network,

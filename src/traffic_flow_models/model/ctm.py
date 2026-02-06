@@ -491,12 +491,12 @@ class CTM:
         num_destinations: int,
         dt: float,
     ) -> casadi.Function:
-        """Build a CasADi function implementing one METANET network step.
+        """Build a CasADi function implementing one CTM network step.
 
-        The returned CasADi `Function` (named ``metanet_network_step``) maps
+        The returned CasADi `Function` (named ``ctm_network_step``) maps
         the symbolic model parameter vector, the current state vector ``x``
         and the disturbance vector ``d`` to the next-step state vector
-        ``x_next`` according to the METANET dynamics combined with
+        ``x_next`` according to the CTM dynamics combined with
         store-and-forward updates for origins, onramps and offramps.
 
         State and disturbance vector layouts follow

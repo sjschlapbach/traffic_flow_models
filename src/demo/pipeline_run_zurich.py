@@ -1,4 +1,4 @@
-from traffic_flow_models import SUMOPipeline, SUMOSimulation
+from traffic_flow_models import CTM, SUMOPipeline, SUMOSimulation, DemandAggregator
 
 if __name__ == "__main__":
     # scenario definitions
@@ -6,21 +6,73 @@ if __name__ == "__main__":
     location = "Zurich, Switzerland"
     vehicle_demand = 2000
 
+    # general macroscopic simulation settings
+    dt = 10.0 / 3600
+    duration = 5000.0 / 3600
+    plot_enabled = True
+
     # run the pipeline to generate files for the SUMO simulation
-    network = SUMOPipeline(name=name, location=location)
-    network.fetch_OSM()
-    network.covert_to_sumo()
-    network.create_consolidated_network()
-    network.generate_detectors()
-    network.generate_demand(vehicle_count=vehicle_demand)
+    pipeline = SUMOPipeline(name=name, location=location)
+    pipeline.fetch_OSM()
+    pipeline.covert_to_sumo()
+    pipeline.create_consolidated_network()
+    detector_file, spec_file = pipeline.generate_detectors()
+    pipeline.generate_demand(vehicle_count=vehicle_demand)
+    (
+        network,
+        origin_ids,
+        onramp_ids,
+        destination_ids,
+        splits,
+    ) = pipeline.get_consolidated_network()
 
     # run the SUMO simulation
     sim = SUMOSimulation(
         name=name,
-        net_file=network.net_file,
-        detector_file=network.detector_file,
-        rou_file=network.rou_file,
-        output_dir=network.output_dir,
+        net_file=pipeline.net_file,
+        detector_file=pipeline.detector_file,
+        rou_file=pipeline.rou_file,
+        output_dir=pipeline.output_dir,
     )
     sim.write_config()
     sim.run_simulation()
+
+    # initialize a demand generator and run it to obtain origin and onramp demands
+    demand_generator = DemandAggregator(
+        detector_output_path=detector_file, detector_spec_path=spec_file
+    )
+    origin_demands, onramp_demands = demand_generator.run(
+        origin_ids=origin_ids,
+        onramp_ids=onramp_ids,
+        sumo_network_path=pipeline.net_file,
+    )
+
+    # TODO: replace these, once they can be obtained from data
+    destination_density_bc = {dest_id: lambda t: 0.1 for dest_id in destination_ids}
+    destination_flow_bc = {dest_id: lambda t: 0.1 for dest_id in destination_ids}
+
+    # run a simulation of the network using the CTM model
+    ctm = CTM()
+    time, states, disturbances = network.simulate(
+        duration=duration,
+        dt=dt,
+        model=ctm,
+        preferred_cell_size=0.5,
+        origin_demands=origin_demands,
+        onramp_demands=onramp_demands,
+        turning_rates=splits,
+        destination_density_bc=destination_density_bc,
+        destination_flow_bc=destination_flow_bc,
+        plot_results=True,
+        show_plots=plot_enabled,
+    )
+
+    # compute performance metrics and illustrate them
+    VKT, VHT, avg_speed = network.compute_performance_metrics(
+        states=states,
+        dt=dt,
+        timesteps=len(time),
+    )
+    print(f"Total VKT: {VKT:.2f} veh-km")
+    print(f"Total VHT: {VHT:.2f} veh-h")
+    print(f"Overall Average Speed: {avg_speed:.2f} km/h")
