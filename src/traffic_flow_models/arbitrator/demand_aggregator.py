@@ -107,8 +107,6 @@ class DemandAggregator:
             metanet_id = f"Origin_{origin_node}"
             origin_demands[metanet_id] = self._make_demand_function(aggregated_bins)
 
-            total_vehicles = sum(aggregated_bins.values())
-
         onramp_demands = {}
 
         for onramp_node in onramp_node_ids:
@@ -118,23 +116,14 @@ class DemandAggregator:
             metanet_id = f"onramp_{onramp_node}"
             onramp_demands[metanet_id] = self._make_demand_function(aggregated_bins)
 
-            total_vehicles = sum(aggregated_bins.values())
-
         all_detector_vehicles = sum(
             sum(bins.values()) for bins in self.node_counts.values()
         )
-        all_metanet_vehicles = sum(
-            sum(aggregated_bins.values())
-            for demands in [origin_demands, onramp_demands]
-            for func in demands.values()
-        )
 
-        print(f"AGGREGATION SUMMARY:")
+        print("AGGREGATION SUMMARY:")
         print(f"  Total detector nodes: {len(self.node_counts)}")
         print(f"  Total detector vehicles: {all_detector_vehicles}")
         print(f"  METANET entry points: {len(origin_demands) + len(onramp_demands)}")
-        print(f"  ✅ ALL DETECTOR DATA AGGREGATED INTO METANET DEMANDS")
-
         return origin_demands, onramp_demands
 
     # Build directed graph from SUMO network XML.
