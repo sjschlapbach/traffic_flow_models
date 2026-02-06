@@ -920,7 +920,7 @@ class TestNetwork:
         net = Network(nodes=[node1, node2])
 
         # too short disturbance vector
-        d = np.array([1.0])  # only 1 value, needs 4
+        d = np.array([1.0])  # only 1 value, needs 5
 
         with pytest.raises(ValueError, match="Disturbance vector too short"):
             net.disturbance_vec_to_network_dict(d)

@@ -325,10 +325,10 @@ class CTM:
         outgoing link can accept and convert it to a node-level limit using
         the normalized split ratios. The minimum across outgoing links
         determines the maximum node outflow (i.e., the most restrictive
-        downstream supply). Destinations do not constrain the node; offramps
-        are treated as store-and-forward links limited by their capacity; and
-        motorway links use the CTM supply expression based on jam density
-        and backward wave speed.
+        downstream supply). For destinations the provided flow boundary
+        conditions are enforced; offramps are treated as store-and-forward
+        links limited by their capacity; and motorway links use the CTM supply
+        expression based on jam density and backward wave speed.
 
         Args:
             node (Node): Node for which the maximum supported outflow is
