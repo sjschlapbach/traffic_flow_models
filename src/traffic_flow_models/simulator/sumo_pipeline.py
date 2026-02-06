@@ -54,7 +54,7 @@ class SUMOPipeline:
 
         self.osm_file = os.path.join(self.output_dir, f"{name}.osm")
         self.net_file = os.path.join(self.output_dir, f"{name}.net.xml")
-        self.detector_file = os.path.join(self.output_dir, f"{name}_detectors.xml")
+        self.detector_file = os.path.join(self.output_dir, f"{name}detectors.xml")
         self.rou_file = os.path.join(self.output_dir, f"{name}.rou.xml")
 
         self.detector_spec_path = os.path.join(
@@ -178,12 +178,12 @@ class SUMOPipeline:
         return self.consolidated_network, self.metadata
 
     def generate_detectors(self):
-        if (
-            not hasattr(self, "consolidated_network")
-            or self.consolidated_network is None
-        ):
-            # If not, create it now
+        if self.consolidated_network is None:
             self.create_consolidated_network()
+
+        # Also ensure metadata exists
+        if not hasattr(self, "metadata") or self.metadata is None:
+            raise ValueError("metadata must be initialized before generating detectors")
 
         # Generate detectors
         generator = LoopDetectorGenerator(

@@ -1,7 +1,5 @@
 import xml.etree.ElementTree as ET
 import csv
-import networkx as nx
-from typing import List, Tuple, Set, Dict
 
 
 class LoopDetectorGenerator:
@@ -12,12 +10,18 @@ class LoopDetectorGenerator:
         metadata,
         output_dir="results/zurich",
         detection_freq=900,
+        detector_filename="detector.xml",
+        spec_filename="_detectors_spec.csv",
+        output_xml_filename="detectors_output.xml",
     ):
 
         self.sumo_network_path = sumo_network_path
         self.metadata = metadata
         self.output_dir = output_dir
         self.detection_freq = detection_freq
+        self.detector_filename = detector_filename
+        self.spec_filename = spec_filename
+        self.output_xml_filename = output_xml_filename
 
         self.backbone_nodes = self._extract_backbone_nodes(metadata)
 
@@ -119,7 +123,7 @@ class LoopDetectorGenerator:
         return inflow_count, outflow_count
 
     def write_detector_xml(self):
-        output_file = f"{self.output_dir}/detectors.xml"
+        output_file = f"{self.output_dir}/{self.detector_filename}"
 
         root = ET.Element("additional")
 
@@ -131,7 +135,7 @@ class LoopDetectorGenerator:
             detector.set("lane", det["lane_id"])
             detector.set("pos", f"{det['position']:.2f}")
             detector.set("freq", str(self.detection_freq))
-            detector.set("file", "detectors_output.xml")
+            detector.set("file", self.output_xml_filename)
 
         tree = ET.ElementTree(root)
         ET.indent(tree, space="  ")
@@ -140,7 +144,7 @@ class LoopDetectorGenerator:
         return output_file
 
     def write_detector_spec_csv(self):
-        output_file = f"{self.output_dir}/_detectors_spec.csv"
+        output_file = f"{self.output_dir}/{self.spec_filename}"
 
         with open(output_file, "w", newline="") as f:
             writer = csv.DictWriter(

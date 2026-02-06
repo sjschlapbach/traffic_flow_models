@@ -1,10 +1,8 @@
 import xml.etree.ElementTree as ET
 import networkx as nx
 import math
-import sys
 from traffic_flow_models.network.node import Node
 from traffic_flow_models.network.motorway_link import MotorwayLink
-from traffic_flow_models.network.cell import Cell
 from traffic_flow_models.network.origin import Origin
 from traffic_flow_models.network.destination import Destination
 from traffic_flow_models.network.network import Network
@@ -12,15 +10,16 @@ from traffic_flow_models.network.network import Network
 
 class NetworkArbitrator:
 
+    # Capacity per lane, Jam density, Fundamental diagram exponent, Free-flow speed, Relaxation time, Anticipation factor (km²), Lane-changing sensitivity
     ROAD_PARAMS = {
         "motorway": {
-            "cap": 2000.0,  # Capacity per lane
-            "jam": 150.0,  # Jam density
-            "alpha": 1.868,  # Fundamental diagram exponent
-            "speed": 120.0,  # Free-flow speed
-            "tau": 18 / 3600,  # Relaxation time (18s converted to hours)
-            "eta": 60.0,  # Anticipation factor (km²)
-            "kappa": 40.0,  # Lane-changing sensitivity
+            "cap": 2000.0,
+            "jam": 150.0,
+            "alpha": 1.868,
+            "speed": 120.0,
+            "tau": 18 / 3600,
+            "eta": 60.0,
+            "kappa": 40.0,
         },
         "trunk": {
             "cap": 1800.0,
@@ -124,8 +123,6 @@ class NetworkArbitrator:
             if edge_type:
                 available_types.add(edge_type)
 
-        # print(f"Available road types in network: {sorted(available_types)}")
-
         # Step 2: Select highest priority level available
         self.selected_types = []
         for priority_level in self.hwy_filter:
@@ -216,12 +213,14 @@ class NetworkArbitrator:
             coordinates_to_merge = [
                 self.node_coordinates.get(n, (0, 0)) for n in valid_nodes
             ]
+
             centroid_x = sum(c[0] for c in coordinates_to_merge) / len(
                 coordinates_to_merge
             )
             centroid_y = sum(c[1] for c in coordinates_to_merge) / len(
                 coordinates_to_merge
             )
+
             self.node_coordinates[pivot] = (centroid_x, centroid_y)
 
             # Distribute internal length to incident edges
@@ -289,6 +288,7 @@ class NetworkArbitrator:
                         "lanes": d_in["lanes"],
                         "type": d_in.get("type", "default"),
                     }
+
                     self.G.add_edge(u, v, **new_attr)
                     self.G.remove_node(n)
 
@@ -383,17 +383,23 @@ class NetworkArbitrator:
         onramp_ids = [
             f"onramp_{nid}"
             for nid, node_obj in metanet_nodes.items()
-            if len([l for l in node_obj.incoming if isinstance(l, MotorwayLink)]) >= 2
+            if len(
+                [link for link in node_obj.incoming if isinstance(link, MotorwayLink)]
+            )
+            >= 2
         ]
 
         splits = {}
         for nid, node_obj in metanet_nodes.items():
             outgoing_links = [
-                l for l in node_obj.outgoing if isinstance(l, MotorwayLink)
+                link for link in node_obj.outgoing if isinstance(link, MotorwayLink)
             ]
+
             if len(outgoing_links) >= 2:
-                total_lanes = sum(l.lanes for l in outgoing_links)
-                splits[str(nid)] = {l.id: l.lanes / total_lanes for l in outgoing_links}
+                total_lanes = sum(link.lanes for link in outgoing_links)
+                splits[str(nid)] = {
+                    link.id: link.lanes / total_lanes for link in outgoing_links
+                }
 
         self.metadata = {
             "origin_ids": origin_ids,
@@ -408,26 +414,28 @@ class NetworkArbitrator:
         return self.link_metanet_params.get(link_id, {})
 
     def _log_network_statistics(self, network):
-        num_nodes = len(network._nodes)
+        num_nodes = len(network)  # Use len() instead
         num_links = sum(
             len(node.outgoing)
-            for node in network._nodes
-            if not isinstance(node.outgoing[0], Destination)
+            for node in network
+            if node.outgoing and not isinstance(node.outgoing[0], Destination)
         )
+
         num_origins = sum(
             1
-            for node in network._nodes
+            for node in network
             if node.incoming and isinstance(node.incoming[0], Origin)
         )
+
         num_destinations = sum(
             1
-            for node in network._nodes
+            for node in network
             if node.outgoing and isinstance(node.outgoing[0], Destination)
         )
 
         total_length = sum(
             link.length
-            for node in network._nodes
+            for node in network
             for link in node.outgoing
             if isinstance(link, MotorwayLink)
         )

@@ -1,6 +1,4 @@
 import os
-import sys
-import types
 
 from traffic_flow_models import SUMOPipeline
 

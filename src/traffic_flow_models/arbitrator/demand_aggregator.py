@@ -1,18 +1,13 @@
 import xml.etree.ElementTree as ET
 import csv
 import networkx as nx
-from typing import Dict, Callable, Tuple, Set
 from collections import defaultdict
 
 
 class DemandAggregator:
 
-    def __init__(
-        self,
-        detector_output_path: str,
-        detector_spec_path: str,
-        time_period_minutes: float = 15,
-    ):
+    def __init__(self, detector_output_path, detector_spec_path, time_period_minutes = 15):
+
         self.detector_output_path = detector_output_path
         self.detector_spec_path = detector_spec_path
         self.time_period_sec = time_period_minutes * 60
@@ -29,10 +24,14 @@ class DemandAggregator:
 
         for interval in root.findall("interval"):
             det_id = interval.get("id")
-            begin = float(interval.get("begin"))
+            begin_str = interval.get("begin")
 
+            # Skip malformed entries
+            if det_id is None or begin_str is None:
+                continue
+
+            begin = float(begin_str)
             count = int(interval.get("nVehEntered", interval.get("nVehContrib", 0)))
-
             self.detector_intervals[det_id].append((begin, count))
             self.max_time = max(self.max_time, begin)
 
@@ -45,11 +44,7 @@ class DemandAggregator:
             for row in reader:
                 det_id = row["detector_id"].strip().strip('"').strip("'")
 
-                det_id_variants = [
-                    det_id,
-                    det_id.replace("detector_", ""),
-                    f"detector_{det_id}",
-                ]
+                det_id_variants = [det_id, det_id.replace("detector_", ""), f"detector_{det_id}"]
 
                 det_type = row["type"].strip().lower()
                 from_node = row["from"].strip().strip('"').strip("'")
@@ -65,10 +60,7 @@ class DemandAggregator:
                 if node_id:
                     # Store all variants
                     for variant in det_id_variants:
-                        self.detector_mapping[variant] = {
-                            "node_id": node_id,
-                            "type": det_type,
-                        }
+                        self.detector_mapping[variant] = {"node_id": node_id, "type": det_type}
 
     # Aggregate lane-level detector counts into node-level counts.
     def aggregate_spatially(self):
@@ -116,9 +108,7 @@ class DemandAggregator:
             metanet_id = f"onramp_{onramp_node}"
             onramp_demands[metanet_id] = self._make_demand_function(aggregated_bins)
 
-        all_detector_vehicles = sum(
-            sum(bins.values()) for bins in self.node_counts.values()
-        )
+        all_detector_vehicles = sum(sum(bins.values()) for bins in self.node_counts.values())
 
         print("AGGREGATION SUMMARY:")
         print(f"  Total detector nodes: {len(self.node_counts)}")
@@ -187,9 +177,7 @@ class DemandAggregator:
             raise ValueError("metadata is required")
 
         if not sumo_network_path:
-            raise ValueError(
-                "sumo_network_path is required when aggregate_upstream=True"
-            )
+            raise ValueError("sumo_network_path is required")
 
         self.parse_detector_output()
         self.classify_and_map()

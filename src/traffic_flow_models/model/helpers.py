@@ -1,10 +1,5 @@
-import numpy as np
 import casadi
 from typing import Tuple
-from numpy.typing import NDArray
-
-from traffic_flow_models.network.cell import Cell
-from traffic_flow_models.controller.alinea import AlineaController
 
 
 def store_and_forward_update(
