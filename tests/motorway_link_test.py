@@ -1,6 +1,6 @@
 import pytest
 
-from traffic_flow_models import MotorwayLink, Cell, Onramp, Offramp, Node
+from traffic_flow_models import MotorwayLink, Cell, Node
 
 
 class TestMotorwayLink:

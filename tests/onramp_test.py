@@ -1,4 +1,4 @@
-from traffic_flow_models import Onramp, Node, MotorwayLink, Network
+from traffic_flow_models import Onramp, Node, MotorwayLink
 
 
 class TestOnramp:

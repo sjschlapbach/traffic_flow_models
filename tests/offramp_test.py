@@ -1,4 +1,4 @@
-from traffic_flow_models import Offramp, Cell, Destination, Node, MotorwayLink
+from traffic_flow_models import Offramp, Destination, Node, MotorwayLink
 
 
 class TestOfframp:

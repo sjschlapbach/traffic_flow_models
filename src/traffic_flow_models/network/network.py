@@ -1394,7 +1394,6 @@ class Network:
             destination_density_bc_dict,
         )
 
-    # TODO: improve typing of this function with typed dicts
     def _run_simulation_loop(
         self,
         system: casadi.Function,
@@ -1966,7 +1965,7 @@ class Network:
                                 f"      Lanes: {link.lanes}, Capacity: {link.Qc} veh/h\n"
                             )
                 else:
-                    f.write(f"  Incoming Links: None\n")
+                    f.write("  Incoming Links: None\n")
 
                 # list outgoing links
                 if node.outgoing:
@@ -1995,9 +1994,9 @@ class Network:
                                     f"      Connected Destination: {link.destination.id}\n"
                                 )
                         elif isinstance(link, Destination):
-                            f.write(f"      (Network exit point)\n")
+                            f.write("      (Network exit point)\n")
                 else:
-                    f.write(f"  Outgoing Links: None\n")
+                    f.write("  Outgoing Links: None\n")
 
                 f.write("\n")
 

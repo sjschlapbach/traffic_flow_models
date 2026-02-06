@@ -1,5 +1,4 @@
-from traffic_flow_models import Origin, Cell, Node
-import pytest
+from traffic_flow_models import Origin, Node
 
 
 class TestOrigin:
