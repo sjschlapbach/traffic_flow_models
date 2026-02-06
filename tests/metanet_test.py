@@ -194,7 +194,8 @@ class TestMETANET:
             },
             initial_speeds={link.id: previous_speed, onramp.id: np.array([0.0])},
             turning_rates={},
-            destination_boundary_conditions={destination.id: lambda t: 0.0},
+            destination_flow_bc={destination.id: lambda t: 6000.0},
+            destination_density_bc={destination.id: lambda t: 0.0},
             plot_results=False,
         )
 
@@ -401,7 +402,8 @@ class TestMETANET:
                 },
                 initial_speeds={link.id: init_speed_link, link2.id: init_speed_link2},
                 turning_rates={},
-                destination_boundary_conditions={destination.id: lambda t: 0.0},
+                destination_flow_bc={destination.id: lambda t: 6000.0},
+                destination_density_bc={destination.id: lambda t: 0.0},
                 preferred_cell_size=1.0,
                 plot_results=False,
             )
@@ -619,7 +621,8 @@ class TestMETANET:
             initial_onramp_queues={},
             initial_offramp_queues={offramp.id: 0.0},
             turning_rates=turning_rates,
-            destination_boundary_conditions={dest.id: lambda t: 0.0},
+            destination_flow_bc={dest.id: lambda t: 6000.0},
+            destination_density_bc={dest.id: lambda t: 0.0},
             preferred_cell_size=0.5,
             plot_results=False,
         )

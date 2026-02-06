@@ -358,7 +358,8 @@ class Network:
         origin_demand_dict: dict[str, float],
         onramp_demand_dict: dict[str, float],
         turning_rate_dict: dict[str, dict[str, float]],
-        boundary_condition_dict: dict[str, float],
+        flow_boundary_condition_dict: dict[str, float],
+        density_boundary_condition_dict: dict[str, float],
     ):
         """Pack origin/onramp demands and node turning rates into a vector.
 
@@ -371,7 +372,8 @@ class Network:
             origin_demand_dict: Mapping origin id -> scalar demand (veh/h).
             onramp_demand_dict: Mapping onramp id -> scalar demand (veh/h).
             turning_rate_dict: Mapping node id -> mapping outgoing link id -> turn rate.
-            boundary_condition_dict: Mapping destination id -> downstream density (veh/km/lane).
+            flow_boundary_condition_dict: Mapping destination id -> downstream flow (veh/h).
+            density_boundary_condition_dict: Mapping destination id -> downstream density (veh/km/lane).
 
         Returns:
             Disturbance vector containing all exogenous inputs for simulation.
@@ -428,25 +430,48 @@ class Network:
             # set values for outgoing links (destinations / destinations connected to offramps)
             for link in node.outgoing:
                 if isinstance(link, Destination):
-                    if link.id in boundary_condition_dict:
+                    if link.id in flow_boundary_condition_dict:
                         d = np.concatenate(
-                            (d, np.array([boundary_condition_dict[link.id]]))
+                            (d, np.array([flow_boundary_condition_dict[link.id]]))
                         )
                     else:
                         raise ValueError(
-                            f"Boundary condition for destination {link.id} must be provided."
+                            f"Flow boundary condition for destination {link.id} must be provided."
+                        )
+
+                    if link.id in density_boundary_condition_dict:
+                        d = np.concatenate(
+                            (d, np.array([density_boundary_condition_dict[link.id]]))
+                        )
+                    else:
+                        raise ValueError(
+                            f"Density boundary condition for destination {link.id} must be provided."
                         )
 
                 if isinstance(link, Offramp):
                     if link.destination is not None:
                         dest_id = link.destination.id
-                        if dest_id in boundary_condition_dict:
+                        if dest_id in flow_boundary_condition_dict:
                             d = np.concatenate(
-                                (d, np.array([boundary_condition_dict[dest_id]]))
+                                (d, np.array([flow_boundary_condition_dict[dest_id]]))
                             )
                         else:
                             raise ValueError(
-                                f"Boundary condition for destination {dest_id} (connected to offramp {link.id}) must be provided."
+                                f"Flow boundary condition for destination {dest_id} (connected to offramp {link.id}) must be provided."
+                            )
+
+                        if dest_id in density_boundary_condition_dict:
+                            d = np.concatenate(
+                                (
+                                    d,
+                                    np.array(
+                                        [density_boundary_condition_dict[dest_id]]
+                                    ),
+                                )
+                            )
+                        else:
+                            raise ValueError(
+                                f"Density boundary condition for destination {dest_id} (connected to offramp {link.id}) must be provided."
                             )
                     else:
                         raise ValueError(
@@ -565,7 +590,13 @@ class Network:
     def disturbance_vec_to_network_dict(
         self,
         d: NDArray[np.float64] | casadi.SX,
-    ):
+    ) -> Tuple[
+        dict[str, float | casadi.SX],
+        dict[str, float | casadi.SX],
+        dict[str, dict[str, float | casadi.SX]],
+        dict[str, float | casadi.SX],
+        dict[str, float | casadi.SX],
+    ]:
         """Unpack a disturbance vector into structured disturbance dictionaries.
 
         Reverses the packing performed by `network_dict_to_disturbance_vec`.
@@ -574,7 +605,8 @@ class Network:
         - ``origin_demands``: mapping origin id -> scalar demand (veh/time)
         - ``onramp_demands``: mapping onramp id -> scalar demand (veh/time)
         - ``turning_rates``: mapping node id -> (outgoing link id -> rate)
-        - ``boundary_conditions``: mapping destination id -> downstream density
+        - ``flow_boundary_conditions``: mapping destination id -> downstream flow
+        - ``density_boundary_conditions``: mapping destination id -> downstream density
 
         The unpacking follows the node-ordering used in the network and will
         raise ValueError if the disturbance vector is too short or inconsistent
@@ -584,7 +616,7 @@ class Network:
             d: 1-D NumPy array or CasADi SX column vector containing the packed disturbances.
 
         Returns:
-            Tuple of four dictionaries: ``(origin_demands, onramp_demands, turning_rates, boundary_conditions)``.
+            Tuple of five dictionaries: ``(origin_demands, onramp_demands, turning_rates, flow_boundary_conditions, density_boundary_conditions)``.
 
         Raises:
             ValueError: If the disturbance vector is too short for the network
@@ -595,7 +627,8 @@ class Network:
         origin_demands = dict[str, float | casadi.SX]()
         onramp_demands = dict[str, float | casadi.SX]()
         turning_rates = dict[str, dict[str, float | casadi.SX]]()
-        boundary_conditions = dict[str, float | casadi.SX]()
+        flow_boundary_conditions = dict[str, float | casadi.SX]()
+        density_boundary_conditions = dict[str, float | casadi.SX]()
         i_disturbance = 0
 
         # load the vector sizes depending on the data type
@@ -641,27 +674,51 @@ class Network:
                 if isinstance(link, Destination):
                     if i_disturbance + 1 > disturbance_size:
                         raise ValueError(
-                            "Disturbance vector too short to extract all destination boundary conditions."
+                            "Disturbance vector too short to extract all destination flow boundary conditions."
                         )
 
-                    boundary_conditions[link.id] = d[i_disturbance]
+                    flow_boundary_conditions[link.id] = d[i_disturbance]
+                    i_disturbance += 1
+
+                    if i_disturbance + 1 > disturbance_size:
+                        raise ValueError(
+                            "Disturbance vector too short to extract all destination density boundary conditions."
+                        )
+
+                    density_boundary_conditions[link.id] = d[i_disturbance]
                     i_disturbance += 1
 
                 if isinstance(link, Offramp):
                     if link.destination is not None:
                         if i_disturbance + 1 > disturbance_size:
                             raise ValueError(
-                                "Disturbance vector too short to extract all destination boundary conditions."
+                                "Disturbance vector too short to extract all destination flow boundary conditions."
                             )
 
-                        boundary_conditions[link.destination.id] = d[i_disturbance]
+                        flow_boundary_conditions[link.destination.id] = d[i_disturbance]
+                        i_disturbance += 1
+
+                        if i_disturbance + 1 > disturbance_size:
+                            raise ValueError(
+                                "Disturbance vector too short to extract all destination density boundary conditions."
+                            )
+
+                        density_boundary_conditions[link.destination.id] = d[
+                            i_disturbance
+                        ]
                         i_disturbance += 1
                     else:
                         raise ValueError(
                             f"Offramp {link.id} has no destination assigned."
                         )
 
-        return origin_demands, onramp_demands, turning_rates, boundary_conditions
+        return (
+            origin_demands,
+            onramp_demands,
+            turning_rates,
+            flow_boundary_conditions,
+            density_boundary_conditions,
+        )
 
     # endregion
 
@@ -900,7 +957,8 @@ class Network:
         origin_demands: dict[str, Callable[[float], float]],
         onramp_demands: dict[str, Callable[[float], float]],
         turning_rates: dict[str, Callable[[float], dict[str, float]]],
-        destination_boundary_conditions: dict[str, Callable[[float], float]],
+        destination_flow_bc: dict[str, Callable[[float], float]],
+        destination_density_bc: dict[str, Callable[[float], float]],
         initial_flows: dict[str, float | NDArray[np.float64]] | None = None,
         initial_densities: dict[str, float | NDArray[np.float64]] | None = None,
         initial_speeds: dict[str, float | NDArray[np.float64]] | None = None,
@@ -917,7 +975,8 @@ class Network:
             origin_demands: Mapping origin id -> callable(time) -> demand.
             onramp_demands: Mapping onramp id -> callable(time) -> demand.
             turning_rates: Mapping node id -> callable(time) -> dict[outgoing->rate].
-            destination_boundary_conditions: Mapping destination id -> callable(time) -> density.
+            destination_flow_bc: Mapping destination id -> callable(time) -> flow.
+            destination_density_bc: Mapping destination id -> callable(time) -> density.
             initial_flows: Optional mapping link id -> scalar or per-cell array for initial flows.
             initial_densities: Optional mapping link id -> scalar or per-cell array for initial densities.
             initial_speeds: Optional mapping link id -> scalar or per-cell array for initial speeds.
@@ -955,9 +1014,14 @@ class Network:
             # validate that destination boundary conditions for each destination are provided
             for link in node.outgoing:
                 if isinstance(link, Destination):
-                    if link.id not in destination_boundary_conditions:
+                    if link.id not in destination_flow_bc:
                         raise ValueError(
-                            f"Destination boundary condition function for destination {link.id} not provided."
+                            f"Destination flow boundary condition function for destination {link.id} not provided."
+                        )
+
+                    if link.id not in destination_density_bc:
+                        raise ValueError(
+                            f"Destination density boundary condition function for destination {link.id} not provided."
                         )
 
             # validate that initial flows are defined for all links if not None
@@ -1040,7 +1104,8 @@ class Network:
         initial_onramp_queues: dict[str, float] | None,
         initial_offramp_queues: dict[str, float] | None,
         turning_rates: dict[str, Callable[[float], dict[str, float]]],
-        destination_boundary_conditions: dict[str, Callable[[float], float]],
+        destination_flow_bc: dict[str, Callable[[float], float]],
+        destination_density_bc: dict[str, Callable[[float], float]],
     ):
         """Prepare and augment initial per-link and per-queue dictionaries.
 
@@ -1057,7 +1122,8 @@ class Network:
             initial_onramp_queues: Optional mapping onramp id -> initial queue length.
             initial_offramp_queues: Optional mapping offramp id -> initial queue length.
             turning_rates: Mapping node id -> callable(time) -> turning-rate dict.
-            destination_boundary_conditions: Mapping destination id -> callable(time) -> downstream density.
+            destination_flow_bc: Mapping destination id -> callable(time) -> downstream flow.
+            destination_density_bc: Mapping destination id -> callable(time) -> downstream density.
 
         Returns:
             Tuple containing:
@@ -1068,7 +1134,8 @@ class Network:
             - onramp_queues_dict: mapping onramp id -> scalar queue
             - offramp_queues_dict: mapping offramp id -> scalar queue
             - turning_rates_dict: mapping node id -> callable(time) -> dict[outgoing->rate]
-            - dest_boundary_conditions_dict: mapping destination id -> callable(time) -> density
+            - destination_flow_bc_dict: mapping destination id -> callable(time) -> flow
+            - destination_density_bc_dict: mapping destination id -> callable(time) -> density
 
         Raises:
             ValueError: If an offramp lacks a connected destination.
@@ -1081,7 +1148,8 @@ class Network:
         onramp_queues_dict: dict[str, float] = {}
         offramp_queues_dict: dict[str, float] = {}
         turning_rates_dict: dict[str, Callable[[float], dict[str, float]]] = {}
-        dest_boundary_conditions_dict: dict[str, Callable[[float], float]] = {}
+        destination_flow_bc_dict: dict[str, Callable[[float], float]] = {}
+        destination_density_bc_dict: dict[str, Callable[[float], float]] = {}
 
         for node in self.list_nodes():
             # split ratios should be defined for each node (add the ones that are missing for SISO nodes)
@@ -1216,17 +1284,26 @@ class Network:
                 if isinstance(link, Offramp):
                     if link.destination is not None:
                         dest_id = link.destination.id
-                        if dest_id not in destination_boundary_conditions:
+                        if dest_id not in destination_flow_bc:
+                            raise ValueError(
+                                f"Destination flow boundary condition function for destination {dest_id} (connected to offramp {link.id}) not provided and cannot be inferred."
+                            )
+                        else:
+                            destination_flow_bc_dict[dest_id] = destination_flow_bc[
+                                dest_id
+                            ]
+
+                        if dest_id not in destination_density_bc:
                             warnings.warn(
-                                f"Destination boundary condition function for destination {dest_id} (connected to offramp {link.id}) not provided. Assuming downstream free flow conditions (zero density)."
+                                f"Destination density boundary condition function for destination {dest_id} (connected to offramp {link.id}) not provided. Assuming downstream free flow conditions (zero density)."
                             )
                             # capture dest_id to avoid late-binding (if lambda ever uses it)
-                            dest_boundary_conditions_dict[dest_id] = (
+                            destination_density_bc_dict[dest_id] = (
                                 lambda _, dest_id=dest_id: 0.0
                             )
                         else:
-                            dest_boundary_conditions_dict[dest_id] = (
-                                destination_boundary_conditions[dest_id]
+                            destination_density_bc_dict[dest_id] = (
+                                destination_density_bc[dest_id]
                             )
                     else:
                         raise ValueError(
@@ -1264,18 +1341,25 @@ class Network:
 
                 elif isinstance(link, Destination):
                     # for destinations with missing boundary conditions, assign a constant zero function (downstream in free-flow)
-                    if link.id not in destination_boundary_conditions:
-                        warnings.warn(
-                            f"Destination boundary condition function for destination {link.id} not provided. Assuming downstream free flow conditions (zero density)."
-                        )
-                        # capture link.id to avoid late-binding
-                        dest_boundary_conditions_dict[link.id] = (
-                            lambda _, dest_id=link.id: 0.0
+                    if link.id not in destination_flow_bc:
+                        raise ValueError(
+                            f"Destination flow boundary condition function for destination {link.id} (connected to offramp {link.id}) not provided and cannot be inferred."
                         )
                     else:
-                        dest_boundary_conditions_dict[link.id] = (
-                            destination_boundary_conditions[link.id]
+                        destination_flow_bc_dict[link.id] = destination_flow_bc[link.id]
+
+                    if link.id not in destination_density_bc:
+                        warnings.warn(
+                            f"Destination density boundary condition function for destination {link.id} (connected to offramp {link.id}) not provided. Assuming downstream free flow conditions (zero density)."
                         )
+                        # capture link.id to avoid late-binding (if lambda ever uses it)
+                        destination_density_bc_dict[link.id] = (
+                            lambda _, link_id=link.id: 0.0
+                        )
+                    else:
+                        destination_density_bc_dict[link.id] = destination_density_bc[
+                            link.id
+                        ]
 
                     if initial_flows is not None and link.id in initial_flows:
                         init_flow = initial_flows[link.id]
@@ -1306,9 +1390,11 @@ class Network:
             onramp_queues_dict,
             offramp_queues_dict,
             turning_rates_dict,
-            dest_boundary_conditions_dict,
+            destination_flow_bc_dict,
+            destination_density_bc_dict,
         )
 
+    # TODO: improve typing of this function with typed dicts
     def _run_simulation_loop(
         self,
         system: casadi.Function,
@@ -1319,12 +1405,13 @@ class Network:
         num_onramps: int,
         num_splits: int,
         num_destinations: int,
-        origin_queues_dict: dict,
-        onramp_queues_dict: dict,
-        turning_rates_dict: dict,
-        dest_boundary_conditions_dict: dict,
-        origin_demands: dict,
-        onramp_demands: dict,
+        origin_queues_dict: dict[str, float],
+        onramp_queues_dict: dict[str, float],
+        turning_rates_dict: dict[str, Callable[[float], dict[str, float]]],
+        destination_flow_bc_dict: dict[str, Callable[[float], float]],
+        destination_density_bc_dict: dict[str, Callable[[float], float]],
+        origin_demands: dict[str, Callable[[float], float]],
+        onramp_demands: dict[str, Callable[[float], float]],
         model: Union["CTM", "METANET"],
         model_params: Union[METANETParams, None],
     ):
@@ -1348,7 +1435,8 @@ class Network:
             origin_queues_dict: Mapping origin id -> initial queue (used to order disturbances).
             onramp_queues_dict: Mapping onramp id -> initial queue (used to order disturbances).
             turning_rates_dict: Mapping node id -> callable(time) -> turning-rate dict.
-            dest_boundary_conditions_dict: Mapping destination id -> callable(time) -> density.
+            destination_flow_bc_dict: Mapping destination id -> callable(time) -> flow.
+            destination_density_bc_dict: Mapping destination id -> callable(time) -> density.
             origin_demands: Mapping origin id -> callable(time) -> demand.
             onramp_demands: Mapping onramp id -> callable(time) -> demand.
             turning_rates: Mapping node id -> callable(time) -> turning-rate dict (user-provided).
@@ -1374,7 +1462,7 @@ class Network:
         state_history[:, 0] = x0
         disturbance_history: NDArray[np.float64] = np.zeros(
             (
-                num_origins + num_onramps + num_splits + num_destinations,
+                num_origins + num_onramps + num_splits + 2 * num_destinations,
                 len(time_array) - 1,
             ),
             dtype=np.float64,
@@ -1399,9 +1487,13 @@ class Network:
                 node_id: turning_rates_dict[node_id](time)
                 for node_id in turning_rates_dict.keys()
             }
-            boundary_condition_dict = {
-                destination_id: dest_boundary_conditions_dict[destination_id](time)
-                for destination_id in dest_boundary_conditions_dict.keys()
+            flow_boundary_condition_dict = {
+                destination_id: destination_flow_bc_dict[destination_id](time)
+                for destination_id in destination_flow_bc_dict.keys()
+            }
+            density_boundary_condition_dict = {
+                destination_id: destination_density_bc_dict[destination_id](time)
+                for destination_id in destination_density_bc_dict.keys()
             }
 
             # combine the values into the disturbance vector for the state update
@@ -1409,7 +1501,8 @@ class Network:
                 origin_demand_dict=origin_demand_dict,
                 onramp_demand_dict=onramp_demand_dict,
                 turning_rate_dict=turning_rate_dict,
-                boundary_condition_dict=boundary_condition_dict,
+                flow_boundary_condition_dict=flow_boundary_condition_dict,
+                density_boundary_condition_dict=density_boundary_condition_dict,
             )
 
             # obtain the model parameters in vector form for the model update
@@ -1453,9 +1546,12 @@ class Network:
         turning_rates: dict[
             str, Callable[[float], dict[str, float]]
         ],  # for each node id, provide a callable function returning a dict mapping outgoing link ids to split ratios at time t
-        destination_boundary_conditions: dict[
+        destination_flow_bc: dict[
             str, Callable[[float], float]
-        ],  # for each destination id, provide a callable function returning the downstream density at time t
+        ],  # for each destination id, provide a callable function returning the downstream flow at time t (for CTM)
+        destination_density_bc: dict[
+            str, Callable[[float], float]
+        ],  # for each destination id, provide a callable function returning the downstream flow at time t (for METANET)
         model_params: Union[
             METANETParams, None
         ] = None,  # model parameters for models that require this -> CTM is fully defined by link parameters
@@ -1500,7 +1596,8 @@ class Network:
             origin_demands: Mapping origin id -> callable(time) -> demand (veh/h).
             onramp_demands: Mapping onramp id -> callable(time) -> demand (veh/h).
             turning_rates: Mapping node id -> callable(time) -> dict[outgoing_link_id -> split rate].
-            destination_boundary_conditions: Mapping destination id -> callable(time) -> downstream density (veh/km/lane).
+            destination_flow_bc: Mapping destination id -> callable(time) -> downstream flow (veh/h/lane) (required for CTM).
+            destination_density_bc: Mapping destination id -> callable(time) -> downstream density (veh/km/lane) (required for METANET).
             initial_flows: Optional mapping link id -> scalar or per-cell array for initial flows (default: zeros).
             initial_densities: Optional mapping link id -> scalar or per-cell array for initial densities (default: zeros for mainline links).
             initial_speeds: Optional mapping link id -> scalar or per-cell array for initial speeds (default: free-flow speed for motorway links).
@@ -1531,7 +1628,8 @@ class Network:
             origin_demands=origin_demands,
             onramp_demands=onramp_demands,
             turning_rates=turning_rates,
-            destination_boundary_conditions=destination_boundary_conditions,
+            destination_flow_bc=destination_flow_bc,
+            destination_density_bc=destination_density_bc,
             initial_flows=initial_flows,
             initial_densities=initial_densities,
             initial_speeds=initial_speeds,
@@ -1563,7 +1661,8 @@ class Network:
             onramp_queues_dict,
             offramp_queues_dict,
             turning_rates_dict,
-            dest_boundary_conditions_dict,
+            destination_flow_bc_dict,
+            destination_density_bc_dict,
         ) = self._augment_network_initialization(
             initial_flows=initial_flows,
             initial_densities=initial_densities,
@@ -1572,7 +1671,8 @@ class Network:
             initial_onramp_queues=initial_onramp_queues,
             initial_offramp_queues=initial_offramp_queues,
             turning_rates=turning_rates,
-            destination_boundary_conditions=destination_boundary_conditions,
+            destination_flow_bc=destination_flow_bc,
+            destination_density_bc=destination_density_bc,
         )
 
         # combine state from separate arrays into single state vector if required by model
@@ -1623,7 +1723,8 @@ class Network:
             origin_queues_dict=origin_queues_dict,
             onramp_queues_dict=onramp_queues_dict,
             turning_rates_dict=turning_rates_dict,
-            dest_boundary_conditions_dict=dest_boundary_conditions_dict,
+            destination_flow_bc_dict=destination_flow_bc_dict,
+            destination_density_bc_dict=destination_density_bc_dict,
             origin_demands=origin_demands,
             onramp_demands=onramp_demands,
             model=model,
@@ -1702,7 +1803,8 @@ class Network:
         origin_demands_time: dict[str, list] = {}
         onramp_demands_time: dict[str, list] = {}
         turning_rates_time: dict[str, dict[str, list]] = {}
-        boundary_conditions_time: dict[str, list] = {}
+        flow_boundary_conditions_time: dict[str, list] = {}
+        density_boundary_conditions_time: dict[str, list] = {}
 
         num_timesteps = state_history.shape[1]
 
@@ -1746,9 +1848,13 @@ class Network:
         if disturbance_history.size > 0:
             num_dist_timesteps = disturbance_history.shape[1]
             for t in range(num_dist_timesteps):
-                origin_d_t, onramp_d_t, turning_t, boundary_t = (
-                    self.disturbance_vec_to_network_dict(disturbance_history[:, t])
-                )
+                (
+                    origin_d_t,
+                    onramp_d_t,
+                    turning_t,
+                    boundary_flow_t,
+                    boundary_density_t,
+                ) = self.disturbance_vec_to_network_dict(disturbance_history[:, t])
 
                 if t == 0:
                     for k in origin_d_t.keys():
@@ -1757,8 +1863,10 @@ class Network:
                         onramp_demands_time[k] = []
                     for node_id, inner in turning_t.items():
                         turning_rates_time[node_id] = {lk: [] for lk in inner.keys()}
-                    for k in boundary_t.keys():
-                        boundary_conditions_time[k] = []
+                    for k in flow_boundary_conditions_time.keys():
+                        flow_boundary_conditions_time[k] = []
+                    for k in density_boundary_conditions_time.keys():
+                        density_boundary_conditions_time[k] = []
 
                 for k, v in origin_d_t.items():
                     origin_demands_time[k].append(float(np.asarray(v).tolist()))
@@ -1771,8 +1879,14 @@ class Network:
                             lk, []
                         ).append(float(np.asarray(rate).tolist()))
 
-                for k, v in boundary_t.items():
-                    boundary_conditions_time[k].append(float(np.asarray(v).tolist()))
+                for k, v in flow_boundary_conditions_time.items():
+                    flow_boundary_conditions_time[k].append(
+                        float(np.asarray(v).tolist())
+                    )
+                for k, v in density_boundary_conditions_time.items():
+                    density_boundary_conditions_time[k].append(
+                        float(np.asarray(v).tolist())
+                    )
 
         # assemble output structure
         out = {
@@ -1789,7 +1903,8 @@ class Network:
                 "origin_demands": origin_demands_time,
                 "onramp_demands": onramp_demands_time,
                 "turning_rates": turning_rates_time,
-                "boundary_conditions": boundary_conditions_time,
+                "flow_boundary_conditions": flow_boundary_conditions_time,
+                "density_boundary_conditions": density_boundary_conditions_time,
             },
         }
 
@@ -2081,7 +2196,7 @@ class Network:
         onramp_demands_over_time = {}
 
         for t in range(num_timesteps - 1):
-            origin_demands_t, onramp_demands_t, _, _ = (
+            origin_demands_t, onramp_demands_t, _, _, _ = (
                 self.disturbance_vec_to_network_dict(disturbance_history[:, t])
             )
 

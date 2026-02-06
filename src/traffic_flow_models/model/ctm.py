@@ -1,7 +1,7 @@
 import casadi
 from typing import TYPE_CHECKING, Tuple
 
-from .helpers import store_and_forward_update, update_queue
+from .helpers import store_and_forward_update, update_queue, compute_node_outflows
 from traffic_flow_models.network import (
     MotorwayLink,
     Origin,
@@ -316,6 +316,7 @@ class CTM:
         densities: dict[str, casadi.SX],
         flows: dict[str, casadi.SX],
         node_splits: dict[str, casadi.SX],
+        flow_boundary_conditions: dict[str, casadi.SX],
         dt: float,
     ) -> casadi.SX:
         """Compute the maximum outflow the node can support given supplies.
@@ -324,10 +325,10 @@ class CTM:
         outgoing link can accept and convert it to a node-level limit using
         the normalized split ratios. The minimum across outgoing links
         determines the maximum node outflow (i.e., the most restrictive
-        downstream supply). Destinations do not constrain the node; offramps
-        are treated as store-and-forward links limited by their capacity; and
-        motorway links use the CTM supply expression based on jam density
-        and backward wave speed.
+        downstream supply). For destinations the provided flow boundary
+        conditions are enforced; offramps are treated as store-and-forward
+        links limited by their capacity; and motorway links use the CTM supply
+        expression based on jam density and backward wave speed.
 
         Args:
             node (Node): Node for which the maximum supported outflow is
@@ -339,6 +340,8 @@ class CTM:
             node_splits (dict[str, casadi.SX]): Normalized split
                 ratios for the node's outgoing links (mapping link id ->
                 CasADi SX).
+            flow_boundary_conditions (dict[str, casadi.SX]): Mapping from
+                destination id to flow boundary condition (vehicles / time)
             dt (float): Time step size.
 
         Returns:
@@ -355,11 +358,16 @@ class CTM:
         maximum_supported_node_outflow = casadi.SX(casadi.inf)
         for out in node.outgoing:
             if isinstance(out, Destination):
-                # destinations do not limit the outflow of the node
-                continue
+                # destinations only limit the node outflow through the given flow boundary condition
+                maximum_supported_node_outflow = casadi.fmin(
+                    maximum_supported_node_outflow,
+                    flow_boundary_conditions[out.id] / node_splits[out.id],
+                )
+
             elif isinstance(out, Offramp):
                 # destinations are modeled as store-and-forward links with a virtual queue
                 # -> only the offramp capacity becomes a limiting factor for potential spillback
+                # any congestion caused by downstream boundary conditions will only grow the off-ramp queue
                 maximum_supported_node_outflow = casadi.fmin(
                     maximum_supported_node_outflow,
                     out.Qc / node_splits[out.id],
@@ -406,16 +414,16 @@ class CTM:
     def _compute_offramp_outflows(
         self,
         offramp: Offramp,
-        mainline_outflow: casadi.SX,
+        node_outflow: casadi.SX,
         offramp_queues: dict[str, casadi.SX],
-        boundary_conditions: dict[str, casadi.SX],
+        density_boundary_conditions: dict[str, casadi.SX],
         dt: float,
     ) -> Tuple[casadi.SX, casadi.SX]:
         """Compute an offramp's outflow and update its store-and-forward queue.
 
         Offramps are modelled as store-and-forward links with finite
         capacity. This routine computes the offramp demand by combining the
-        mainline portion intended for the offramp (``mainline_outflow``) and
+        node outflow portion intended for the offramp (``node_outflow``) and
         the current virtual queue on the offramp. The actual outflow and the
         updated queue are obtained by calling ``store_and_forward_update``
         with the offramp's capacity, jam density, a computed backward wave
@@ -423,11 +431,11 @@ class CTM:
 
         Args:
             offramp (Offramp): The offramp link to update.
-            mainline_outflow (casadi.SX): Desired flow from the mainline into
+            node_outflow (casadi.SX): Desired flow from the upstream node into
                 the offramp (vehicles / time) as a CasADi expression.
             offramp_queues (dict[str, casadi.SX]): Current queue lengths on
                 offramps indexed by link id (vehicles, CasADi SX).
-            boundary_conditions (dict[str, casadi.SX]): Mapping from
+            density_boundary_conditions (dict[str, casadi.SX]): Mapping from
                 destination id to downstream density (vehicles / length / lane)
                 used as the downstream boundary for the store-and-forward
                 update (CasADi SX).
@@ -450,7 +458,7 @@ class CTM:
             )
 
         # update the offramp flow and queue based on the store-and-forward model
-        offramp_demand = mainline_outflow + offramp_queues[offramp.id] / dt
+        offramp_demand = node_outflow + offramp_queues[offramp.id] / dt
         next_outflow, next_queue = store_and_forward_update(
             capacity=offramp.Qc,
             jam_density=offramp.rho_jam,
@@ -460,7 +468,7 @@ class CTM:
                 jam_density=offramp.rho_jam,
                 free_flow_speed=offramp.vf,
             ),
-            density=boundary_conditions[offramp.destination.id],
+            density=density_boundary_conditions[offramp.destination.id],
             demand=offramp_demand,
             queue=offramp_queues[offramp.id],
             dt=dt,
@@ -533,16 +541,20 @@ class CTM:
             + num_offramps,  # type: ignore
             1,  # type: ignore
         )
-        d = casadi.SX.sym("d", num_origins + num_onramps + num_splits + num_destinations, 1)  # type: ignore
+        d = casadi.SX.sym("d", num_origins + num_onramps + num_splits + 2 * num_destinations, 1)  # type: ignore
 
         # split up the state and disturbance vectors to obtain a dictionary for
         # efficient access of the relevant quantities during the state update
         flows, densities, speeds, origin_queues, onramp_queues, offramp_queues = (
             network.state_vec_to_network_dict(x=x)
         )
-        origin_demands, onramp_demands, splits, boundary_conditions = (
-            network.disturbance_vec_to_network_dict(d=d)
-        )
+        (
+            origin_demands,
+            onramp_demands,
+            splits,
+            flow_boundary_conditions,
+            density_boundary_conditions,
+        ) = network.disturbance_vec_to_network_dict(d=d)
 
         # typecast values of the dictionaries to casadi SX for symbolic computation
         flows = {k: casadi.SX(v) for k, v in flows.items()}
@@ -556,7 +568,12 @@ class CTM:
         splits = {
             k: {kk: casadi.SX(vv) for kk, vv in v.items()} for k, v in splits.items()
         }
-        boundary_conditions = {k: casadi.SX(v) for k, v in boundary_conditions.items()}
+        flow_boundary_conditions = {
+            k: casadi.SX(v) for k, v in flow_boundary_conditions.items()
+        }
+        density_boundary_conditions = {
+            k: casadi.SX(v) for k, v in density_boundary_conditions.items()
+        }
 
         # initialize next-step state dictionaries
         next_flows: dict[str, casadi.SX] = {}
@@ -653,6 +670,7 @@ class CTM:
                 densities=densities,
                 flows=flows,
                 node_splits=normalized_node_splits,
+                flow_boundary_conditions=flow_boundary_conditions,
                 dt=dt,
             )
 
@@ -713,33 +731,36 @@ class CTM:
                 if isinstance(out, Destination):
                     # destinations are assumed to consume all incoming flow
                     # (only impact the mainstream through the density boundary condition)
+                    # since destinations are virtual sinks with no link length, they directly
+                    # consume the next-step flow -> flow at destination at k+1 is equal to the outflow
+                    # of the node at time k+1 multiplied by the corresponding split ratio
                     next_flows[out.id] = (
                         normalized_node_splits[out.id] * total_capped_inflow
                     )
+
                 elif isinstance(out, Offramp):
                     # offramps are modeled as store-and-forward links with the mainline outflow given as a demand
                     # and a virtual queue that takes up excess demand if the offramp capacity is exceeded or
                     # congestion further reduces the correpsonding flows off the offramp
+                    node_outflows = compute_node_outflows(
+                        node=node, flows=flows, node_splits=normalized_node_splits
+                    )
+
+                    # offramp outflows are updated with the current step flows, since the offramp
+                    # keeps track of its own queue and flow and has a physical length
                     next_outflow, next_queue = self._compute_offramp_outflows(
                         offramp=out,
-                        mainline_outflow=normalized_node_splits[out.id]
-                        * total_capped_inflow,
+                        node_outflow=node_outflows[out.id],
                         offramp_queues=offramp_queues,
-                        boundary_conditions=boundary_conditions,
+                        density_boundary_conditions=density_boundary_conditions,
                         dt=dt,
                     )
 
                     # set the offramp flow and the queue on the offramp (part of store-and-forward link)
+                    # flow for the connected destination is not set => equal to the offramp flow
                     next_flows[out.id] = next_outflow
                     next_offramp_queues[out.id] = next_queue
 
-                    # the flow of the connected destination is equal to the offramp outflow
-                    if out.destination is not None:
-                        next_flows[out.destination.id] = next_outflow
-                    else:
-                        raise ValueError(
-                            f"Offramp {out.id} does not have a destination defined."
-                        )
                 elif isinstance(out, MotorwayLink):
                     # motorway links are processed at nodes where they are incoming
                     pass

@@ -69,7 +69,10 @@ if __name__ == "__main__":
     onramp_demands: dict[str, Callable[[float], float]] = {
         rid: onramp_demand for rid in onramp_ids
     }
-    destination_boundary_conditions: dict[str, Callable[[float], float]] = {
+    destination_flow_bc: dict[str, Callable[[float], float]] = {
+        did: (lambda _: 6000.0) for did in destination_ids
+    }
+    destination_density_bc: dict[str, Callable[[float], float]] = {
         did: (lambda _: 0.0) for did in destination_ids
     }
 
@@ -88,7 +91,8 @@ if __name__ == "__main__":
         origin_demands=origin_demands,
         onramp_demands=onramp_demands,
         turning_rates=turning_rates,
-        destination_boundary_conditions=destination_boundary_conditions,
+        destination_density_bc=destination_density_bc,
+        destination_flow_bc=destination_flow_bc,
         plot_results=True,
         show_plots=plot_enabled,
     )

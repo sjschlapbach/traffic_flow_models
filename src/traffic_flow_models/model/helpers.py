@@ -1,5 +1,7 @@
 import casadi
-from typing import Tuple
+from typing import Tuple, Union
+
+from traffic_flow_models.network import Node, Origin, Onramp, MotorwayLink
 
 
 def store_and_forward_update(
@@ -65,3 +67,68 @@ def update_queue(
     """
     new_queue = queue_length + dt * (demand - flow)
     return new_queue
+
+
+def compute_node_outflows(
+    node: Node,
+    flows: dict[str, casadi.SX],
+    node_splits: Union[dict[str, casadi.SX], None],
+) -> dict[str, casadi.SX]:
+    """Compute node-level outflows from incoming flows and split ratios.
+
+    This method sums the flows from all incoming links to obtain the
+    total available upstream flow into `node` and then distributes that
+    total to each outgoing link according to the split ratios provided
+    in `node_splits` for the node.
+
+    Args:
+        node: Network node for which outgoing flows are computed.
+        flows: Mapping link id -> CasADi SX vector of flows for that
+            link (per-link layout depends on link type).
+        node_splits: Mapping of outgoing link id to the split ratio
+            used at `node` (CasADi SX).
+
+    Returns:
+        A dict mapping each outgoing link id to its computed outflow
+        (CasADi SX).
+
+    Raises:
+        ValueError: If an outgoing link has no split defined.
+        TypeError: If an incoming link has an unexpected type.
+    """
+    if node_splits is None:
+        raise ValueError(f"No split ratios provided for node {node.id}")
+
+    Qn = casadi.SX(0)
+    for inc in node.incoming:
+        if isinstance(inc, MotorwayLink):
+            # motorway link: use the last cell flow as upstream flow
+            Qn += flows[inc.id][-1]
+        elif isinstance(inc, Origin):
+            # origin link: use the flow entering the origin (from state vector) - demand -> flow update separate
+            Qn += flows[inc.id][0]
+        elif isinstance(inc, Onramp):
+            # onramp link: use the flow entering the onramp (from state vector) - demand -> flow update separate
+            Qn += flows[inc.id][0]
+        else:
+            raise TypeError("Unknown incoming link type")
+
+    # compute the sum of all split ratios
+    total_splits = casadi.sum(casadi.vertcat(*list(node_splits.values())))
+
+    # compute the node outflows based on the total available flow and the splits
+    # node outflows = q_m,0(k) - dictionary with one value per outgoing edge
+    node_outflows = {}
+    for out in node.outgoing:
+        out_split = node_splits[out.id]
+        if out_split is None:
+            raise ValueError(
+                f"No split ratio defined for outgoing link {out.id} (type: {type(out)}) at node {node.id}"
+            )
+
+        # re-normalize turning rates to make sure that they properly sum up to 1
+        node_outflows[out.id] = (
+            Qn * out_split / casadi.if_else(total_splits == 0, 1.0, total_splits)
+        )
+
+    return node_outflows
