@@ -13,7 +13,9 @@ class LoopDetectorGenerator:
 
     Attributes:
         sumo_network_path: Path to the SUMO network XML file.
-        metadata: macroscopic network metadata containing node information.
+        origin_ids: List of origin node IDs in the network.
+        onramp_ids: List of onramp node IDs in the network.
+        destination_ids: List of destination node IDs in the network.
         output_dir: Directory for output files.
         detection_freq: Detector measurement frequency in seconds.
         detector_filename: Name of the detector configuration XML file.
@@ -27,7 +29,9 @@ class LoopDetectorGenerator:
     def __init__(
         self,
         sumo_network_path: str,
-        metadata: dict,
+        origin_ids: list[str],
+        onramp_ids: list[str],
+        destination_ids: list[str],
         output_dir: str,
         detection_freq: int = 900,
         detector_filename: str = "detector.xml",
@@ -38,7 +42,9 @@ class LoopDetectorGenerator:
 
         Args:
             sumo_network_path: Path to the SUMO network XML file.
-            metadata: Dictionary containing macroscopic network metadata.
+            origin_ids: List of origin node IDs in the network.
+            onramp_ids: List of onramp node IDs in the network.
+            destination_ids: List of destination node IDs in the network.
             output_dir: Directory where output files will be written.
             detection_freq: Measurement frequency in seconds (default: 900).
             detector_filename: Output detector XML filename (default: "detector.xml").
@@ -47,43 +53,49 @@ class LoopDetectorGenerator:
         """
 
         self.sumo_network_path: str = sumo_network_path
-        self.metadata: dict = metadata
+        self.origin_ids: list[str] = origin_ids
+        self.onramp_ids: list[str] = onramp_ids
+        self.destination_ids: list[str] = destination_ids
         self.output_dir: str = output_dir
         self.detection_freq: int = detection_freq
         self.detector_filename: str = detector_filename
         self.spec_filename: str = spec_filename
         self.output_xml_filename: str = output_xml_filename
 
-        self.backbone_nodes: set[str] = self._extract_backbone_nodes(metadata)
+        self.backbone_nodes: set[str] = self._extract_backbone_nodes(
+            origin_ids, onramp_ids, destination_ids
+        )
         self.interface_edges: list = []
         self.edge_detectors: list[dict] = []
 
-    # TODO: add proper typing once metadata is typed
-    def _extract_backbone_nodes(self, metadata: dict) -> set[str]:
-        """Extract all nodes from the consolidated network metadata.
+    def _extract_backbone_nodes(
+        self, origin_ids: list[str], onramp_ids: list[str], destination_ids: list[str]
+    ) -> set[str]:
+        """Extract all nodes from the consolidated network.
 
         Identifies nodes that are part of the macroscopic backbone network by
-        processing origin, onramp, and destination node IDs from metadata.
+        processing origin, onramp, and destination node IDs.
         These nodes represent the macroscopic network structure.
 
         Args:
-            metadata: Dictionary containing 'origin_ids', 'onramp_ids', and
-                'destination_ids' keys.
+            origin_ids: List of origin node IDs in the network.
+            onramp_ids: List of onramp node IDs in the network.
+            destination_ids: List of destination node IDs in the network.
 
         Returns:
             Set of node IDs belonging to the macroscopic backbone network.
         """
         backbone = set()
 
-        for oid in metadata.get("origin_ids", []):
+        for oid in origin_ids:
             backbone.add(oid.replace("origin_", ""))
 
         # add onramp nodes
-        for oid in metadata.get("onramp_ids", []):
+        for oid in onramp_ids:
             backbone.add(oid.replace("onramp_", ""))
 
         # add destination nodes
-        for did in metadata.get("destination_ids", []):
+        for did in destination_ids:
             backbone.add(did.replace("dest_", ""))
 
         return backbone

@@ -36,6 +36,12 @@ class SUMOPipeline:
         net_file: Path to the SUMO network file.
         detector_file: Path to the SUMO loop detectors file.
         rou_file: Path to the SUMO route file.
+        consolidated_network: Network object representing the macroscopic network.
+        arbitrator: NetworkArbitrator instance used for network conversion.
+        origin_ids: List of origin node IDs in the network.
+        onramp_ids: List of onramp node IDs in the network.
+        destination_ids: List of destination node IDs in the network.
+        splits: Dictionary mapping node IDs to their outgoing link split ratios.
     """
 
     def __init__(self, name: str, location: str):
@@ -64,7 +70,10 @@ class SUMOPipeline:
         )
         self.consolidated_network: Optional[Network] = None
         self.arbitrator: Optional[NetworkArbitrator] = None
-        self.metadata: Optional[dict] = None
+        self.origin_ids: Optional[list[str]] = None
+        self.onramp_ids: Optional[list[str]] = None
+        self.destination_ids: Optional[list[str]] = None
+        self.splits: Optional[dict[str, dict[str, float]]] = None
 
     @skip_if_exists("osm_file")
     def fetch_OSM(self) -> None:
@@ -172,7 +181,9 @@ class SUMOPipeline:
         except subprocess.CalledProcessError as e:
             print(f"An error occurred while generating demand: {e}")
 
-    def create_consolidated_network(self) -> Tuple[Network, dict]:
+    def create_consolidated_network(
+        self,
+    ) -> Tuple[Network, list[str], list[str], list[str], dict[str, dict[str, float]]]:
         """Create consolidated network from SUMO network.
 
         Instantiates a NetworkArbitrator to convert the SUMO microscopic network
@@ -183,13 +194,27 @@ class SUMOPipeline:
         Returns:
             A tuple containing:
                 - consolidated_network: Network object representing the macroscopic network.
-                - metadata: Dictionary with keys 'origin_ids', 'onramp_ids',
-                  'destination_ids', and 'splits'.
+                - origin_ids: List of origin node IDs in the network.
+                - onramp_ids: List of onramp node IDs in the network.
+                - destination_ids: List of destination node IDs in the network.
+                - splits: Dictionary mapping node IDs to their outgoing link split ratios.
         """
         self.arbitrator = NetworkArbitrator(os.path.normpath(self.net_file))
-        self.consolidated_network, self.metadata = self.arbitrator.run()
+        (
+            self.consolidated_network,
+            self.origin_ids,
+            self.onramp_ids,
+            self.destination_ids,
+            self.splits,
+        ) = self.arbitrator.run()
 
-        return self.consolidated_network, self.metadata
+        return (
+            self.consolidated_network,
+            self.origin_ids,
+            self.onramp_ids,
+            self.destination_ids,
+            self.splits,
+        )
 
     def generate_detectors(self) -> Tuple[str, str]:
         """Generate loop detectors at network interface points.
@@ -208,28 +233,38 @@ class SUMOPipeline:
                 - detector_spec_path: Path to the detector specification CSV file.
 
         Raises:
-            ValueError: If metadata has not been initialized.
+            ValueError: If the consolidated network has not been initialized.
         """
         if self.consolidated_network is None:
             raise ValueError(
                 "Please first generate the consolidated network using the create_consolidated_network() method before generating detectors."
             )
 
-        # ensure metadata exists
-        if not hasattr(self, "metadata") or self.metadata is None:
-            raise ValueError("metadata must be initialized before generating detectors")
+        # ensure network parameters exist
+        if (
+            self.origin_ids is None
+            or self.onramp_ids is None
+            or self.destination_ids is None
+        ):
+            raise ValueError(
+                "Network parameters must be initialized before generating detectors"
+            )
 
         # generate detectors
         generator = LoopDetectorGenerator(
             sumo_network_path=self.net_file,
-            metadata=self.metadata,
+            origin_ids=self.origin_ids,
+            onramp_ids=self.onramp_ids,
+            destination_ids=self.destination_ids,
             output_dir=self.output_dir,
         )
         self.detector_file, self.detector_spec_path = generator.generate()
 
         return self.detector_file, self.detector_spec_path
 
-    def get_consolidated_network(self) -> Tuple[Network, dict]:
+    def get_consolidated_network(
+        self,
+    ) -> Tuple[Network, list[str], list[str], list[str], dict[str, dict[str, float]]]:
         """Retrieve the consolidated macroscopic network and metadata.
 
         Provides access to the previously generated network and its
@@ -239,7 +274,10 @@ class SUMOPipeline:
         Returns:
             A tuple containing:
                 - consolidated_network: Network object representing the macroscopic network.
-                - metadata: Dictionary containing network metadata.
+                - origin_ids: List of origin node IDs in the network.
+                - onramp_ids: List of onramp node IDs in the network.
+                - destination_ids: List of destination node IDs in the network.
+                - splits: Dictionary mapping node IDs to their outgoing link split ratios.
 
         Raises:
             ValueError: If consolidated network has not been created yet.
@@ -249,4 +287,20 @@ class SUMOPipeline:
                 "Please first compute the consolidated network using the create_consolidated_network() method."
             )
 
-        return self.consolidated_network, self.metadata
+        if (
+            self.origin_ids is None
+            or self.onramp_ids is None
+            or self.destination_ids is None
+            or self.splits is None
+        ):
+            raise ValueError(
+                "Network parameters have not been properly initialized."
+            )
+
+        return (
+            self.consolidated_network,
+            self.origin_ids,
+            self.onramp_ids,
+            self.destination_ids,
+            self.splits,
+        )

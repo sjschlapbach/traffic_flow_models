@@ -32,7 +32,6 @@ class NetworkArbitrator:
         node_coordinates: Dictionary mapping node IDs to (x, y) coordinates.
         selected_types: List of road types selected for the network.
         hwy_filter: Hierarchical list of road type groups for filtering.
-        metadata: Dictionary containing network metadata (origins, onramps, destinations, splits).
     """
 
     # TODO: we need to extract these values to a configuration file for better access
@@ -106,7 +105,9 @@ class NetworkArbitrator:
             ]
         )
 
-    def run(self) -> Tuple[Network, dict]:
+    def run(
+        self,
+    ) -> Tuple[Network, list[str], list[str], list[str], dict[str, dict[str, float]]]:
         """Execute the complete network arbitration pipeline.
 
         Orchestrates the full workflow: parsing SUMO XML, eliminating roundabouts,
@@ -116,8 +117,10 @@ class NetworkArbitrator:
         Returns:
             A tuple containing:
                 - macroscopic_network: Network object representing the consolidated macroscopic network.
-                - metadata: Dictionary containing network metadata with keys 'origin_ids',
-                  'onramp_ids', 'destination_ids', and 'splits'.
+                - origin_ids: List of origin node IDs in the network.
+                - onramp_ids: List of onramp node IDs in the network.
+                - destination_ids: List of destination node IDs in the network.
+                - splits: Dictionary mapping node IDs to their outgoing link split ratios.
 
         Raises:
             ValueError: If no edges are found after parsing or if no matching road types exist.
@@ -139,10 +142,16 @@ class NetworkArbitrator:
         self.merge_serial_edges()
 
         # Step 5: Instantiate macroscopic network objects and assign parameters based on road types
-        macroscopic_network = self.instantiate_network()
+        (
+            macroscopic_network,
+            origin_ids,
+            onramp_ids,
+            destination_ids,
+            splits,
+        ) = self.instantiate_network()
         self._log_network_statistics(macroscopic_network)
 
-        return macroscopic_network, self.metadata
+        return macroscopic_network, origin_ids, onramp_ids, destination_ids, splits
 
     def parse_sumo_xml(self) -> None:
         """Parse SUMO .net.xml file and extract network topology.
@@ -402,7 +411,9 @@ class NetworkArbitrator:
             if not merged:
                 break
 
-    def instantiate_network(self) -> Network:
+    def instantiate_network(
+        self,
+    ) -> Tuple[Network, list[str], list[str], list[str], dict[str, dict[str, float]]]:
         """Create macroscopic network objects from the processed graph.
 
         Converts the NetworkX graph representation into macroscopic network objects
@@ -419,9 +430,12 @@ class NetworkArbitrator:
         - Computes split ratios at diverge points based on lane counts
 
         Returns:
-            Network object containing all macroscopic nodes with their connections.
-            Also populates self.metadata with information about origins, onramps,
-            destinations, and split ratios for use in simulation setup.
+            A tuple containing:
+                - network: Network object containing all macroscopic nodes with their connections.
+                - origin_ids: List of origin node IDs in the network.
+                - onramp_ids: List of onramp node IDs in the network.
+                - destination_ids: List of destination node IDs in the network.
+                - splits: Dictionary mapping node IDs to their outgoing link split ratios.
         """
 
         macro_nodes = {}
@@ -471,19 +485,19 @@ class NetworkArbitrator:
                 dest = Destination(id=f"dest_{nid}", origin_node_id=str(nid))
                 node_obj.add_outgoing(dest)
 
-        origin_ids = [
+        origin_ids: list[str] = [
             node_obj.incoming[0].id
             for node_obj in macro_nodes.values()
             if node_obj.incoming and isinstance(node_obj.incoming[0], Origin)
         ]
 
-        destination_ids = [
+        destination_ids: list[str] = [
             node_obj.outgoing[0].id
             for node_obj in macro_nodes.values()
             if node_obj.outgoing and isinstance(node_obj.outgoing[0], Destination)
         ]
 
-        onramp_ids = [
+        onramp_ids: list[str] = [
             f"onramp_{nid}"
             for nid, node_obj in macro_nodes.items()
             if len(
@@ -492,7 +506,7 @@ class NetworkArbitrator:
             >= 2
         ]
 
-        splits = {}
+        splits: dict[str, dict[str, float]] = {}
         for nid, node_obj in macro_nodes.items():
             outgoing_links = [
                 link for link in node_obj.outgoing if isinstance(link, MotorwayLink)
@@ -504,15 +518,13 @@ class NetworkArbitrator:
                     link.id: link.lanes / total_lanes for link in outgoing_links
                 }
 
-        # TODO: simplify this and improve typing throughout the library by returning these values directly instead of through an object
-        self.metadata = {
-            "origin_ids": origin_ids,
-            "onramp_ids": onramp_ids,
-            "destination_ids": destination_ids,
-            "splits": splits,
-        }
-
-        return Network(nodes=list(macro_nodes.values()))
+        return (
+            Network(nodes=list(macro_nodes.values())),
+            origin_ids,
+            onramp_ids,
+            destination_ids,
+            splits,
+        )
 
     def _log_network_statistics(self, network: Network) -> None:
         """Log summary statistics about the generated macroscopic network.
