@@ -1,7 +1,7 @@
 import casadi
 from typing import TYPE_CHECKING, Tuple
 
-from .helpers import store_and_forward_update, update_queue
+from .helpers import store_and_forward_update, update_queue, compute_node_outflows
 from traffic_flow_models.network import (
     MotorwayLink,
     Origin,
@@ -355,6 +355,7 @@ class CTM:
         maximum_supported_node_outflow = casadi.SX(casadi.inf)
         for out in node.outgoing:
             if isinstance(out, Destination):
+                # TODO: check if the downstream destination somehow needs to restrict our outflow as well?! = density boundary condition
                 # destinations do not limit the outflow of the node
                 continue
             elif isinstance(out, Offramp):
@@ -406,7 +407,7 @@ class CTM:
     def _compute_offramp_outflows(
         self,
         offramp: Offramp,
-        mainline_outflow: casadi.SX,
+        node_outflow: casadi.SX,
         offramp_queues: dict[str, casadi.SX],
         boundary_conditions: dict[str, casadi.SX],
         dt: float,
@@ -415,7 +416,7 @@ class CTM:
 
         Offramps are modelled as store-and-forward links with finite
         capacity. This routine computes the offramp demand by combining the
-        mainline portion intended for the offramp (``mainline_outflow``) and
+        node outflow portion intended for the offramp (``node_outflow``) and
         the current virtual queue on the offramp. The actual outflow and the
         updated queue are obtained by calling ``store_and_forward_update``
         with the offramp's capacity, jam density, a computed backward wave
@@ -423,7 +424,7 @@ class CTM:
 
         Args:
             offramp (Offramp): The offramp link to update.
-            mainline_outflow (casadi.SX): Desired flow from the mainline into
+            node_outflow (casadi.SX): Desired flow from the upstream node into
                 the offramp (vehicles / time) as a CasADi expression.
             offramp_queues (dict[str, casadi.SX]): Current queue lengths on
                 offramps indexed by link id (vehicles, CasADi SX).
@@ -450,7 +451,7 @@ class CTM:
             )
 
         # update the offramp flow and queue based on the store-and-forward model
-        offramp_demand = mainline_outflow + offramp_queues[offramp.id] / dt
+        offramp_demand = node_outflow + offramp_queues[offramp.id] / dt
         next_outflow, next_queue = store_and_forward_update(
             capacity=offramp.Qc,
             jam_density=offramp.rho_jam,
@@ -713,33 +714,36 @@ class CTM:
                 if isinstance(out, Destination):
                     # destinations are assumed to consume all incoming flow
                     # (only impact the mainstream through the density boundary condition)
+                    # since destinations are virtual sinks with no link length, they directly
+                    # consume the next-step flow -> flow at destination at k+1 is equal to the outflow
+                    # of the node at time k+1 multiplied by the corresponding split ratio
                     next_flows[out.id] = (
                         normalized_node_splits[out.id] * total_capped_inflow
                     )
+
                 elif isinstance(out, Offramp):
                     # offramps are modeled as store-and-forward links with the mainline outflow given as a demand
                     # and a virtual queue that takes up excess demand if the offramp capacity is exceeded or
                     # congestion further reduces the correpsonding flows off the offramp
+                    node_outflows = compute_node_outflows(
+                        node=node, flows=flows, node_splits=normalized_node_splits
+                    )
+
+                    # offramp outflows are updated with the current step flows, since the offramp
+                    # keeps track of its own queue and flow and has a physical length
                     next_outflow, next_queue = self._compute_offramp_outflows(
                         offramp=out,
-                        mainline_outflow=normalized_node_splits[out.id]
-                        * total_capped_inflow,
+                        node_outflow=node_outflows[out.id],
                         offramp_queues=offramp_queues,
                         boundary_conditions=boundary_conditions,
                         dt=dt,
                     )
 
                     # set the offramp flow and the queue on the offramp (part of store-and-forward link)
+                    # flow for the connected destination is not set => equal to the offramp flow
                     next_flows[out.id] = next_outflow
                     next_offramp_queues[out.id] = next_queue
 
-                    # the flow of the connected destination is equal to the offramp outflow
-                    if out.destination is not None:
-                        next_flows[out.destination.id] = next_outflow
-                    else:
-                        raise ValueError(
-                            f"Offramp {out.id} does not have a destination defined."
-                        )
                 elif isinstance(out, MotorwayLink):
                     # motorway links are processed at nodes where they are incoming
                     pass
