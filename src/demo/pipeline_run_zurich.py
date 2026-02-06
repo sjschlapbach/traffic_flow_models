@@ -1,6 +1,16 @@
+import argparse
+
 from traffic_flow_models import CTM, SUMOPipeline, SUMOSimulation, DemandAggregator
 
 if __name__ == "__main__":
+    args = argparse.ArgumentParser(description="Run the Zurich demo scenario.")
+    args.add_argument(
+        "--no-plot",
+        action="store_true",
+        help="Disable plotting of results (useful for CI or headless environments)",
+    )
+    parsed_args = args.parse_args()
+
     # scenario definitions
     name = "zurich"
     location = "Zurich, Switzerland"
@@ -9,7 +19,7 @@ if __name__ == "__main__":
     # general macroscopic simulation settings
     dt = 10.0 / 3600
     duration = 5000.0 / 3600
-    plot_enabled = True
+    plot_enabled = not parsed_args.no_plot
 
     # run the pipeline to generate files for the SUMO simulation
     pipeline = SUMOPipeline(name=name, location=location)
