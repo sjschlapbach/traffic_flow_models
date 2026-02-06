@@ -97,7 +97,10 @@ class LoopDetectorGenerator:
                 lanes = edge.findall("lane")
                 for lane_idx, lane in enumerate(lanes):
                     lane_id = lane.get("id")
-                    lane_length = float(lane.get("length"))
+                    length_str = lane.get("length")
+                    if length_str is None:
+                        continue
+                    lane_length = float(length_str)
 
                     # Place detector near end of edge
                     if lane_length < 10:  # Less than 10 meters

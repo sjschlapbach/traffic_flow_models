@@ -39,11 +39,17 @@ class SUMOSimulation:
         Creates a SUMO configuration XML file that specifies input network and route files,
         and configures output statistics reporting.
         """
+        additional_files_line = ""
+        if self.detector_file is not None:
+            additional_files_line = (
+                f'<additional-files value="{os.path.basename(self.detector_file)}"/>'
+            )
+
         config_content = f"""
         <configuration>
             <input>
                 <net-file value="{os.path.basename(self.net_file)}"/>
-                <additional-files value="{os.path.basename(self.detector_file)}"/>
+                {additional_files_line}
                 <route-files value="{os.path.basename(self.rou_file)}"/>
             </input>
             <output>

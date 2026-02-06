@@ -6,7 +6,9 @@ from collections import defaultdict
 
 class DemandAggregator:
 
-    def __init__(self, detector_output_path, detector_spec_path, time_period_minutes = 15):
+    def __init__(
+        self, detector_output_path, detector_spec_path, time_period_minutes=15
+    ):
 
         self.detector_output_path = detector_output_path
         self.detector_spec_path = detector_spec_path
@@ -44,7 +46,11 @@ class DemandAggregator:
             for row in reader:
                 det_id = row["detector_id"].strip().strip('"').strip("'")
 
-                det_id_variants = [det_id, det_id.replace("detector_", ""), f"detector_{det_id}"]
+                det_id_variants = [
+                    det_id,
+                    det_id.replace("detector_", ""),
+                    f"detector_{det_id}",
+                ]
 
                 det_type = row["type"].strip().lower()
                 from_node = row["from"].strip().strip('"').strip("'")
@@ -60,7 +66,10 @@ class DemandAggregator:
                 if node_id:
                     # Store all variants
                     for variant in det_id_variants:
-                        self.detector_mapping[variant] = {"node_id": node_id, "type": det_type}
+                        self.detector_mapping[variant] = {
+                            "node_id": node_id,
+                            "type": det_type,
+                        }
 
     # Aggregate lane-level detector counts into node-level counts.
     def aggregate_spatially(self):
@@ -108,7 +117,9 @@ class DemandAggregator:
             metanet_id = f"onramp_{onramp_node}"
             onramp_demands[metanet_id] = self._make_demand_function(aggregated_bins)
 
-        all_detector_vehicles = sum(sum(bins.values()) for bins in self.node_counts.values())
+        all_detector_vehicles = sum(
+            sum(bins.values()) for bins in self.node_counts.values()
+        )
 
         print("AGGREGATION SUMMARY:")
         print(f"  Total detector nodes: {len(self.node_counts)}")

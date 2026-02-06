@@ -138,8 +138,11 @@ class NetworkArbitrator:
                 break
 
         if not self.selected_types:
-            print("ERROR: No matching road types found!")
-            return
+            raise ValueError(
+                f"No matching road types found in SUMO network. "
+                f"Available types: {sorted(available_types)}, "
+                f"Filter priorities: {self.hwy_filter}"
+            )
 
         # Extract junction coordinates
         raw_coordinates = {}
@@ -352,21 +355,17 @@ class NetworkArbitrator:
 
             total_cells += num_cells
 
-            metanet_nodes[u].outgoing.append(link)
-            metanet_nodes[v].incoming.append(link)
+            metanet_nodes[u].add_outgoing(link)
+            metanet_nodes[v].add_incoming(link)
 
         for nid, node_obj in metanet_nodes.items():
             if not node_obj.incoming:
                 orig = Origin(id=f"Origin_{nid}", destination_node_id=str(nid))
-                node_obj.set_incoming([orig])
-            else:
-                node_obj.set_incoming(list(node_obj.incoming))
+                node_obj.add_incoming(orig)
 
             if not node_obj.outgoing:
                 dest = Destination(id=f"Dest_{nid}", origin_node_id=str(nid))
-                node_obj.set_outgoing([dest])
-            else:
-                node_obj.set_outgoing(list(node_obj.outgoing))
+                node_obj.add_outgoing(dest)
 
         origin_ids = [
             node_obj.incoming[0].id
