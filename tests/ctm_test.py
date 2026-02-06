@@ -92,7 +92,8 @@ class TestCTM:
             initial_densities={link.id: initial_density},
             initial_speeds={link.id: initial_speed},
             turning_rates={},
-            destination_boundary_conditions={destination.id: lambda t: 0.0},
+            destination_flow_bc={destination.id: lambda t: 6000.0},
+            destination_density_bc={destination.id: lambda t: 0.0},
             preferred_cell_size=1.0,  # Match manual partitioning
             plot_results=False,
         )
@@ -173,7 +174,8 @@ class TestCTM:
             },
             initial_speeds={link.id: initial_speed, onramp.id: np.array([0.0])},
             turning_rates={},
-            destination_boundary_conditions={destination.id: lambda t: 0.0},
+            destination_flow_bc={destination.id: lambda t: 6000.0},
+            destination_density_bc={destination.id: lambda t: 0.0},
             preferred_cell_size=1.0,  # Match manual partitioning
             plot_results=False,
         )
@@ -257,7 +259,11 @@ class TestCTM:
                     destination_mainline.id: mainline_split,
                 }
             },
-            destination_boundary_conditions={
+            destination_flow_bc={
+                destination_offramp.id: lambda t: 6000.0,
+                destination_mainline.id: lambda t: 6000.0,
+            },
+            destination_density_bc={
                 destination_offramp.id: lambda t: 0.0,
                 destination_mainline.id: lambda t: 0.0,
             },
@@ -382,7 +388,8 @@ class TestCTM:
             initial_densities={link.id: initial_density},
             initial_speeds={link.id: initial_speed},
             turning_rates={},
-            destination_boundary_conditions={destination.id: lambda t: 0.0},
+            destination_flow_bc={destination.id: lambda t: 6000.0},
+            destination_density_bc={destination.id: lambda t: 0.0},
             preferred_cell_size=0.5,  # match manual partitioning
             plot_results=False,
         )

@@ -316,6 +316,7 @@ class CTM:
         densities: dict[str, casadi.SX],
         flows: dict[str, casadi.SX],
         node_splits: dict[str, casadi.SX],
+        flow_boundary_conditions: dict[str, casadi.SX],
         dt: float,
     ) -> casadi.SX:
         """Compute the maximum outflow the node can support given supplies.
@@ -339,6 +340,8 @@ class CTM:
             node_splits (dict[str, casadi.SX]): Normalized split
                 ratios for the node's outgoing links (mapping link id ->
                 CasADi SX).
+            flow_boundary_conditions (dict[str, casadi.SX]): Mapping from
+                destination id to flow boundary condition (vehicles / time)
             dt (float): Time step size.
 
         Returns:
@@ -355,12 +358,16 @@ class CTM:
         maximum_supported_node_outflow = casadi.SX(casadi.inf)
         for out in node.outgoing:
             if isinstance(out, Destination):
-                # TODO: check if the downstream destination somehow needs to restrict our outflow as well?! = density boundary condition
-                # destinations do not limit the outflow of the node
-                continue
+                # destinations only limit the node outflow through the given flow boundary condition
+                maximum_supported_node_outflow = casadi.fmin(
+                    maximum_supported_node_outflow,
+                    flow_boundary_conditions[out.id] / node_splits[out.id],
+                )
+
             elif isinstance(out, Offramp):
                 # destinations are modeled as store-and-forward links with a virtual queue
                 # -> only the offramp capacity becomes a limiting factor for potential spillback
+                # any congestion caused by downstream boundary conditions will only grow the off-ramp queue
                 maximum_supported_node_outflow = casadi.fmin(
                     maximum_supported_node_outflow,
                     out.Qc / node_splits[out.id],
@@ -409,7 +416,7 @@ class CTM:
         offramp: Offramp,
         node_outflow: casadi.SX,
         offramp_queues: dict[str, casadi.SX],
-        boundary_conditions: dict[str, casadi.SX],
+        density_boundary_conditions: dict[str, casadi.SX],
         dt: float,
     ) -> Tuple[casadi.SX, casadi.SX]:
         """Compute an offramp's outflow and update its store-and-forward queue.
@@ -428,7 +435,7 @@ class CTM:
                 the offramp (vehicles / time) as a CasADi expression.
             offramp_queues (dict[str, casadi.SX]): Current queue lengths on
                 offramps indexed by link id (vehicles, CasADi SX).
-            boundary_conditions (dict[str, casadi.SX]): Mapping from
+            density_boundary_conditions (dict[str, casadi.SX]): Mapping from
                 destination id to downstream density (vehicles / length / lane)
                 used as the downstream boundary for the store-and-forward
                 update (CasADi SX).
@@ -461,7 +468,7 @@ class CTM:
                 jam_density=offramp.rho_jam,
                 free_flow_speed=offramp.vf,
             ),
-            density=boundary_conditions[offramp.destination.id],
+            density=density_boundary_conditions[offramp.destination.id],
             demand=offramp_demand,
             queue=offramp_queues[offramp.id],
             dt=dt,
@@ -534,16 +541,20 @@ class CTM:
             + num_offramps,  # type: ignore
             1,  # type: ignore
         )
-        d = casadi.SX.sym("d", num_origins + num_onramps + num_splits + num_destinations, 1)  # type: ignore
+        d = casadi.SX.sym("d", num_origins + num_onramps + num_splits + 2 * num_destinations, 1)  # type: ignore
 
         # split up the state and disturbance vectors to obtain a dictionary for
         # efficient access of the relevant quantities during the state update
         flows, densities, speeds, origin_queues, onramp_queues, offramp_queues = (
             network.state_vec_to_network_dict(x=x)
         )
-        origin_demands, onramp_demands, splits, boundary_conditions = (
-            network.disturbance_vec_to_network_dict(d=d)
-        )
+        (
+            origin_demands,
+            onramp_demands,
+            splits,
+            flow_boundary_conditions,
+            density_boundary_conditions,
+        ) = network.disturbance_vec_to_network_dict(d=d)
 
         # typecast values of the dictionaries to casadi SX for symbolic computation
         flows = {k: casadi.SX(v) for k, v in flows.items()}
@@ -557,7 +568,12 @@ class CTM:
         splits = {
             k: {kk: casadi.SX(vv) for kk, vv in v.items()} for k, v in splits.items()
         }
-        boundary_conditions = {k: casadi.SX(v) for k, v in boundary_conditions.items()}
+        flow_boundary_conditions = {
+            k: casadi.SX(v) for k, v in flow_boundary_conditions.items()
+        }
+        density_boundary_conditions = {
+            k: casadi.SX(v) for k, v in density_boundary_conditions.items()
+        }
 
         # initialize next-step state dictionaries
         next_flows: dict[str, casadi.SX] = {}
@@ -654,6 +670,7 @@ class CTM:
                 densities=densities,
                 flows=flows,
                 node_splits=normalized_node_splits,
+                flow_boundary_conditions=flow_boundary_conditions,
                 dt=dt,
             )
 
@@ -735,7 +752,7 @@ class CTM:
                         offramp=out,
                         node_outflow=node_outflows[out.id],
                         offramp_queues=offramp_queues,
-                        boundary_conditions=boundary_conditions,
+                        density_boundary_conditions=density_boundary_conditions,
                         dt=dt,
                     )
 

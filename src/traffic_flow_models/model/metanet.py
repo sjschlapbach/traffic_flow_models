@@ -393,7 +393,7 @@ class METANET:
         node: Node,
         params: METANETSymbolicParams,
         densities: dict[str, casadi.SX],
-        boundary_conditions: dict[str, casadi.SX],
+        density_boundary_conditions: dict[str, casadi.SX],
     ) -> Tuple[casadi.SX, Union[float, None], Union[float, None]]:
         """Determine a node's virtual downstream density for METANET updates.
 
@@ -417,7 +417,7 @@ class METANET:
             params (METANETSymbolicParams): METANET model parameters (CasADi SX).
             densities (dict[str, casadi.SX]): Mapping link id -> vector of
                 cell densities (CasADi SX) for motorway links.
-            boundary_conditions (dict[str, casadi.SX]): Mapping of link or
+            density_boundary_conditions (dict[str, casadi.SX]): Mapping of link or
                 destination id to boundary density (CasADi SX).
 
         Returns:
@@ -453,12 +453,13 @@ class METANET:
                             f"Offramp {out_link.id} does not have a destination defined."
                         )
 
-                    out_densities.append(boundary_conditions[out_link.destination.id])
+                    out_densities.append(
+                        density_boundary_conditions[out_link.destination.id]
+                    )
 
                 elif isinstance(out_link, Destination):
                     # destination link: density is provided as boundary condition
-                    out_densities.append(boundary_conditions[out_link.id])
-
+                    out_densities.append(density_boundary_conditions[out_link.id])
                 else:
                     raise TypeError(f"Unknown outgoing link type {type(out_link)}")
 
@@ -497,12 +498,14 @@ class METANET:
                         f"Offramp {out_link.id} does not have a destination defined."
                     )
 
-                node_downstream_density = boundary_conditions[out_link.destination.id]
+                node_downstream_density = density_boundary_conditions[
+                    out_link.destination.id
+                ]
                 node_downstream_jam_density = None  # no downstream jam density defined -> handling on calling level required
                 node_downstream_backward_wave_speed = None  # no downstream backward wave speed defined -> handling on calling level required
             elif isinstance(out_link, Destination):
                 # destination link: density is provided as boundary condition
-                node_downstream_density = boundary_conditions[out_link.id]
+                node_downstream_density = density_boundary_conditions[out_link.id]
                 node_downstream_jam_density = None  # no downstream jam density defined -> handling on calling level required
                 node_downstream_backward_wave_speed = None  # no downstream backward wave speed defined -> handling on calling level required
             else:
@@ -602,7 +605,7 @@ class METANET:
         offramp: Offramp,
         node_outflows: dict[str, casadi.SX],
         offramp_queues: dict[str, casadi.SX],
-        boundary_conditions: dict[str, casadi.SX],
+        density_boundary_conditions: dict[str, casadi.SX],
         dt: float,
     ) -> Tuple[casadi.SX, casadi.SX]:
         """Compute offramp outflow and update the offramp store-and-forward queue.
@@ -621,7 +624,7 @@ class METANET:
                 to the desired outflow at the node (CasADi SX).
             offramp_queues (dict[str, casadi.SX]): Current queue lengths on
                 offramps (CasADi SX).
-            boundary_conditions (dict[str, casadi.SX]): Mapping of destination
+            density_boundary_conditions (dict[str, casadi.SX]): Mapping of destination
                 id to boundary density (CasADi SX) used as downstream density.
             dt (float): Simulation timestep.
 
@@ -656,7 +659,7 @@ class METANET:
                 jam_density=offramp.rho_jam,
                 free_flow_speed=offramp.vf,
             ),
-            density=boundary_conditions[offramp.destination.id],
+            density=density_boundary_conditions[offramp.destination.id],
             demand=offramp_demand,
             queue=offramp_queues[offramp.id],
             dt=dt,
@@ -965,14 +968,15 @@ class METANET:
             + num_offramps,  # type: ignore
             1,  # type: ignore
         )
-        d = casadi.SX.sym("d", num_origins + num_onramps + num_splits + num_destinations, 1)  # type: ignore
+        d = casadi.SX.sym("d", num_origins + num_onramps + num_splits + 2 * num_destinations, 1)  # type: ignore
 
         # split up the state and disturbance vectors to obtain a dictionary for
         # efficient access of the relevant quantities during the state update
         flows, densities, speeds, origin_queues, onramp_queues, offramp_queues = (
             network.state_vec_to_network_dict(x=x)
         )
-        origin_demands, onramp_demands, splits, boundary_conditions = (
+        # flow boundary conditions are not extracted for METANET, since they are not needed
+        origin_demands, onramp_demands, splits, _, density_boundary_conditions = (
             network.disturbance_vec_to_network_dict(d=d)
         )
 
@@ -988,7 +992,9 @@ class METANET:
         splits = {
             k: {kk: casadi.SX(vv) for kk, vv in v.items()} for k, v in splits.items()
         }
-        boundary_conditions = {k: casadi.SX(v) for k, v in boundary_conditions.items()}
+        density_boundary_conditions = {
+            k: casadi.SX(v) for k, v in density_boundary_conditions.items()
+        }
 
         # initialize next-step state dictionaries
         next_flows: dict[str, casadi.SX] = {}
@@ -1013,7 +1019,7 @@ class METANET:
                     node=node,
                     params=params,
                     densities=densities,
-                    boundary_conditions=boundary_conditions,
+                    density_boundary_conditions=density_boundary_conditions,
                 )
 
                 if isinstance(inc, Origin):
@@ -1098,7 +1104,7 @@ class METANET:
                         offramp=out,
                         node_outflows=node_outflows,
                         offramp_queues=offramp_queues,
-                        boundary_conditions=boundary_conditions,
+                        density_boundary_conditions=density_boundary_conditions,
                         dt=dt,
                     )
 
@@ -1141,7 +1147,7 @@ class METANET:
                             node=destination_node,
                             params=params,
                             densities=densities,
-                            boundary_conditions=boundary_conditions,
+                            density_boundary_conditions=density_boundary_conditions,
                         )
                     )
 

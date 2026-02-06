@@ -749,27 +749,30 @@ class TestNetwork:
             node1.id: {main.id: 1.0},  # node1: all traffic to main
             node2.id: {dest.id: 1.0},  # node2: all traffic to dest
         }
-        boundary_condition_dict = {dest.id: 30.0}
+        flow_destination_bc = {dest.id: 1400.0}
+        density_destination_bc = {dest.id: 30.0}
 
         # pack to disturbance vector
         d = net.network_dict_to_disturbance_vec(
             origin_demand_dict,
             onramp_demand_dict,
             turning_rate_dict,
-            boundary_condition_dict,
+            flow_boundary_condition_dict=flow_destination_bc,
+            density_boundary_condition_dict=density_destination_bc,
         )
 
         # verify vector structure
         assert isinstance(d, np.ndarray)
         assert (
-            len(d) == 4
-        )  # expected: turning_rate_n1(1) + origin_demand(1) + turning_rate_n2(1) + boundary_cond(1) = 4
+            len(d) == 5
+        )  # expected: turning_rate_n1(1) + origin_demand(1) + turning_rate_n2(1) + flow_boundary_cond(1) + density_boundary_cond(1) = 5
 
-        # verify values (order: node1 turning rates, node1 origin demand, node2 turning rates, node2 boundary)
+        # verify values (order: node1 turning rates, node1 origin demand, node2 turning rates, node2 flow boundary, node2 density boundary)
         assert d[0] == 1.0  # node1 turning rate for main
         assert d[1] == 600.0  # origin demand
         assert d[2] == 1.0  # node2 turning rate for dest
-        assert d[3] == 30.0  # boundary condition
+        assert d[3] == 1400.0  # flow boundary condition
+        assert d[4] == 30.0  # density boundary condition
 
     def test_disturbance_vec_to_network_dict_simple(self):
         """Test unpacking disturbance vector to dictionaries."""
@@ -785,25 +788,31 @@ class TestNetwork:
         net = Network(nodes=[node1, node2])
 
         # create disturbance vector
-        d = np.array([1.0, 600.0, 1.0, 30.0])
+        d = np.array([1.0, 600.0, 1.0, 1400.0, 30.0])
 
         # unpack
-        origin_demands, onramp_demands, turning_rates, boundary_conditions = (
-            net.disturbance_vec_to_network_dict(d)
-        )
+        (
+            origin_demands,
+            onramp_demands,
+            turning_rates,
+            flow_boundary_conditions,
+            density_boundary_conditions,
+        ) = net.disturbance_vec_to_network_dict(d)
 
         # verify dictionaries
         assert origin.id in origin_demands
         assert len(onramp_demands) == 0
         assert node1.id in turning_rates
         assert node2.id in turning_rates
-        assert dest.id in boundary_conditions
+        assert dest.id in flow_boundary_conditions
+        assert dest.id in density_boundary_conditions
 
         # verify values
         assert origin_demands[origin.id] == 600.0
         assert turning_rates[node1.id][main.id] == 1.0
         assert turning_rates[node2.id][dest.id] == 1.0
-        assert boundary_conditions[dest.id] == 30.0
+        assert flow_boundary_conditions[dest.id] == 1400.0
+        assert density_boundary_conditions[dest.id] == 30.0
 
     def test_round_trip_disturbance_conversion(self):
         """Test dict->vec->dict round-trip for disturbance conversion."""
@@ -839,19 +848,25 @@ class TestNetwork:
             node2.id: {main2.id: 0.8, offramp.id: 0.2},
             node3.id: {dest1.id: 1.0},
         }
-        boundary_condition_dict_orig = {dest1.id: 30.0, dest2.id: 25.0}
+        flow_destination_bc_orig = {dest1.id: 1400.0, dest2.id: 1200.0}
+        density_destination_bc_orig = {dest1.id: 30.0, dest2.id: 25.0}
 
         # round trip: dict -> vec -> dict
         d = net.network_dict_to_disturbance_vec(
             origin_demand_dict_orig,
             onramp_demand_dict_orig,
             turning_rate_dict_orig,
-            boundary_condition_dict_orig,
+            flow_destination_bc_orig,
+            density_destination_bc_orig,
         )
 
-        origin_demands, onramp_demands, turning_rates, boundary_conditions = (
-            net.disturbance_vec_to_network_dict(d)
-        )
+        (
+            origin_demands,
+            onramp_demands,
+            turning_rates,
+            flow_boundary_conditions,
+            density_boundary_conditions,
+        ) = net.disturbance_vec_to_network_dict(d)
 
         # verify all values match
         assert origin_demands[origin.id] == origin_demand_dict_orig[origin.id]
@@ -864,8 +879,15 @@ class TestNetwork:
                     == turning_rate_dict_orig[node_id][link_id]
                 )
 
-        for dest_id in boundary_condition_dict_orig:
-            assert boundary_conditions[dest_id] == boundary_condition_dict_orig[dest_id]
+        for dest_id in flow_destination_bc_orig:
+            assert (
+                flow_boundary_conditions[dest_id] == flow_destination_bc_orig[dest_id]
+            )
+        for dest_id in density_destination_bc_orig:
+            assert (
+                density_boundary_conditions[dest_id]
+                == density_destination_bc_orig[dest_id]
+            )
 
     def test_state_vec_too_short_raises(self):
         """Test that unpacking too-short state vector raises ValueError."""
@@ -1265,20 +1287,26 @@ class TestNetwork:
             node3.id: {link3.id: 0.9, offramp.id: 0.1},  # 90% continue, 10% exit
             node4.id: {link4.id: 1.0},
         }
-        boundary_condition_dict = {dest.id: 20.0}
+        flow_destination_bc = {dest.id: 1400.0}
+        density_destination_bc = {dest.id: 20.0}
 
         # test packing
         d = net.network_dict_to_disturbance_vec(
             origin_demand_dict,
             onramp_demand_dict,
             turning_rate_dict,
-            boundary_condition_dict,
+            flow_boundary_condition_dict=flow_destination_bc,
+            density_boundary_condition_dict=density_destination_bc,
         )
 
         # test round-trip
-        origin_demands, onramp_demands, turning_rates, boundary_conditions = (
-            net.disturbance_vec_to_network_dict(d)
-        )
+        (
+            origin_demands,
+            onramp_demands,
+            turning_rates,
+            flow_boundary_conditions,
+            density_boundary_conditions,
+        ) = net.disturbance_vec_to_network_dict(d)
 
         # verify values preserved
         assert origin_demands[origin.id] == origin_demand_dict[origin.id]
@@ -1292,4 +1320,5 @@ class TestNetwork:
                     == turning_rate_dict[node_id][link_id]
                 )
 
-        assert boundary_conditions[dest.id] == boundary_condition_dict[dest.id]
+        assert flow_boundary_conditions[dest.id] == flow_destination_bc[dest.id]
+        assert density_boundary_conditions[dest.id] == density_destination_bc[dest.id]
