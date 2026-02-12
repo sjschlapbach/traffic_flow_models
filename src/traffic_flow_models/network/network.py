@@ -1037,6 +1037,7 @@ class Network:
                 for link in list(node.incoming) + list(node.outgoing):
                     if (
                         not isinstance(link, Origin)
+                        and not isinstance(link, Onramp)
                         and not isinstance(link, Destination)
                         and link.id not in initial_densities
                     ):
@@ -1049,6 +1050,7 @@ class Network:
                 for link in list(node.incoming) + list(node.outgoing):
                     if (
                         not isinstance(link, Origin)
+                        and not isinstance(link, Onramp)
                         and not isinstance(link, Destination)
                         and link.id not in initial_speeds
                     ):
@@ -1555,13 +1557,13 @@ class Network:
             METANETParams, None
         ] = None,  # model parameters for models that require this -> CTM is fully defined by link parameters
         initial_flows: (
-            dict[str, float | NDArray[np.float64]] | None
+            dict[str, float] | dict[str, NDArray[np.float64]] | None
         ) = None,  # for each link id, provide either a float (uniform initial flow) or an array of floats (per-cell initial flows; default: 0)
         initial_densities: (
-            dict[str, float | NDArray[np.float64]] | None
+            dict[str, float] | dict[str, NDArray[np.float64]] | None
         ) = None,  # for each link id, provide either a float (uniform initial density) or an array of floats (per-cell initial densities; default: 0)
         initial_speeds: (
-            dict[str, float | NDArray[np.float64]] | None
+            dict[str, float] | dict[str, NDArray[np.float64]] | None
         ) = None,  # for each link id, provide either a float (uniform initial speed) or an array of floats (per-cell initial speeds; default: free-flow speed)
         initial_origin_queues: (
             dict[str, float] | None
