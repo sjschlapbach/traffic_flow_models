@@ -62,7 +62,7 @@ if __name__ == "__main__":
     destination_flow_bc = {dest_id: lambda t: 0.1 for dest_id in destination_ids}
 
     # plot the network
-    network.plot(save_path="results/zurich/network.png", show=True)
+    network.plot(save_path="results/zurich/network.png", show=plot_enabled)
 
     # run a simulation of the network using the CTM model
     ctm = CTM()
