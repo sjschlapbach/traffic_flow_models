@@ -83,8 +83,14 @@ def setup_network_ab() -> tuple[Network, dict]:
 
     # connect the links through nodes and build the network structure
     n0 = Node(id="n1", incoming=[origin], outgoing=[m1])
+    n0.position = (0.0, 0.0)
+
     n1 = Node(id="n2", incoming=[m1, onr], outgoing=[m2])
+    n1.position = (1.0, 0.0)
+
     n2 = Node(id="n3", incoming=[m2], outgoing=[destination])
+    n2.position = (3.0, 0.0)
+
     net = Network(nodes=[n0, n1, n2])
 
     splits = {
@@ -163,10 +169,20 @@ def setup_network_c() -> tuple[Network, dict]:
 
     # connect the links through nodes and build the network structure
     n0 = Node(id="n0", incoming=[origin], outgoing=[m1])
+    n0.position = (0.0, 0.0)
+
     n1 = Node(id="n1", incoming=[m1, onr], outgoing=[m2])
+    n1.position = (1.0, 0.0)
+
     n2 = Node(id="n2", incoming=[m2], outgoing=[m3])
+    n2.position = (2.0, 0.0)
+
     n3 = Node(id="n3", incoming=[m3], outgoing=[m4])
+    n3.position = (2.5, 0.0)
+
     n4 = Node(id="n4", incoming=[m4], outgoing=[destination])
+    n4.position = (3.0, 0.0)
+
     net = Network(nodes=[n0, n1, n2, n3, n4])
 
     splits = {
@@ -255,9 +271,17 @@ def setup_network_d() -> tuple[Network, dict]:
 
     # connect the links through nodes and build the network structure
     n0 = Node(id="n0", incoming=[origin], outgoing=[m1])
+    n0.position = (0.0, 0.0)
+
     n1 = Node(id="n1", incoming=[m1, onr], outgoing=[m2])
+    n1.position = (1.0, 0.0)
+
     n2 = Node(id="n2", incoming=[m2], outgoing=[m3, offr])
+    n2.position = (2.0, 0.0)
+
     n3 = Node(id="n3", incoming=[m3], outgoing=[destination])
+    n3.position = (3.5, 0.0)
+
     net = Network(nodes=[n0, n1, n2, n3])
 
     # splits at node2: motorway keeps 0.8, offramp 0.2

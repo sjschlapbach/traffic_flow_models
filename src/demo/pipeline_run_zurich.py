@@ -61,6 +61,9 @@ if __name__ == "__main__":
     destination_density_bc = {dest_id: lambda t: 0.1 for dest_id in destination_ids}
     destination_flow_bc = {dest_id: lambda t: 0.1 for dest_id in destination_ids}
 
+    # plot the network
+    network.plot(save_path="results/zurich/network.png", show=plot_enabled)
+
     # run a simulation of the network using the CTM model
     ctm = CTM()
     time, states, disturbances = network.simulate(

@@ -1557,13 +1557,13 @@ class Network:
             METANETParams, None
         ] = None,  # model parameters for models that require this -> CTM is fully defined by link parameters
         initial_flows: (
-            dict[str, float] | dict[str, NDArray[np.float64]] | None
+            dict[str, NDArray[np.float64] | float] | None
         ) = None,  # for each link id, provide either a float (uniform initial flow) or an array of floats (per-cell initial flows; default: 0)
         initial_densities: (
-            dict[str, float] | dict[str, NDArray[np.float64]] | None
+            dict[str, NDArray[np.float64] | float] | None
         ) = None,  # for each link id, provide either a float (uniform initial density) or an array of floats (per-cell initial densities; default: 0)
         initial_speeds: (
-            dict[str, float] | dict[str, NDArray[np.float64]] | None
+            dict[str, NDArray[np.float64] | float] | None
         ) = None,  # for each link id, provide either a float (uniform initial speed) or an array of floats (per-cell initial speeds; default: free-flow speed)
         initial_origin_queues: (
             dict[str, float] | None
@@ -2817,7 +2817,6 @@ class Network:
     # region
     def plot(
         self,
-        pos: Optional[Mapping[str, tuple[float, float] | NDArray[np.float64]]] = None,
         figsize: tuple[int, int] = (10, 8),
         show: bool = True,
         save_path: str | None = None,
@@ -2825,8 +2824,6 @@ class Network:
         """Plot the network topology using the plotting helper.
 
         Args:
-            layout: Layout algorithm for NetworkX ('spring','shell','circular',...)
-            pos: Optional precomputed positions mapping node id -> (x, y)
             figsize: Figure size for Matplotlib
             show: Whether to call `plt.show()`
             save_path: Optional path to save the figure
@@ -2845,6 +2842,10 @@ class Network:
             if isinstance(link, Destination):
                 return "#1f77b4", 1.2, "Destination"
             return "#888888", 1.0, "Other"
+
+        # calculate scaling factor based on number of nodes
+        num_nodes = len(self._nodes)
+        scale_factor = max(0.3, 1.0 / math.sqrt(max(1, num_nodes / 4)))
 
         G = nx.DiGraph()
 
@@ -2896,7 +2897,16 @@ class Network:
                     )
 
         # compute positions
-        if pos is None:
+        node_positions = {}
+        for node in self.list_nodes():
+            if hasattr(node, "position") and node.position is not None:
+                node_positions[node.id] = np.array(node.position, dtype=np.float64)
+
+        # if all nodes have positions, use them directly
+        if len(node_positions) == len(self._nodes):
+            pos = node_positions
+        else:
+            # otherwise, use automatic layout
             # attempt an orthogonal/cartesian layout along motorway chains
             pos = {}
 
@@ -2949,39 +2959,39 @@ class Network:
                 # fallback to spring layout if no motorway structure
                 pos = nx.spring_layout(G, seed=42)
 
-            # place externals (SRC:/DEST:) very close to junctions for compact layout
-            for n in G.nodes():
-                if n in pos:
-                    continue
+        # place externals (SRC:/DEST:) very close to junctions for compact layout
+        for n in G.nodes():
+            if n in pos:
+                continue
 
-                s = str(n)
-                placed = False
-                # incoming source nodes (SRC:...) -> place just above their destination
-                if s.startswith("SRC:"):
-                    neighbors = list(G.successors(n)) if n in G else []
-                    if neighbors and neighbors[0] in pos:
-                        dst_pos = pos[neighbors[0]]
-                        pos[n] = np.array(
-                            [float(dst_pos[0]) - 0.08, float(dst_pos[1]) + 0.25],
-                            dtype=np.float64,
-                        )
-                        placed = True
+            s = str(n)
+            placed = False
+            # incoming source nodes (SRC:...) -> place just above their destination
+            if s.startswith("SRC:"):
+                neighbors = list(G.successors(n)) if n in G else []
+                if neighbors and neighbors[0] in pos:
+                    dst_pos = pos[neighbors[0]]
+                    pos[n] = np.array(
+                        [float(dst_pos[0]) - 0.08, float(dst_pos[1]) + 0.25],
+                        dtype=np.float64,
+                    )
+                    placed = True
 
-                # destination placeholders (DEST:...) -> place just above their source
-                if not placed and s.startswith("DEST:"):
-                    preds = list(G.predecessors(n)) if n in G else []
-                    if preds and preds[0] in pos:
-                        src_pos = pos[preds[0]]
-                        pos[n] = np.array(
-                            [float(src_pos[0]) + 0.08, float(src_pos[1]) + 0.25],
-                            dtype=np.float64,
-                        )
-                        placed = True
+            # destination placeholders (DEST:...) -> place just above their source
+            if not placed and s.startswith("DEST:"):
+                preds = list(G.predecessors(n)) if n in G else []
+                if preds and preds[0] in pos:
+                    src_pos = pos[preds[0]]
+                    pos[n] = np.array(
+                        [float(src_pos[0]) + 0.08, float(src_pos[1]) + 0.25],
+                        dtype=np.float64,
+                    )
+                    placed = True
 
-                # fallback placement
-                if not placed:
-                    pos[n] = np.array([0.0, float(y_offset)], dtype=np.float64)
-                    y_offset -= 0.6
+            # fallback placement
+            if not placed:
+                pos[n] = np.array([0.0, float(y_offset)], dtype=np.float64)
+                y_offset -= 0.6
 
         # avoid automatic display in interactive backends when `show` is False
         prev_interactive = plt.isinteractive()
@@ -3000,7 +3010,7 @@ class Network:
             nodelist=junctions,
             node_color="#ffffff",
             edgecolors="#111111",
-            node_size=520,
+            node_size=int(520 * scale_factor),
             ax=ax,
         )
 
@@ -3017,8 +3027,8 @@ class Network:
             nodelist=externals_src,
             node_color="#e7d4f5",
             edgecolors="#9467bd",
-            linewidths=2.5,
-            node_size=300,
+            linewidths=2.5 * scale_factor,
+            node_size=int(300 * scale_factor),
             node_shape="^",
             ax=ax,
         )
@@ -3028,8 +3038,8 @@ class Network:
             nodelist=externals_dest,
             node_color="#b3d9ff",
             edgecolors="#1f77b4",
-            linewidths=2.5,
-            node_size=300,
+            linewidths=2.5 * scale_factor,
+            node_size=int(300 * scale_factor),
             node_shape="s",
             ax=ax,
         )
@@ -3039,8 +3049,8 @@ class Network:
             nodelist=externals_other,
             node_color="#f0f0f0",
             edgecolors="#444444",
-            linewidths=1.5,
-            node_size=200,
+            linewidths=1.5 * scale_factor,
+            node_size=int(200 * scale_factor),
             ax=ax,
         )
 
@@ -3079,8 +3089,9 @@ class Network:
             colors = [d.get("color", "#333333") for _, _, d in edge_list]
             widths = [
                 max(
-                    0.8,
+                    0.8 * scale_factor,
                     base_width
+                    * scale_factor
                     * (
                         float(getattr(d.get("_link_obj"), "lanes", 1))
                         if d.get("_link_obj")
@@ -3099,7 +3110,7 @@ class Network:
                     style=style,
                     width=widths,
                     alpha=alpha,
-                    arrowsize=18,
+                    arrowsize=int(18 * scale_factor),
                     ax=ax,
                 ),
                 edge_list,

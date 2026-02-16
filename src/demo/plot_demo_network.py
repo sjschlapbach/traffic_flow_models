@@ -52,9 +52,16 @@ def build_and_plot_network():
     )
 
     n0 = Node(incoming=[origin], outgoing=[m1])
+    n0.position = (0.0, 0.0)
+
     n1 = Node(incoming=[m1, onr], outgoing=[m2])
+    n1.position = (1.0, 0.0)
+
     n2 = Node(incoming=[m2], outgoing=[m3, offr])
+    n2.position = (2.0, 0.0)
+
     n3 = Node(incoming=[m3], outgoing=[destination_main])
+    n3.position = (2.5, 0.0)
 
     net = Network(nodes=[n0, n1, n2, n3])
 
