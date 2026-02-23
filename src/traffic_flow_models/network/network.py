@@ -2195,6 +2195,14 @@ class Network:
                 dest_link = links_by_id.get(dest_id)
                 if isinstance(dest_link, Destination):
                     offr.destination = dest_link
+                else:
+                    raise ValueError(
+                        f"Offramp {offr.id} references destination ID {dest_id} which is not a valid Destination link."
+                    )
+            else:
+                raise ValueError(
+                    f"Offramp {offr.id} does not have a destination_id specified in the JSON."
+                )
 
         nodes: list[Node] = []
         for node_entry in nodes_data:
@@ -3106,6 +3114,7 @@ class Network:
                 node_positions[node.id] = np.array(node.position, dtype=np.float64)
 
         # if all nodes have positions, use them directly
+        y_offset = 0
         if len(node_positions) == len(self._nodes):
             pos = node_positions
         else:
@@ -3126,8 +3135,6 @@ class Network:
 
             # simple layout: traverse each motorway chain and place nodes along x axis
             visited = set()
-            y_offset = 0
-
             if sources:
                 for src in sources:
                     stack = [(src, 0.0)]
@@ -3193,7 +3200,6 @@ class Network:
 
             # fallback placement
             if not placed:
-                y_offset = 0
                 pos[n] = np.array([0.0, float(y_offset)], dtype=np.float64)
                 y_offset -= 0.6
 
