@@ -1761,7 +1761,9 @@ class Network:
 
             # save network structure as text file
             structure_path = os.path.join(results_dir, "network_structure.txt")
-            self.save_network_structure_txt(structure_path)
+            self.save_to_txt(structure_path)
+            structure_path_json = os.path.join(results_dir, "network_structure.json")
+            self.save_to_json(structure_path_json)
             print(f"  Network structure saved to {structure_path}")
 
             # plot simulation results
@@ -1919,7 +1921,7 @@ class Network:
             f.write("END OF SIMULATION RESULTS\n")
             f.write("\n" + "=" * 80 + "\n")
 
-    def save_network_structure_txt(self, filepath: str) -> None:
+    def save_to_txt(self, filepath: str) -> None:
         """Save network structure to a text file for reference.
 
         Writes a human-readable representation of the network topology showing
@@ -2005,6 +2007,215 @@ class Network:
             f.write("=" * 80 + "\n")
             f.write("END OF NETWORK STRUCTURE\n")
             f.write("=" * 80 + "\n")
+
+    def _serialize_link(
+        self, link: MotorwayLink | Origin | Onramp | Offramp | Destination
+    ) -> dict:
+        """Serialize a link-like object to a JSON-compatible dictionary.
+
+        This helper function converts a link object (MotorwayLink, Origin,
+        Onramp, Offramp, Destination) into a dictionary format that can be
+        to be stored in JSON format.
+
+        Args:
+            link: The link object to serialize.
+
+        Returns:
+            A dictionary containing the type and relevant attributes of the link.
+        """
+
+        if isinstance(link, MotorwayLink):
+            return {
+                "type": "MotorwayLink",
+                "id": link.id,
+                "length": link.length,
+                "lanes": link.lanes,
+                "lane_capacity": link.Qc_lane,
+                "free_flow_speed": link.vf,
+                "jam_density": link.rho_jam,
+                "origin_node_id": link.origin_node_id,
+                "destination_node_id": link.destination_node_id,
+            }
+        if isinstance(link, Origin):
+            return {
+                "type": "Origin",
+                "id": link.id,
+                "destination_node_id": link.destination_node_id,
+            }
+        if isinstance(link, Destination):
+            return {
+                "type": "Destination",
+                "id": link.id,
+                "origin_node_id": link.origin_node_id,
+            }
+        if isinstance(link, Onramp):
+            return {
+                "type": "Onramp",
+                "id": link.id,
+                "lanes": link.lanes,
+                "lane_capacity": link.Qc_lane,
+                "free_flow_speed": link.vf,
+                "jam_density": link.rho_jam,
+                "destination_node_id": link.destination_node_id,
+            }
+        if isinstance(link, Offramp):
+            return {
+                "type": "Offramp",
+                "id": link.id,
+                "lanes": link.lanes,
+                "lane_capacity": link.Qc_lane,
+                "free_flow_speed": link.vf,
+                "jam_density": link.rho_jam,
+                "origin_node_id": link.origin_node_id,
+                "destination_id": link.destination.id if link.destination else None,
+            }
+
+        raise TypeError(
+            f"Unsupported link type for serialization: {type(link).__name__}"
+        )
+
+    def save_to_json(self, filepath: str) -> None:
+        """Persist the network structure (nodes and links) to a JSON file.
+
+        This method collects all nodes and links in the network, extracts their
+        relevant attributes, and saves the structure in a JSON format that can be
+        reloaded later using `load_from_json`.
+
+        Args:
+            filepath: Path where the JSON file should be saved.
+        """
+
+        # collect unique links across all nodes
+        links_map: dict[str, MotorwayLink | Origin | Onramp | Offramp | Destination] = (
+            {}
+        )
+        for node in self.list_nodes():
+            for link in node.incoming + node.outgoing:
+                if getattr(link, "id", None) in links_map:
+                    continue
+                links_map[link.id] = link
+
+                # also collect offramp destinations (not in node links)
+                if isinstance(link, Offramp) and link.destination is not None:
+                    if link.destination.id not in links_map:
+                        links_map[link.destination.id] = link.destination
+
+        payload = {
+            "nodes": [
+                {
+                    "id": node.id,
+                    "incoming": [getattr(l, "id", None) for l in node.incoming],
+                    "outgoing": [getattr(l, "id", None) for l in node.outgoing],
+                }
+                for node in self.list_nodes()
+            ],
+            "links": [self._serialize_link(link) for link in links_map.values()],
+        }
+
+        with open(filepath, "w") as f:
+            json.dump(payload, f, indent=2)
+
+    @classmethod
+    def load_from_json(cls, filepath: str) -> "Network":
+        """Load a network structure from a JSON file created by `save_to_json`.
+
+        This method reads the JSON file, reconstructs the nodes and links with their
+        relevant attributes, and re-establishes the connections between them to recreate
+        the network structure.
+
+        Args:
+            filepath: Path to the JSON file containing the network structure.
+
+        Returns:
+            An instance of `Network` with the structure defined in the JSON file.
+        """
+
+        with open(filepath, "r") as f:
+            data = json.load(f)
+
+        links_data = data.get("links", [])
+        nodes_data = data.get("nodes", [])
+
+        links_by_id: dict[
+            str, MotorwayLink | Origin | Onramp | Offramp | Destination
+        ] = {}
+        pending_offramp_dest: list[tuple[Offramp, str | None]] = []
+
+        for entry in links_data:
+            l_type = entry.get("type")
+            if l_type == "MotorwayLink":
+                link_obj = MotorwayLink(
+                    length=entry["length"],
+                    lanes=entry["lanes"],
+                    lane_capacity=entry["lane_capacity"],
+                    free_flow_speed=entry["free_flow_speed"],
+                    jam_density=entry["jam_density"],
+                    id=entry["id"],
+                    origin_node_id=entry["origin_node_id"],
+                    destination_node_id=entry["destination_node_id"],
+                )
+            elif l_type == "Origin":
+                link_obj = Origin(
+                    id=entry["id"],
+                    destination_node_id=entry["destination_node_id"],
+                )
+            elif l_type == "Destination":
+                link_obj = Destination(
+                    id=entry["id"],
+                    origin_node_id=entry["origin_node_id"],
+                )
+            elif l_type == "Onramp":
+                link_obj = Onramp(
+                    lanes=entry["lanes"],
+                    lane_capacity=entry["lane_capacity"],
+                    free_flow_speed=entry["free_flow_speed"],
+                    jam_density=entry["jam_density"],
+                    id=entry["id"],
+                    destination_node_id=entry["destination_node_id"],
+                )
+            elif l_type == "Offramp":
+                link_obj = Offramp(
+                    lanes=entry["lanes"],
+                    lane_capacity=entry["lane_capacity"],
+                    free_flow_speed=entry["free_flow_speed"],
+                    jam_density=entry["jam_density"],
+                    id=entry["id"],
+                    destination=None,
+                    origin_node_id=entry["origin_node_id"],
+                )
+                pending_offramp_dest.append((link_obj, entry.get("destination_id")))
+            else:
+                raise ValueError(f"Unknown link type in JSON: {l_type}")
+
+            links_by_id[link_obj.id] = link_obj
+
+        # resolve offramp destinations now that all links exist
+        for offr, dest_id in pending_offramp_dest:
+            if dest_id is not None:
+                dest_link = links_by_id.get(dest_id)
+                if isinstance(dest_link, Destination):
+                    offr.destination = dest_link
+                else:
+                    raise ValueError(
+                        f"Offramp {offr.id} references destination ID {dest_id} which is not a valid Destination link."
+                    )
+            else:
+                raise ValueError(
+                    f"Offramp {offr.id} does not have a destination_id specified in the JSON."
+                )
+
+        nodes: list[Node] = []
+        for node_entry in nodes_data:
+            incoming_ids = node_entry.get("incoming", [])
+            outgoing_ids = node_entry.get("outgoing", [])
+            incoming_links = [links_by_id[i] for i in incoming_ids if i in links_by_id]
+            outgoing_links = [links_by_id[i] for i in outgoing_ids if i in links_by_id]
+            node = Node(
+                id=node_entry["id"], incoming=incoming_links, outgoing=outgoing_links
+            )
+            nodes.append(node)
+
+        return cls(nodes=nodes)
 
     def compute_performance_metrics(
         self,
@@ -2903,6 +3114,7 @@ class Network:
                 node_positions[node.id] = np.array(node.position, dtype=np.float64)
 
         # if all nodes have positions, use them directly
+        y_offset = 0
         if len(node_positions) == len(self._nodes):
             pos = node_positions
         else:
@@ -2923,8 +3135,6 @@ class Network:
 
             # simple layout: traverse each motorway chain and place nodes along x axis
             visited = set()
-            y_offset = 0
-
             if sources:
                 for src in sources:
                     stack = [(src, 0.0)]

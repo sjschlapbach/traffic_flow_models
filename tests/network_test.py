@@ -2,6 +2,7 @@ import pytest
 import numpy as np
 import tempfile
 import os
+import json
 from typing import cast
 from numpy.typing import NDArray
 
@@ -1068,7 +1069,7 @@ class TestNetwork:
         # save to temporary file
         with tempfile.TemporaryDirectory() as tmpdir:
             filepath = os.path.join(tmpdir, "network_structure.txt")
-            net.save_network_structure_txt(filepath)
+            net.save_to_txt(filepath)
 
             # verify file exists and contains expected content
             assert os.path.exists(filepath)
@@ -1322,3 +1323,311 @@ class TestNetwork:
 
         assert flow_boundary_conditions[dest.id] == flow_destination_bc[dest.id]
         assert density_boundary_conditions[dest.id] == density_destination_bc[dest.id]
+
+    def test_save_network_to_json_simple(self):
+        """Test saving a simple network structure to JSON file."""
+        # create simple network
+        main = MotorwayLink(
+            id="main_link",
+            length=1.5,
+            lanes=2,
+            lane_capacity=1500,
+            free_flow_speed=80,
+            jam_density=140,
+        )
+        origin = Origin(id="origin_1")
+        dest = Destination(id="dest_1")
+
+        node1 = Node(id="n1", incoming=[origin], outgoing=[main])
+        node2 = Node(id="n2", incoming=[main], outgoing=[dest])
+        net = Network(nodes=[node1, node2])
+
+        # save to temporary file
+        with tempfile.TemporaryDirectory() as tmpdir:
+            filepath = os.path.join(tmpdir, "network.json")
+            net.save_to_json(filepath)
+
+            # verify file exists and can be read
+            assert os.path.exists(filepath)
+            with open(filepath, "r") as f:
+                data = json.load(f)
+
+            # verify structure
+            assert "nodes" in data
+            assert "links" in data
+            assert len(data["nodes"]) == 2
+            assert len(data["links"]) == 3  # origin, main, dest
+
+            # verify that the nodes and links have the expected IDs and attributes
+            node_ids = {node["id"] for node in data["nodes"]}
+            assert "n1" in node_ids
+            assert "n2" in node_ids
+            link_ids = {link["id"] for link in data["links"]}
+            assert "origin_1" in link_ids
+            assert "main_link" in link_ids
+            assert "dest_1" in link_ids
+            main_link_data = next(
+                link for link in data["links"] if link["id"] == "main_link"
+            )
+            assert main_link_data["length"] == 1.5
+            assert main_link_data["lanes"] == 2
+            assert main_link_data["lane_capacity"] == 1500
+            assert main_link_data["free_flow_speed"] == 80
+            assert main_link_data["jam_density"] == 140
+
+    def test_load_network_from_json_simple(self):
+        """Test loading a simple network structure from JSON file."""
+        # create simple network
+        main = MotorwayLink(
+            id="main_link",
+            length=1.5,
+            lanes=2,
+            lane_capacity=1500,
+            free_flow_speed=80,
+            jam_density=140,
+        )
+        origin = Origin(id="origin_1")
+        dest = Destination(id="dest_1")
+
+        node1 = Node(id="n1", incoming=[origin], outgoing=[main])
+        node2 = Node(id="n2", incoming=[main], outgoing=[dest])
+        net = Network(nodes=[node1, node2])
+
+        # save and load
+        with tempfile.TemporaryDirectory() as tmpdir:
+            filepath = os.path.join(tmpdir, "network.json")
+            net.save_to_json(filepath)
+            loaded_net = Network.load_from_json(filepath)
+
+            # verify loaded network structure
+            assert len(loaded_net) == 2
+            assert loaded_net.get_node("n1") is not None
+            assert loaded_net.get_node("n2") is not None
+
+            # verify links
+            loaded_node1 = loaded_net.get_node("n1")
+            loaded_node2 = loaded_net.get_node("n2")
+            assert loaded_node1 is not None
+            assert loaded_node2 is not None
+            assert len(loaded_node1.incoming) == 1
+            assert len(loaded_node1.outgoing) == 1
+            assert len(loaded_node2.incoming) == 1
+            assert len(loaded_node2.outgoing) == 1
+
+            # verify link types
+            assert isinstance(loaded_node1.incoming[0], Origin)
+            assert isinstance(loaded_node1.outgoing[0], MotorwayLink)
+            assert isinstance(loaded_node2.outgoing[0], Destination)
+
+            # verify that the properties are loaded correctly
+            loaded_main = loaded_node1.outgoing[0]
+            assert loaded_node1.outgoing[0].id == main.id
+            assert loaded_main.id == main.id
+            assert loaded_main.length == main.length
+            assert loaded_main.lanes == main.lanes
+            assert loaded_main.Qc_lane == main.Qc_lane
+            assert loaded_main.vf == main.vf
+            assert loaded_main.rho_jam == main.rho_jam
+
+            loaded_origin = loaded_node1.incoming[0]
+            assert loaded_node1.incoming[0].id == origin.id
+            assert loaded_origin.id == origin.id
+
+            loaded_dest = loaded_node2.outgoing[0]
+            assert loaded_node2.outgoing[0].id == dest.id
+            assert loaded_dest.id == dest.id
+
+    def test_round_trip_json_simple_network(self):
+        """Test that save->load preserves network structure for simple network."""
+        # create simple network with explicit IDs
+        main = MotorwayLink(
+            length=1.5,
+            lanes=2,
+            lane_capacity=1500,
+            free_flow_speed=80,
+            jam_density=140,
+            id="main_link",
+        )
+        origin = Origin(id="origin_1")
+        dest = Destination(id="dest_1")
+
+        node1 = Node(id="n1", incoming=[origin], outgoing=[main])
+        node2 = Node(id="n2", incoming=[main], outgoing=[dest])
+        net = Network(nodes=[node1, node2])
+
+        # save and load
+        with tempfile.TemporaryDirectory() as tmpdir:
+            filepath = os.path.join(tmpdir, "network.json")
+            net.save_to_json(filepath)
+            loaded_net = Network.load_from_json(filepath)
+
+            # verify network-level properties
+            assert len(loaded_net) == len(net)
+            assert len(loaded_net.list_nodes()) == len(net.list_nodes())
+
+            # verify node IDs preserved
+            for node in net.list_nodes():
+                loaded_node = loaded_net.get_node(node.id)
+                assert loaded_node is not None
+                assert loaded_node.id == node.id
+
+            # verify link counts
+            for orig_node in net.list_nodes():
+                loaded_node = loaded_net.get_node(orig_node.id)
+                assert loaded_node is not None
+                assert len(loaded_node.incoming) == len(orig_node.incoming)
+                assert len(loaded_node.outgoing) == len(orig_node.outgoing)
+                for link in loaded_node.incoming:
+                    assert link.id in [l.id for l in orig_node.incoming]
+                for link in loaded_node.outgoing:
+                    assert link.id in [l.id for l in orig_node.outgoing]
+
+    def test_round_trip_json_preserves_link_attributes(self):
+        """Test that motorway link attributes are preserved through save/load."""
+        # create network with specific link attributes
+        main = MotorwayLink(
+            id="main_link",
+            length=2.5,
+            lanes=3,
+            lane_capacity=1800,
+            free_flow_speed=120,
+            jam_density=160,
+        )
+        origin = Origin(id="origin_1")
+        dest = Destination(id="dest_1")
+
+        node1 = Node(id="n1", incoming=[origin], outgoing=[main])
+        node2 = Node(id="n2", incoming=[main], outgoing=[dest])
+        net = Network(nodes=[node1, node2])
+
+        # save and load
+        with tempfile.TemporaryDirectory() as tmpdir:
+            filepath = os.path.join(tmpdir, "network.json")
+            net.save_to_json(filepath)
+            loaded_net = Network.load_from_json(filepath)
+
+            # find the motorway link in loaded network
+            loaded_node1 = loaded_net.get_node("n1")
+            assert loaded_node1 is not None
+            loaded_main = loaded_node1.outgoing[0]
+
+            # verify all attributes preserved
+            assert isinstance(loaded_main, MotorwayLink)
+            assert loaded_main.id == main.id
+            assert loaded_main.length == main.length
+            assert loaded_main.lanes == main.lanes
+            assert loaded_main.Qc_lane == main.Qc_lane
+            assert loaded_main.vf == main.vf
+            assert loaded_main.rho_jam == main.rho_jam
+
+    def test_round_trip_json_complex_network(self):
+        """Test save/load for complex network with all link types."""
+        # create complex network
+        main1 = MotorwayLink(
+            length=1.0,
+            lanes=3,
+            lane_capacity=1500,
+            free_flow_speed=80,
+            jam_density=140,
+            id="main1",
+        )
+        main2 = MotorwayLink(
+            length=1.5,
+            lanes=2,
+            lane_capacity=1500,
+            free_flow_speed=80,
+            jam_density=140,
+            id="main2",
+        )
+        origin = Origin(id="origin_1")
+        onramp = Onramp(
+            lanes=1,
+            lane_capacity=2000,
+            free_flow_speed=100,
+            jam_density=180,
+            id="onramp_1",
+        )
+        dest1 = Destination(id="dest_1")
+        offramp = Offramp(
+            lanes=1,
+            lane_capacity=2000,
+            free_flow_speed=100,
+            jam_density=180,
+            id="offramp_1",
+        )
+        dest2 = Destination(id="dest_2")
+        offramp.destination = dest2
+
+        node1 = Node(id="n1", incoming=[origin], outgoing=[main1])
+        node2 = Node(id="n2", incoming=[main1, onramp], outgoing=[main2, offramp])
+        node3 = Node(id="n3", incoming=[main2], outgoing=[dest1])
+
+        net = Network(nodes=[node1, node2, node3])
+
+        # save and load
+        with tempfile.TemporaryDirectory() as tmpdir:
+            filepath = os.path.join(tmpdir, "network.json")
+            net.save_to_json(filepath)
+            loaded_net = Network.load_from_json(filepath)
+
+            # verify network structure
+            assert len(loaded_net) == 3
+            loaded_node1 = loaded_net.get_node("n1")
+            loaded_node2 = loaded_net.get_node("n2")
+            loaded_node3 = loaded_net.get_node("n3")
+
+            assert loaded_node1 is not None
+            assert loaded_node2 is not None
+            assert loaded_node3 is not None
+
+            # verify node1
+            assert len(loaded_node1.incoming) == 1
+            assert len(loaded_node1.outgoing) == 1
+            assert isinstance(loaded_node1.incoming[0], Origin)
+            assert isinstance(loaded_node1.outgoing[0], MotorwayLink)
+
+            # verify node2 (has merge and diverge)
+            assert len(loaded_node2.incoming) == 2
+            assert len(loaded_node2.outgoing) == 2
+            incoming_types = {type(link).__name__ for link in loaded_node2.incoming}
+            outgoing_types = {type(link).__name__ for link in loaded_node2.outgoing}
+            assert "MotorwayLink" in incoming_types
+            assert "Onramp" in incoming_types
+            assert "MotorwayLink" in outgoing_types
+            assert "Offramp" in outgoing_types
+
+            # verify node3
+            assert len(loaded_node3.incoming) == 1
+            assert len(loaded_node3.outgoing) == 1
+            assert isinstance(loaded_node3.incoming[0], MotorwayLink)
+            assert isinstance(loaded_node3.outgoing[0], Destination)
+
+    def test_load_from_json_validates_successfully(self):
+        """Test that loaded network passes validation."""
+        # create valid network
+        main = MotorwayLink(
+            length=1.0, lanes=2, lane_capacity=1500, free_flow_speed=80, jam_density=140
+        )
+        origin = Origin()
+        dest = Destination()
+
+        node1 = Node(id="n1", incoming=[origin], outgoing=[main])
+        node2 = Node(id="n2", incoming=[main], outgoing=[dest])
+        net = Network(nodes=[node1, node2])
+
+        # save and load
+        with tempfile.TemporaryDirectory() as tmpdir:
+            filepath = os.path.join(tmpdir, "network.json")
+            net.save_to_json(filepath)
+            loaded_net = Network.load_from_json(filepath)
+
+            # should not raise
+            assert loaded_net.validate() is True
+
+    def test_load_from_json_missing_file_raises(self):
+        """Test that loading from non-existent file raises appropriate error."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            filepath = os.path.join(tmpdir, "nonexistent.json")
+
+            with pytest.raises(FileNotFoundError):
+                Network.load_from_json(filepath)
