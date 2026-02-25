@@ -138,3 +138,6 @@ Gemini.md
 # figures generated as output of the demo scripts
 results/
 cache/
+
+# VS code settings (relevant settings covered by GitHub CI actions)
+.vscode/settings.json
