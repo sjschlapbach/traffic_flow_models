@@ -3844,7 +3844,7 @@ class Network:
             b = int(bright_green[2] + ratio * (dark_green[2] - bright_green[2]))
         else:
             # interpolate from dark green through orange to dark red
-            # transition to orange quickly (first 15% of range) for congestion visibility
+            # transition to orange quickly (first 10% of range) for congestion visibility
             excess = rho - rho_crit
             range_width = rho_jam - rho_crit
             ratio = min(excess / range_width if range_width > 0 else 1.0, 1.0)
@@ -4050,12 +4050,12 @@ class Network:
                                 )
 
                             # compute maximum density for this link (visualize worst-case congestion per link)
-                            avg_rho = float(np.max(densities[link.id]))
+                            max_rho = float(np.max(densities[link.id]))
                             rho_crit = critical_densities[link.id]
                             rho_jam = link_properties[link.id]["jam_density"]
 
                             # get color
-                            r, g, b = self._density_to_color(avg_rho, rho_crit, rho_jam)
+                            r, g, b = self._density_to_color(max_rho, rho_crit, rho_jam)
                             color = (r / 255.0, g / 255.0, b / 255.0)
 
                             # draw link
