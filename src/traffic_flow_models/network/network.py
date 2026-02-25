@@ -2011,11 +2011,11 @@ class Network:
                     cell_lengths = [float(cell.length) for cell in link]
 
                     link_properties[link.id] = {
-                        "length": float(link.length),
-                        "lanes": int(link.lanes),
-                        "lane_capacity": float(link.Qc_lane),
-                        "free_flow_speed": float(link.vf),
-                        "jam_density": float(link.rho_jam),
+                        "length": link.length,
+                        "lanes": link.lanes,
+                        "lane_capacity": link.Qc_lane,
+                        "free_flow_speed": link.vf,
+                        "jam_density": link.rho_jam,
                         "num_cells": len(link),
                         "cell_lengths": cell_lengths,
                     }
@@ -2024,9 +2024,9 @@ class Network:
         metadata = {
             "model_type": type(model).__name__,
             "simulation_parameters": {
-                "dt": float(dt),
-                "duration": float(duration),
-                "preferred_cell_size": float(preferred_cell_size),
+                "dt": dt,
+                "duration": duration,
+                "preferred_cell_size": preferred_cell_size,
             },
             "link_properties": link_properties,
             "critical_densities": critical_densities,
@@ -2037,14 +2037,14 @@ class Network:
             # convert model_params to serializable format
             # handle alpha separately as it can be float or dict[str, float]
             metadata["model_parameters"] = {
-                "tau": float(model_params["tau"]),
-                "nu": float(model_params["nu"]),
-                "kappa": float(model_params["kappa"]),
-                "delta": float(model_params["delta"]),
-                "phi": float(model_params["phi"]),
+                "tau": model_params["tau"],
+                "nu": model_params["nu"],
+                "kappa": model_params["kappa"],
+                "delta": model_params["delta"],
+                "phi": model_params["phi"],
                 "alpha": (
                     {
-                        link_id: float(alpha_val)
+                        link_id: alpha_val
                         for link_id, alpha_val in model_params["alpha"].items()
                     }
                     if isinstance(model_params["alpha"], dict)
