@@ -952,6 +952,65 @@ class Network:
         ):
             raise ValueError("Non-numerical values found in state history.")
 
+    def _validate_disturbance_history_numerical(
+        self,
+        origin_demands: dict[str, float] | dict[str, casadi.SX],
+        onramp_demands: dict[str, float] | dict[str, casadi.SX],
+        turning_rates: dict[str, dict[str, float]] | dict[str, dict[str, casadi.SX]],
+        flow_boundary_conditions: dict[str, float] | dict[str, casadi.SX],
+        density_boundary_conditions: dict[str, float] | dict[str, casadi.SX],
+    ) -> None:
+        """Validate that disturbance-history dictionaries contain numerical values.
+
+        This helper checks that the provided per-origin, per-onramp, per-node
+        turning rate, and boundary condition dictionaries contain numeric scalar
+        values. It raises a ValueError if any non-numerical entries are found.
+
+        Args:
+            origin_demands: Mapping origin id -> scalar demand value.
+            onramp_demands: Mapping onramp id -> scalar demand value.
+            turning_rates: Mapping node id -> mapping outgoing link id -> turn rate.
+            flow_boundary_conditions: Mapping destination id -> downstream flow.
+            density_boundary_conditions: Mapping destination id -> downstream density.
+
+        Raises:
+            ValueError: If any entry is not a numeric scalar.
+        """
+
+        if (
+            not all(
+                isinstance(val, (float, np.floating, int, np.integer))
+                for val in origin_demands.values()
+            )
+            or not all(
+                isinstance(val, (float, np.floating, int, np.integer))
+                for val in onramp_demands.values()
+            )
+            or not all(
+                isinstance(val, (float, np.floating, int, np.integer))
+                for val in flow_boundary_conditions.values()
+            )
+            or not all(
+                isinstance(val, (float, np.floating, int, np.integer))
+                for val in density_boundary_conditions.values()
+            )
+        ):
+            raise ValueError("Non-numerical values found in disturbance history.")
+
+        # validate turning rates (nested dictionary)
+        for node_id, node_rates in turning_rates.items():
+            if not isinstance(node_rates, dict):
+                raise ValueError(
+                    f"Turning rates for node {node_id} must be a dictionary."
+                )
+            if not all(
+                isinstance(val, (float, np.floating, int, np.integer))
+                for val in node_rates.values()
+            ):
+                raise ValueError(
+                    f"Non-numerical turning rate values found for node {node_id}."
+                )
+
     def _validate_initial_conditions_numerical(
         self,
         origin_demands: dict[str, Callable[[float], float]],
@@ -1749,13 +1808,18 @@ class Network:
             self.plot(show=show_plots, save_path=topology_path)
             print(f"  Network topology saved to {topology_path}")
 
-            # save simulation results as text file
-            results_path = os.path.join(results_dir, "simulation_results.txt")
-            self.save_simulation_results_txt(
+            # save simulation results as JSON file
+            results_path = os.path.join(results_dir, "simulation_results.json")
+            self.save_simulation_results_json(
                 time_array=time_array,
                 state_history=state_history,
                 disturbance_history=disturbance_history,
                 filepath=results_path,
+                model=model,
+                dt=dt,
+                duration=duration,
+                preferred_cell_size=preferred_cell_size,
+                model_params=model_params,
             )
             print(f"  Simulation results saved to {results_path}")
 
@@ -1780,19 +1844,37 @@ class Network:
 
     # ! Evaluation and result visualizations
     # region
-    def save_simulation_results_txt(
+    def save_simulation_results_json(
         self,
         time_array: NDArray[np.float64],
         state_history: NDArray[np.float64],
         disturbance_history: NDArray[np.float64],
         filepath: str,
+        model: Union["CTM", "METANET"],
+        dt: float,
+        duration: float,
+        preferred_cell_size: float,
+        model_params: Union["METANETParams", None] = None,
     ) -> None:
-        """Save simulation results to a text file for reference.
+        """Save simulation results to a JSON file with comprehensive metadata.
 
         Writes the time array, state history and disturbance history to a
-        human-readable text file for later reference. State and disturbance
-        histories are split into link/node specific time series using the
-        network unpacking helpers.
+        JSON file for later reference. State and disturbance histories are
+        split into link/node specific time series using the network unpacking
+        helpers. Additionally saves simulation metadata including model type,
+        simulation parameters, critical densities for each link, and model
+        parameters (if applicable) for full reproducibility.
+
+        Args:
+            time_array: 1-D array of time points.
+            state_history: 2-D array of state vectors over time.
+            disturbance_history: 2-D array of disturbances over time.
+            filepath: Path where the JSON file should be saved.
+            model: The traffic flow model used for simulation (CTM or METANET).
+            dt: Simulation time step.
+            duration: Total simulation duration.
+            preferred_cell_size: Preferred cell size used for link discretization.
+            model_params: Model parameters for METANET (None for CTM).
         """
 
         # prepare containers for per-link / per-node time series
@@ -1866,9 +1948,9 @@ class Network:
                         onramp_demands_time[k] = []
                     for node_id, inner in turning_t.items():
                         turning_rates_time[node_id] = {lk: [] for lk in inner.keys()}
-                    for k in flow_boundary_conditions_time.keys():
+                    for k in boundary_flow_t.keys():
                         flow_boundary_conditions_time[k] = []
-                    for k in density_boundary_conditions_time.keys():
+                    for k in boundary_density_t.keys():
                         density_boundary_conditions_time[k] = []
 
                 for k, v in origin_d_t.items():
@@ -1882,17 +1964,90 @@ class Network:
                             lk, []
                         ).append(float(np.asarray(rate).tolist()))
 
-                for k, v in flow_boundary_conditions_time.items():
+                for k, v in boundary_flow_t.items():
                     flow_boundary_conditions_time[k].append(
                         float(np.asarray(v).tolist())
                     )
-                for k, v in density_boundary_conditions_time.items():
+                for k, v in boundary_density_t.items():
                     density_boundary_conditions_time[k].append(
                         float(np.asarray(v).tolist())
                     )
 
+        critical_densities: dict[str, float] = {}
+        link_properties: dict[str, dict] = {}
+
+        for node in self.list_nodes():
+            for link in node.outgoing:
+                if isinstance(link, MotorwayLink):
+                    if isinstance(model, CTM):
+                        rho_crit = model.critical_density(
+                            lane_capacity=link.Qc_lane,
+                            free_flow_speed=link.vf,
+                        )
+                    elif isinstance(model, METANET):
+                        if model_params is None:
+                            raise ValueError(
+                                "model_params required for METANET critical density calculation"
+                            )
+                        rho_crit = model.critical_density(
+                            params=model_params,
+                            link_id=link.id,
+                            lane_capacity=link.Qc_lane,
+                            free_flow_speed=link.vf,
+                        )
+                    else:
+                        raise ValueError(f"Unknown model type: {type(model).__name__}")
+
+                    critical_densities[link.id] = rho_crit
+
+                    # extract cell lengths array (cells may have different lengths)
+                    cell_lengths = [float(cell.length) for cell in link]
+
+                    link_properties[link.id] = {
+                        "length": float(link.length),
+                        "lanes": int(link.lanes),
+                        "lane_capacity": float(link.Qc_lane),
+                        "free_flow_speed": float(link.vf),
+                        "jam_density": float(link.rho_jam),
+                        "num_cells": len(link),
+                        "cell_lengths": cell_lengths,
+                    }
+
+        # build metadata section
+        metadata = {
+            "model_type": type(model).__name__,
+            "simulation_parameters": {
+                "dt": float(dt),
+                "duration": float(duration),
+                "preferred_cell_size": float(preferred_cell_size),
+            },
+            "link_properties": link_properties,
+            "critical_densities": critical_densities,
+        }
+
+        # add model parameters if METANET
+        if isinstance(model, METANET) and model_params is not None:
+            # convert model_params to serializable format
+            # handle alpha separately as it can be float or dict[str, float]
+            metadata["model_parameters"] = {
+                "tau": float(model_params["tau"]),
+                "nu": float(model_params["nu"]),
+                "kappa": float(model_params["kappa"]),
+                "delta": float(model_params["delta"]),
+                "phi": float(model_params["phi"]),
+                "alpha": (
+                    {
+                        link_id: float(alpha_val)
+                        for link_id, alpha_val in model_params["alpha"].items()
+                    }
+                    if isinstance(model_params["alpha"], dict)
+                    else float(model_params["alpha"])
+                ),
+            }
+
         # assemble output structure
         out = {
+            "metadata": metadata,
             "time_array": np.asarray(time_array).tolist(),
             "state_time_series": {
                 "flows": flows_time,
@@ -1911,15 +2066,268 @@ class Network:
             },
         }
 
-        # write readable JSON to file
+        # write JSON to file
         with open(filepath, "w") as f:
-            f.write("=" * 80 + "\n")
-            f.write("SIMULATION RESULTS (per-link / per-node time series)\n")
-            f.write("=" * 80 + "\n\n")
             json.dump(out, f, indent=2)
-            f.write("\n\n" + "=" * 80 + "\n")
-            f.write("END OF SIMULATION RESULTS\n")
-            f.write("\n" + "=" * 80 + "\n")
+
+    @classmethod
+    def load_simulation_results_json(
+        cls,
+        filepath: str,
+        network: "Network",
+    ) -> Tuple[
+        NDArray[np.float64],
+        NDArray[np.float64],
+        NDArray[np.float64],
+        dict | None,
+    ]:
+        """Load simulation results from a JSON file with validation.
+
+        Reads a JSON file created by `save_simulation_results_json` and validates
+        that all required fields are present and contain valid numerical data.
+        Returns the reconstructed time array, state history, disturbance history,
+        and metadata (if present in the file).
+
+        Args:
+            filepath: Path to the JSON file containing simulation results.
+            network: Network instance to use for validating structure against saved data.
+
+        Returns:
+            Tuple of (time_array, state_history, disturbance_history, metadata) where:
+            - time_array: 1-D NumPy array of time points
+            - state_history: 2-D NumPy array of state vectors over time
+            - disturbance_history: 2-D NumPy array of disturbances over time
+            - metadata: Dictionary containing simulation metadata (model type, parameters,
+              critical densities, link properties) or None if not present in file
+
+        Raises:
+            ValueError: If required fields are missing or data validation fails.
+            FileNotFoundError: If the specified file does not exist.
+        """
+        # load JSON data from file
+        with open(filepath, "r") as f:
+            data = json.load(f)
+
+        # extract metadata if present (optional for backward compatibility)
+        metadata = data.get("metadata", None)
+
+        # validate top-level structure
+        required_fields = ["time_array", "state_time_series", "disturbance_time_series"]
+        for field in required_fields:
+            if field not in data:
+                raise ValueError(
+                    f"Missing required field '{field}' in simulation results file."
+                )
+
+        # validate state_time_series structure
+        state_required = [
+            "flows",
+            "densities",
+            "speeds",
+            "origin_queues",
+            "onramp_queues",
+            "offramp_queues",
+        ]
+        for field in state_required:
+            if field not in data["state_time_series"]:
+                raise ValueError(
+                    f"Missing required field '{field}' in state_time_series."
+                )
+
+        # validate disturbance_time_series structure
+        disturbance_required = [
+            "origin_demands",
+            "onramp_demands",
+            "turning_rates",
+            "flow_boundary_conditions",
+            "density_boundary_conditions",
+        ]
+        for field in disturbance_required:
+            if field not in data["disturbance_time_series"]:
+                raise ValueError(
+                    f"Missing required field '{field}' in disturbance_time_series."
+                )
+
+        # convert time_array to NumPy array
+        time_array = np.array(data["time_array"], dtype=np.float64)
+        if time_array.ndim != 1:
+            raise ValueError("time_array must be a 1-D array.")
+
+        num_timesteps = len(time_array)
+
+        # reconstruct state dictionaries for validation and conversion
+        state_series = data["state_time_series"]
+
+        # validate that all link IDs in saved data match network structure
+        for node in network.list_nodes():
+            for link in node.incoming:
+                if isinstance(link, Origin):
+                    if link.id not in state_series["origin_queues"]:
+                        raise ValueError(
+                            f"Origin queue data for '{link.id}' not found in saved results."
+                        )
+                elif isinstance(link, Onramp):
+                    if link.id not in state_series["flows"]:
+                        raise ValueError(
+                            f"Flow data for onramp '{link.id}' not found in saved results."
+                        )
+                    if link.id not in state_series["onramp_queues"]:
+                        raise ValueError(
+                            f"Onramp queue data for '{link.id}' not found in saved results."
+                        )
+
+            for link in node.outgoing:
+                if isinstance(link, MotorwayLink):
+                    if link.id not in state_series["flows"]:
+                        raise ValueError(
+                            f"Flow data for motorway link '{link.id}' not found in saved results."
+                        )
+                    if link.id not in state_series["densities"]:
+                        raise ValueError(
+                            f"Density data for motorway link '{link.id}' not found in saved results."
+                        )
+                    if link.id not in state_series["speeds"]:
+                        raise ValueError(
+                            f"Speed data for motorway link '{link.id}' not found in saved results."
+                        )
+                elif isinstance(link, Offramp):
+                    if link.id not in state_series["flows"]:
+                        raise ValueError(
+                            f"Flow data for offramp '{link.id}' not found in saved results."
+                        )
+                    if link.id not in state_series["offramp_queues"]:
+                        raise ValueError(
+                            f"Offramp queue data for '{link.id}' not found in saved results."
+                        )
+                elif isinstance(link, Destination):
+                    if link.id not in state_series["flows"]:
+                        raise ValueError(
+                            f"Flow data for destination '{link.id}' not found in saved results."
+                        )
+
+        # reconstruct state_history by iterating through timesteps
+        # first, get state size from network
+        state_dicts = []
+        for t in range(num_timesteps):
+            flows_t = {
+                k: np.array(v[t], dtype=np.float64)
+                for k, v in state_series["flows"].items()
+            }
+            densities_t = {
+                k: np.array(v[t], dtype=np.float64)
+                for k, v in state_series["densities"].items()
+            }
+            speeds_t = {
+                k: np.array(v[t], dtype=np.float64)
+                for k, v in state_series["speeds"].items()
+            }
+            origin_queues_t = {
+                k: float(v[t]) for k, v in state_series["origin_queues"].items()
+            }
+            onramp_queues_t = {
+                k: float(v[t]) for k, v in state_series["onramp_queues"].items()
+            }
+            offramp_queues_t = {
+                k: float(v[t]) for k, v in state_series["offramp_queues"].items()
+            }
+
+            # validate numerical data using existing validation (for first timestep)
+            if t == 0:
+                network._validate_state_history_numerical(
+                    flows=cast(dict[str, NDArray[np.float64]], flows_t),  # type: ignore
+                    densities=cast(dict[str, NDArray[np.float64]], densities_t),  # type: ignore
+                    speeds=cast(dict[str, NDArray[np.float64]], speeds_t),  # type: ignore
+                    origin_queues=cast(dict[str, float], origin_queues_t),  # type: ignore
+                    onramp_queues=cast(dict[str, float], onramp_queues_t),  # type: ignore
+                    offramp_queues=cast(dict[str, float], offramp_queues_t),  # type: ignore
+                )
+
+            state_dicts.append(
+                (
+                    flows_t,
+                    densities_t,
+                    speeds_t,
+                    origin_queues_t,
+                    onramp_queues_t,
+                    offramp_queues_t,
+                )
+            )
+
+        # pack into state vectors
+        state_vecs = []
+        for (
+            flows_t,
+            densities_t,
+            speeds_t,
+            origin_q_t,
+            onramp_q_t,
+            offramp_q_t,
+        ) in state_dicts:
+            x_t, *_ = network.network_dict_to_state_vec(
+                flow_dict=flows_t,
+                density_dict=densities_t,
+                speed_dict=speeds_t,
+                origin_queue_dict=origin_q_t,
+                onramp_queue_dict=onramp_q_t,
+                offramp_queue_dict=offramp_q_t,
+            )
+            state_vecs.append(x_t)
+
+        state_history = np.column_stack(state_vecs)
+
+        # reconstruct disturbance_history similarly
+        disturbance_series = data["disturbance_time_series"]
+        num_dist_timesteps = (
+            len(next(iter(disturbance_series["origin_demands"].values())))
+            if disturbance_series["origin_demands"]
+            else 0
+        )
+
+        disturbance_vecs = []
+        for t in range(num_dist_timesteps):
+            origin_demands_t = {
+                k: float(v[t]) for k, v in disturbance_series["origin_demands"].items()
+            }
+            onramp_demands_t = {
+                k: float(v[t]) for k, v in disturbance_series["onramp_demands"].items()
+            }
+            turning_rates_t = {
+                node_id: {lk: float(rates[t]) for lk, rates in inner.items()}
+                for node_id, inner in disturbance_series["turning_rates"].items()
+            }
+            flow_bc_t = {
+                k: float(v[t])
+                for k, v in disturbance_series["flow_boundary_conditions"].items()
+            }
+            density_bc_t = {
+                k: float(v[t])
+                for k, v in disturbance_series["density_boundary_conditions"].items()
+            }
+
+            # validate numerical data using existing validation (for first timestep)
+            if t == 0:
+                network._validate_disturbance_history_numerical(
+                    origin_demands=cast(dict[str, float], origin_demands_t),  # type: ignore
+                    onramp_demands=cast(dict[str, float], onramp_demands_t),  # type: ignore
+                    turning_rates=cast(dict[str, dict[str, float]], turning_rates_t),  # type: ignore
+                    flow_boundary_conditions=cast(dict[str, float], flow_bc_t),  # type: ignore
+                    density_boundary_conditions=cast(dict[str, float], density_bc_t),  # type: ignore
+                )
+
+            d_t = network.network_dict_to_disturbance_vec(
+                origin_demand_dict=origin_demands_t,
+                onramp_demand_dict=onramp_demands_t,
+                turning_rate_dict=turning_rates_t,
+                flow_boundary_condition_dict=flow_bc_t,
+                density_boundary_condition_dict=density_bc_t,
+            )
+            disturbance_vecs.append(d_t)
+
+        disturbance_history = (
+            np.column_stack(disturbance_vecs) if disturbance_vecs else np.array([])
+        )
+
+        return time_array, state_history, disturbance_history, metadata
 
     def save_to_txt(self, filepath: str) -> None:
         """Save network structure to a text file for reference.
