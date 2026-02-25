@@ -11,9 +11,11 @@ A Python library for simulating and analyzing macroscopic traffic flow on highwa
 ## Features
 
 - **Traffic Flow Models**: CTM (first-order) and METANET (second-order) macroscopic models
-- **Network Components**: Flexible highway network structure with cells, onramps, and offramps
+- **Network Components**: Flexible highway network structure with motorway links, nodes, onramps, offramps, origins, and destinations
 - **Control Strategies**: ALINEA ramp metering controller
-- **Visualization**: Network topology plotting and simulation result visualization
+- **Performance Metrics**: Compute Vehicle-Kilometers Traveled (VKT), Vehicle-Hours Traveled (VHT), and average speed
+- **Visualization**: Network topology plotting, simulation result visualization, and video export
+- **SUMO Integration**: Pipeline components for importing and benchmarking real-world highway networks
 
 ## Installation
 
@@ -31,51 +33,167 @@ For the pipeline to be fully functional, auxiliary command line commands such as
 
 ### Creating a Network
 
-```python
-from traffic-flow-models import Network, Onramp
+Networks are built using nodes that connect motorway links, onramps, offramps, origins, and destinations:
 
-network = Network()
-network.add_cell(length=0.5, lanes=3, lane_capacity=2000,
-                 free_flow_speed=100, jam_density=180)
-network.add_cell(length=0.5, lanes=3, lane_capacity=2000,
-                 free_flow_speed=100, jam_density=180,
-                 onramp=Onramp(lanes=1, lane_capacity=2000,
-                              free_flow_speed=100, jam_density=180))
+```python
+from traffic_flow_models import (
+    Network, Node, MotorwayLink, Onramp, Origin, Destination
+)
+
+# Create network components
+origin = Origin(id="origin")
+destination = Destination(id="destination")
+
+# Define motorway links
+m1 = MotorwayLink(
+    id="m1", length=1.0, lanes=3, lane_capacity=2000,
+    free_flow_speed=100, jam_density=180
+)
+m2 = MotorwayLink(
+    id="m2", length=2.0, lanes=3, lane_capacity=2000,
+    free_flow_speed=100, jam_density=180
+)
+
+# Create onramp
+onramp = Onramp(
+    id="onramp", lanes=1, lane_capacity=2000,
+    free_flow_speed=100, jam_density=180
+)
+
+# Connect components using nodes
+n0 = Node(id="n0", incoming=[origin], outgoing=[m1])
+n0.position = (0.0, 0.0)
+
+n1 = Node(id="n1", incoming=[m1, onramp], outgoing=[m2])
+n1.position = (1.0, 0.0)
+
+n2 = Node(id="n2", incoming=[m2], outgoing=[destination])
+n2.position = (3.0, 0.0)
+
+# Build the network
+network = Network(nodes=[n0, n1, n2])
 ```
 
 ### Running Simulations
 
+Simulations use dictionaries of time-dependent demand functions:
+
 ```python
-from traffic-flow-models import CTM, METANET
-import numpy as np
+from traffic_flow_models import CTM, METANET, METANETParams
+from typing import Callable
+
+# Define demand functions
+def mainline_demand(t: float) -> float:
+    return 4000.0 if t < 1.0 else 3000.0
+
+def onramp_demand(t: float) -> float:
+    return 2000.0 if 0.25 < t < 0.75 else 500.0
+
+# Map demands to network components
+origin_demands: dict[str, Callable[[float], float]] = {
+    "origin": mainline_demand
+}
+onramp_demands: dict[str, Callable[[float], float]] = {
+    "onramp": onramp_demand
+}
+destination_flow_bc: dict[str, Callable[[float], float]] = {
+    "destination": lambda t: 6000.0
+}
+destination_density_bc: dict[str, Callable[[float], float]] = {
+    "destination": lambda t: 0.0
+}
+turning_rates: dict[str, Callable[[float], dict[str, float]]] = {
+    "n0": lambda t: {"m1": 1.0},
+    "n1": lambda t: {"m2": 1.0},
+    "n2": lambda t: {"destination": 1.0}
+}
 
 # CTM simulation
 ctm = CTM()
-density, flow, speed, *_ = network.simulate(
-    duration=1.0, dt=10.0/3600, model=ctm,
-    mainline_demand=lambda t: 4000,
-    onramp_demand=lambda t, n: np.array([0, 2000] + [0]*(n-2)),
-    plot_results=True
+time, states, disturbances = network.simulate(
+    duration=1.0,
+    dt=10.0/3600,
+    model=ctm,
+    preferred_cell_size=0.5,
+    origin_demands=origin_demands,
+    onramp_demands=onramp_demands,
+    turning_rates=turning_rates,
+    destination_flow_bc=destination_flow_bc,
+    destination_density_bc=destination_density_bc,
+    plot_results=True,
+    results_dir="results/ctm_run"
 )
 
-# METANET simulation
-metanet = METANET(tau=22/3600, nu=15, kappa=10, delta=1.4, phi=10, alpha=2)
-density, flow, speed, *_ = network.simulate(
-    duration=1.0, dt=10.0/3600, model=metanet,
-    mainline_demand=lambda t: 4000,
-    onramp_demand=lambda t, n: np.array([0, 2000] + [0]*(n-2)),
-    plot_results=True
+# METANET simulation with parameters
+metanet = METANET()
+model_params: METANETParams = {
+    "tau": 22/3600,
+    "nu": 15,
+    "kappa": 10,
+    "delta": 1.4,
+    "phi": 10,
+    "alpha": 2
+}
+
+time, states, disturbances = network.simulate(
+    duration=1.0,
+    dt=10.0/3600,
+    model=metanet,
+    model_params=model_params,
+    preferred_cell_size=0.5,
+    origin_demands=origin_demands,
+    onramp_demands=onramp_demands,
+    turning_rates=turning_rates,
+    destination_flow_bc=destination_flow_bc,
+    destination_density_bc=destination_density_bc,
+    plot_results=True,
+    results_dir="results/metanet_run"
 )
 ```
 
-### ALINEA Ramp Metering
+### Performance Metrics and Visualization
 
 ```python
-from traffic-flow-models import AlineaController
+# Compute network performance metrics
+VKT, VHT, avg_speed = network.compute_performance_metrics(
+    states=states,
+    dt=10.0/3600,
+    timesteps=len(time)
+)
+print(f"Total VKT: {VKT:.2f} veh-km")
+print(f"Total VHT: {VHT:.2f} veh-h")
+print(f"Average Speed: {avg_speed:.2f} km/h")
 
-onramp = Onramp(lanes=1, lane_capacity=2000, free_flow_speed=100, jam_density=180,
-               controller=AlineaController(gain=5.0, setpoint=20.0,measurement_cell=3))
+# Generate video visualization
+network.visualize_simulation(
+    results_filepath="results/simulation_results.json",
+    output_filepath="results/simulation.avi",
+    fps=30,
+    subsampling=1
+)
 ```
+
+<!-- TODO: re-introduce section on ALINEA and ramp metering, once this feature is supported again by the library
+### ALINEA Ramp Metering
+
+Attach an ALINEA controller to an onramp during network creation:
+
+```python
+from traffic_flow_models import AlineaController
+
+onramp = Onramp(
+    id="onramp",
+    lanes=1,
+    lane_capacity=2000,
+    free_flow_speed=100,
+    jam_density=180,
+    controller=AlineaController(
+        gain=5.0,
+        setpoint=20.0,
+        measurement_cell=3
+    )
+)
+``` -->
 
 ## Development
 
@@ -122,9 +240,11 @@ traffic_flow_models/
 ├── src/
 │   ├── traffic_flow_models/     # Main package
 │   │   ├── model/               # Traffic flow models (CTM, METANET)
-│   │   ├── network/             # Network components
-│   │   └── controller/          # Control strategies (ALINEA)
-│   └── demo/                    # Demo scripts
+│   │   ├── network/             # Network components (links, nodes, cells)
+│   │   ├── controller/          # Control strategies (ALINEA)
+│   │   ├── simulator/           # SUMO simulation and pipeline
+│   │   └── arbitrator/          # Demand aggregation and loop detectors
+│   └── demo/                    # Demo scripts and scenarios
 └── tests/                       # Unit tests
 ```
 
