@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import cv2
 import math
 import json
 import warnings
@@ -8,6 +9,7 @@ import casadi
 import numpy as np
 import networkx as nx
 import matplotlib.pyplot as plt
+from tqdm import tqdm
 from numpy.typing import NDArray
 from datetime import datetime
 from matplotlib.lines import Line2D
@@ -15,8 +17,6 @@ from typing import (
     cast,
     Iterator,
     Callable,
-    Mapping,
-    Optional,
     Tuple,
     Union,
 )
@@ -51,6 +51,13 @@ class Network:
           (including origins and destinations beyond regular links)
         - All nodes in the network must be connected through links (no unconnected components)
     """
+
+    # visualization color constants (RGB tuples in range [0, 255])
+    COLOR_BRIGHT_GREEN = (144, 238, 144)  # low density
+    COLOR_DARK_GREEN = (0, 100, 0)  # critical density
+    COLOR_ORANGE = (255, 165, 0)  # moderate congestion
+    COLOR_DARK_RED = (139, 0, 0)  # jam density
+    COLOR_CONGESTION_RED = (0.8, 0.0, 0.0)  # ramp queue congestion (normalized)
 
     # ! Initialization and basic methods
     # region
@@ -901,12 +908,12 @@ class Network:
 
     def _validate_state_history_numerical(
         self,
-        flows: dict[str, NDArray[np.float64] | casadi.SX],
-        densities: dict[str, NDArray[np.float64] | casadi.SX],
-        speeds: dict[str, NDArray[np.float64] | casadi.SX],
-        origin_queues: dict[str, float | casadi.SX],
-        onramp_queues: dict[str, float | casadi.SX],
-        offramp_queues: dict[str, float | casadi.SX],
+        flows: dict[str, NDArray[np.float64]] | dict[str, casadi.SX],
+        densities: dict[str, NDArray[np.float64]] | dict[str, casadi.SX],
+        speeds: dict[str, NDArray[np.float64]] | dict[str, casadi.SX],
+        origin_queues: dict[str, float] | dict[str, casadi.SX],
+        onramp_queues: dict[str, float] | dict[str, casadi.SX],
+        offramp_queues: dict[str, float] | dict[str, casadi.SX],
     ) -> None:
         """Validate that state-history dictionaries contain numerical values.
 
@@ -951,6 +958,65 @@ class Network:
             )
         ):
             raise ValueError("Non-numerical values found in state history.")
+
+    def _validate_disturbance_history_numerical(
+        self,
+        origin_demands: dict[str, float] | dict[str, casadi.SX],
+        onramp_demands: dict[str, float] | dict[str, casadi.SX],
+        turning_rates: dict[str, dict[str, float]] | dict[str, dict[str, casadi.SX]],
+        flow_boundary_conditions: dict[str, float] | dict[str, casadi.SX],
+        density_boundary_conditions: dict[str, float] | dict[str, casadi.SX],
+    ) -> None:
+        """Validate that disturbance-history dictionaries contain numerical values.
+
+        This helper checks that the provided per-origin, per-onramp, per-node
+        turning rate, and boundary condition dictionaries contain numeric scalar
+        values. It raises a ValueError if any non-numerical entries are found.
+
+        Args:
+            origin_demands: Mapping origin id -> scalar demand value.
+            onramp_demands: Mapping onramp id -> scalar demand value.
+            turning_rates: Mapping node id -> mapping outgoing link id -> turn rate.
+            flow_boundary_conditions: Mapping destination id -> downstream flow.
+            density_boundary_conditions: Mapping destination id -> downstream density.
+
+        Raises:
+            ValueError: If any entry is not a numeric scalar.
+        """
+
+        if (
+            not all(
+                isinstance(val, (float, np.floating, int, np.integer))
+                for val in origin_demands.values()
+            )
+            or not all(
+                isinstance(val, (float, np.floating, int, np.integer))
+                for val in onramp_demands.values()
+            )
+            or not all(
+                isinstance(val, (float, np.floating, int, np.integer))
+                for val in flow_boundary_conditions.values()
+            )
+            or not all(
+                isinstance(val, (float, np.floating, int, np.integer))
+                for val in density_boundary_conditions.values()
+            )
+        ):
+            raise ValueError("Non-numerical values found in disturbance history.")
+
+        # validate turning rates (nested dictionary)
+        for node_id, node_rates in turning_rates.items():
+            if not isinstance(node_rates, dict):
+                raise ValueError(
+                    f"Turning rates for node {node_id} must be a dictionary."
+                )
+            if not all(
+                isinstance(val, (float, np.floating, int, np.integer))
+                for val in node_rates.values()
+            ):
+                raise ValueError(
+                    f"Non-numerical turning rate values found for node {node_id}."
+                )
 
     def _validate_initial_conditions_numerical(
         self,
@@ -1749,13 +1815,18 @@ class Network:
             self.plot(show=show_plots, save_path=topology_path)
             print(f"  Network topology saved to {topology_path}")
 
-            # save simulation results as text file
-            results_path = os.path.join(results_dir, "simulation_results.txt")
-            self.save_simulation_results_txt(
+            # save simulation results as JSON file
+            results_path = os.path.join(results_dir, "simulation_results.json")
+            self.save_simulation_results_json(
                 time_array=time_array,
                 state_history=state_history,
                 disturbance_history=disturbance_history,
                 filepath=results_path,
+                model=model,
+                dt=dt,
+                duration=duration,
+                preferred_cell_size=preferred_cell_size,
+                model_params=model_params,
             )
             print(f"  Simulation results saved to {results_path}")
 
@@ -1780,19 +1851,37 @@ class Network:
 
     # ! Evaluation and result visualizations
     # region
-    def save_simulation_results_txt(
+    def save_simulation_results_json(
         self,
         time_array: NDArray[np.float64],
         state_history: NDArray[np.float64],
         disturbance_history: NDArray[np.float64],
         filepath: str,
+        model: Union["CTM", "METANET"],
+        dt: float,
+        duration: float,
+        preferred_cell_size: float,
+        model_params: Union["METANETParams", None] = None,
     ) -> None:
-        """Save simulation results to a text file for reference.
+        """Save simulation results to a JSON file with comprehensive metadata.
 
         Writes the time array, state history and disturbance history to a
-        human-readable text file for later reference. State and disturbance
-        histories are split into link/node specific time series using the
-        network unpacking helpers.
+        JSON file for later reference. State and disturbance histories are
+        split into link/node specific time series using the network unpacking
+        helpers. Additionally saves simulation metadata including model type,
+        simulation parameters, critical densities for each link, and model
+        parameters (if applicable) for full reproducibility.
+
+        Args:
+            time_array: 1-D array of time points.
+            state_history: 2-D array of state vectors over time.
+            disturbance_history: 2-D array of disturbances over time.
+            filepath: Path where the JSON file should be saved.
+            model: The traffic flow model used for simulation (CTM or METANET).
+            dt: Simulation time step.
+            duration: Total simulation duration.
+            preferred_cell_size: Preferred cell size used for link discretization.
+            model_params: Model parameters for METANET (None for CTM).
         """
 
         # prepare containers for per-link / per-node time series
@@ -1866,9 +1955,9 @@ class Network:
                         onramp_demands_time[k] = []
                     for node_id, inner in turning_t.items():
                         turning_rates_time[node_id] = {lk: [] for lk in inner.keys()}
-                    for k in flow_boundary_conditions_time.keys():
+                    for k in boundary_flow_t.keys():
                         flow_boundary_conditions_time[k] = []
-                    for k in density_boundary_conditions_time.keys():
+                    for k in boundary_density_t.keys():
                         density_boundary_conditions_time[k] = []
 
                 for k, v in origin_d_t.items():
@@ -1882,17 +1971,90 @@ class Network:
                             lk, []
                         ).append(float(np.asarray(rate).tolist()))
 
-                for k, v in flow_boundary_conditions_time.items():
+                for k, v in boundary_flow_t.items():
                     flow_boundary_conditions_time[k].append(
                         float(np.asarray(v).tolist())
                     )
-                for k, v in density_boundary_conditions_time.items():
+                for k, v in boundary_density_t.items():
                     density_boundary_conditions_time[k].append(
                         float(np.asarray(v).tolist())
                     )
 
+        critical_densities: dict[str, float] = {}
+        link_properties: dict[str, dict] = {}
+
+        for node in self.list_nodes():
+            for link in node.outgoing:
+                if isinstance(link, MotorwayLink):
+                    if isinstance(model, CTM):
+                        rho_crit = model.critical_density(
+                            lane_capacity=link.Qc_lane,
+                            free_flow_speed=link.vf,
+                        )
+                    elif isinstance(model, METANET):
+                        if model_params is None:
+                            raise ValueError(
+                                "model_params required for METANET critical density calculation"
+                            )
+                        rho_crit = model.critical_density(
+                            params=model_params,
+                            link_id=link.id,
+                            lane_capacity=link.Qc_lane,
+                            free_flow_speed=link.vf,
+                        )
+                    else:
+                        raise ValueError(f"Unknown model type: {type(model).__name__}")
+
+                    critical_densities[link.id] = rho_crit
+
+                    # extract cell lengths array (cells may have different lengths)
+                    cell_lengths = [float(cell.length) for cell in link]
+
+                    link_properties[link.id] = {
+                        "length": link.length,
+                        "lanes": link.lanes,
+                        "lane_capacity": link.Qc_lane,
+                        "free_flow_speed": link.vf,
+                        "jam_density": link.rho_jam,
+                        "num_cells": len(link),
+                        "cell_lengths": cell_lengths,
+                    }
+
+        # build metadata section
+        metadata = {
+            "model_type": type(model).__name__,
+            "simulation_parameters": {
+                "dt": dt,
+                "duration": duration,
+                "preferred_cell_size": preferred_cell_size,
+            },
+            "link_properties": link_properties,
+            "critical_densities": critical_densities,
+        }
+
+        # add model parameters if METANET
+        if isinstance(model, METANET) and model_params is not None:
+            # convert model_params to serializable format
+            # handle alpha separately as it can be float or dict[str, float]
+            metadata["model_parameters"] = {
+                "tau": model_params["tau"],
+                "nu": model_params["nu"],
+                "kappa": model_params["kappa"],
+                "delta": model_params["delta"],
+                "phi": model_params["phi"],
+                "alpha": (
+                    {
+                        link_id: alpha_val
+                        for link_id, alpha_val in model_params["alpha"].items()
+                    }
+                    if isinstance(model_params["alpha"], dict)
+                    else float(model_params["alpha"])
+                ),
+            }
+
         # assemble output structure
         out = {
+            "metadata": metadata,
             "time_array": np.asarray(time_array).tolist(),
             "state_time_series": {
                 "flows": flows_time,
@@ -1911,15 +2073,268 @@ class Network:
             },
         }
 
-        # write readable JSON to file
+        # write JSON to file
         with open(filepath, "w") as f:
-            f.write("=" * 80 + "\n")
-            f.write("SIMULATION RESULTS (per-link / per-node time series)\n")
-            f.write("=" * 80 + "\n\n")
             json.dump(out, f, indent=2)
-            f.write("\n\n" + "=" * 80 + "\n")
-            f.write("END OF SIMULATION RESULTS\n")
-            f.write("\n" + "=" * 80 + "\n")
+
+    @classmethod
+    def load_simulation_results_json(
+        cls,
+        filepath: str,
+        network: "Network",
+    ) -> Tuple[
+        NDArray[np.float64],
+        NDArray[np.float64],
+        NDArray[np.float64],
+        dict | None,
+    ]:
+        """Load simulation results from a JSON file with validation.
+
+        Reads a JSON file created by `save_simulation_results_json` and validates
+        that all required fields are present and contain valid numerical data.
+        Returns the reconstructed time array, state history, disturbance history,
+        and metadata (if present in the file).
+
+        Args:
+            filepath: Path to the JSON file containing simulation results.
+            network: Network instance to use for validating structure against saved data.
+
+        Returns:
+            Tuple of (time_array, state_history, disturbance_history, metadata) where:
+            - time_array: 1-D NumPy array of time points
+            - state_history: 2-D NumPy array of state vectors over time
+            - disturbance_history: 2-D NumPy array of disturbances over time
+            - metadata: Dictionary containing simulation metadata (model type, parameters,
+              critical densities, link properties) or None if not present in file
+
+        Raises:
+            ValueError: If required fields are missing or data validation fails.
+            FileNotFoundError: If the specified file does not exist.
+        """
+        # load JSON data from file
+        with open(filepath, "r") as f:
+            data = json.load(f)
+
+        # extract metadata if present (optional for backward compatibility)
+        metadata = data.get("metadata", None)
+
+        # validate top-level structure
+        required_fields = ["time_array", "state_time_series", "disturbance_time_series"]
+        for field in required_fields:
+            if field not in data:
+                raise ValueError(
+                    f"Missing required field '{field}' in simulation results file."
+                )
+
+        # validate state_time_series structure
+        state_required = [
+            "flows",
+            "densities",
+            "speeds",
+            "origin_queues",
+            "onramp_queues",
+            "offramp_queues",
+        ]
+        for field in state_required:
+            if field not in data["state_time_series"]:
+                raise ValueError(
+                    f"Missing required field '{field}' in state_time_series."
+                )
+
+        # validate disturbance_time_series structure
+        disturbance_required = [
+            "origin_demands",
+            "onramp_demands",
+            "turning_rates",
+            "flow_boundary_conditions",
+            "density_boundary_conditions",
+        ]
+        for field in disturbance_required:
+            if field not in data["disturbance_time_series"]:
+                raise ValueError(
+                    f"Missing required field '{field}' in disturbance_time_series."
+                )
+
+        # convert time_array to NumPy array
+        time_array = np.array(data["time_array"], dtype=np.float64)
+        if time_array.ndim != 1:
+            raise ValueError("time_array must be a 1-D array.")
+
+        num_timesteps = len(time_array)
+
+        # reconstruct state dictionaries for validation and conversion
+        state_series = data["state_time_series"]
+
+        # validate that all link IDs in saved data match network structure
+        for node in network.list_nodes():
+            for link in node.incoming:
+                if isinstance(link, Origin):
+                    if link.id not in state_series["origin_queues"]:
+                        raise ValueError(
+                            f"Origin queue data for '{link.id}' not found in saved results."
+                        )
+                elif isinstance(link, Onramp):
+                    if link.id not in state_series["flows"]:
+                        raise ValueError(
+                            f"Flow data for onramp '{link.id}' not found in saved results."
+                        )
+                    if link.id not in state_series["onramp_queues"]:
+                        raise ValueError(
+                            f"Onramp queue data for '{link.id}' not found in saved results."
+                        )
+
+            for link in node.outgoing:
+                if isinstance(link, MotorwayLink):
+                    if link.id not in state_series["flows"]:
+                        raise ValueError(
+                            f"Flow data for motorway link '{link.id}' not found in saved results."
+                        )
+                    if link.id not in state_series["densities"]:
+                        raise ValueError(
+                            f"Density data for motorway link '{link.id}' not found in saved results."
+                        )
+                    if link.id not in state_series["speeds"]:
+                        raise ValueError(
+                            f"Speed data for motorway link '{link.id}' not found in saved results."
+                        )
+                elif isinstance(link, Offramp):
+                    if link.id not in state_series["flows"]:
+                        raise ValueError(
+                            f"Flow data for offramp '{link.id}' not found in saved results."
+                        )
+                    if link.id not in state_series["offramp_queues"]:
+                        raise ValueError(
+                            f"Offramp queue data for '{link.id}' not found in saved results."
+                        )
+                elif isinstance(link, Destination):
+                    if link.id not in state_series["flows"]:
+                        raise ValueError(
+                            f"Flow data for destination '{link.id}' not found in saved results."
+                        )
+
+        # reconstruct state_history by iterating through timesteps
+        # first, get state size from network
+        state_dicts = []
+        for t in range(num_timesteps):
+            flows_t = {
+                str(id): np.array(v[t], dtype=np.float64)
+                for id, v in state_series["flows"].items()
+            }
+            densities_t = {
+                str(id): np.array(v[t], dtype=np.float64)
+                for id, v in state_series["densities"].items()
+            }
+            speeds_t = {
+                str(id): np.array(v[t], dtype=np.float64)
+                for id, v in state_series["speeds"].items()
+            }
+            origin_queues_t = {
+                str(id): float(v[t]) for id, v in state_series["origin_queues"].items()
+            }
+            onramp_queues_t = {
+                str(id): float(v[t]) for id, v in state_series["onramp_queues"].items()
+            }
+            offramp_queues_t = {
+                str(id): float(v[t]) for id, v in state_series["offramp_queues"].items()
+            }
+
+            # validate numerical data using existing validation (for first timestep)
+            if t == 0:
+                network._validate_state_history_numerical(
+                    flows=flows_t,
+                    densities=densities_t,
+                    speeds=speeds_t,
+                    origin_queues=origin_queues_t,
+                    onramp_queues=onramp_queues_t,
+                    offramp_queues=offramp_queues_t,
+                )
+
+            state_dicts.append(
+                (
+                    flows_t,
+                    densities_t,
+                    speeds_t,
+                    origin_queues_t,
+                    onramp_queues_t,
+                    offramp_queues_t,
+                )
+            )
+
+        # pack into state vectors
+        state_vecs = []
+        for (
+            flows_t,
+            densities_t,
+            speeds_t,
+            origin_q_t,
+            onramp_q_t,
+            offramp_q_t,
+        ) in state_dicts:
+            x_t, *_ = network.network_dict_to_state_vec(
+                flow_dict=flows_t,
+                density_dict=densities_t,
+                speed_dict=speeds_t,
+                origin_queue_dict=origin_q_t,
+                onramp_queue_dict=onramp_q_t,
+                offramp_queue_dict=offramp_q_t,
+            )
+            state_vecs.append(x_t)
+
+        state_history = np.column_stack(state_vecs)
+
+        # reconstruct disturbance_history similarly
+        disturbance_series = data["disturbance_time_series"]
+        num_dist_timesteps = (
+            len(next(iter(disturbance_series["origin_demands"].values())))
+            if disturbance_series["origin_demands"]
+            else 0
+        )
+
+        disturbance_vecs = []
+        for t in range(num_dist_timesteps):
+            origin_demands_t = {
+                k: float(v[t]) for k, v in disturbance_series["origin_demands"].items()
+            }
+            onramp_demands_t = {
+                k: float(v[t]) for k, v in disturbance_series["onramp_demands"].items()
+            }
+            turning_rates_t = {
+                node_id: {lk: float(rates[t]) for lk, rates in inner.items()}
+                for node_id, inner in disturbance_series["turning_rates"].items()
+            }
+            flow_bc_t = {
+                k: float(v[t])
+                for k, v in disturbance_series["flow_boundary_conditions"].items()
+            }
+            density_bc_t = {
+                k: float(v[t])
+                for k, v in disturbance_series["density_boundary_conditions"].items()
+            }
+
+            # validate numerical data using existing validation (for first timestep)
+            if t == 0:
+                network._validate_disturbance_history_numerical(
+                    origin_demands=cast(dict[str, float], origin_demands_t),  # type: ignore
+                    onramp_demands=cast(dict[str, float], onramp_demands_t),  # type: ignore
+                    turning_rates=cast(dict[str, dict[str, float]], turning_rates_t),  # type: ignore
+                    flow_boundary_conditions=cast(dict[str, float], flow_bc_t),  # type: ignore
+                    density_boundary_conditions=cast(dict[str, float], density_bc_t),  # type: ignore
+                )
+
+            d_t = network.network_dict_to_disturbance_vec(
+                origin_demand_dict=origin_demands_t,
+                onramp_demand_dict=onramp_demands_t,
+                turning_rate_dict=turning_rates_t,
+                flow_boundary_condition_dict=flow_bc_t,
+                density_boundary_condition_dict=density_bc_t,
+            )
+            disturbance_vecs.append(d_t)
+
+        disturbance_history = (
+            np.column_stack(disturbance_vecs) if disturbance_vecs else np.array([])
+        )
+
+        return time_array, state_history, disturbance_history, metadata
 
     def save_to_txt(self, filepath: str) -> None:
         """Save network structure to a text file for reference.
@@ -2250,12 +2665,12 @@ class Network:
 
             # verify that the extracted values are numerical arrays
             self._validate_state_history_numerical(
-                flows=flows,
-                densities=densities,
-                speeds=speeds,
-                origin_queues=origin_queues,
-                onramp_queues=onramp_queues,
-                offramp_queues=offramp_queues,
+                flows=cast(dict[str, NDArray[np.float64]], flows),
+                densities=cast(dict[str, NDArray[np.float64]], densities),
+                speeds=cast(dict[str, NDArray[np.float64]], speeds),
+                origin_queues=cast(dict[str, float], origin_queues),
+                onramp_queues=cast(dict[str, float], onramp_queues),
+                offramp_queues=cast(dict[str, float], offramp_queues),
             )
 
             # typecast to np.ndarray to ensure type safety
@@ -2342,12 +2757,12 @@ class Network:
 
             # make sure that the history values are numerical
             self._validate_state_history_numerical(
-                flows=flows_t,
-                densities=densities_t,
-                speeds=speeds_t,
-                origin_queues=origin_queues_t,
-                onramp_queues=onramp_queues_t,
-                offramp_queues=offramp_queues_t,
+                flows=cast(dict[str, NDArray[np.float64]], flows_t),
+                densities=cast(dict[str, NDArray[np.float64]], densities_t),
+                speeds=cast(dict[str, NDArray[np.float64]], speeds_t),
+                origin_queues=cast(dict[str, float], origin_queues_t),
+                onramp_queues=cast(dict[str, float], onramp_queues_t),
+                offramp_queues=cast(dict[str, float], offramp_queues_t),
             )
 
             # typecast to np.ndarray to ensure type safety
@@ -3396,5 +3811,398 @@ class Network:
             plt.show()
 
         return ax
+
+    @staticmethod
+    def _density_to_color(
+        rho: float, rho_crit: float, rho_jam: float
+    ) -> tuple[int, int, int]:
+        """Convert density to RGB color for visualization.
+
+        Maps density values to a color gradient:
+        - Low density (0 -> rho_crit): bright green -> dark green
+        - High density (rho_crit -> rho_jam): dark green -> orange -> dark red
+
+        Args:
+            rho: Current density (veh/km/lane)
+            rho_crit: Critical density (veh/km/lane)
+            rho_jam: Jam density (veh/km/lane)
+
+        Returns:
+            RGB tuple with values in range [0, 255]
+        """
+        # use class-level color constants
+        bright_green = Network.COLOR_BRIGHT_GREEN
+        dark_green = Network.COLOR_DARK_GREEN
+        orange = Network.COLOR_ORANGE
+        dark_red = Network.COLOR_DARK_RED
+
+        if rho < rho_crit:
+            # interpolate from bright green to dark green
+            ratio = rho / rho_crit if rho_crit > 0 else 0.0
+            r = int(bright_green[0] + ratio * (dark_green[0] - bright_green[0]))
+            g = int(bright_green[1] + ratio * (dark_green[1] - bright_green[1]))
+            b = int(bright_green[2] + ratio * (dark_green[2] - bright_green[2]))
+        else:
+            # interpolate from dark green through orange to dark red
+            # transition to orange quickly (first 10% of range) for congestion visibility
+            excess = rho - rho_crit
+            range_width = rho_jam - rho_crit
+            ratio = min(excess / range_width if range_width > 0 else 1.0, 1.0)
+
+            # two-stage interpolation: dark_green -> orange (quick) -> dark_red (gradual)
+            if ratio < 0.1:
+                # first 10%: dark_green to orange (rapid transition)
+                sub_ratio = ratio / 0.1
+                r = int(dark_green[0] + sub_ratio * (orange[0] - dark_green[0]))
+                g = int(dark_green[1] + sub_ratio * (orange[1] - dark_green[1]))
+                b = int(dark_green[2] + sub_ratio * (orange[2] - dark_green[2]))
+            else:
+                # remaining 90%: orange to dark_red (gradual transition)
+                sub_ratio = (ratio - 0.1) / 0.90
+                r = int(orange[0] + sub_ratio * (dark_red[0] - orange[0]))
+                g = int(orange[1] + sub_ratio * (dark_red[1] - orange[1]))
+                b = int(orange[2] + sub_ratio * (dark_red[2] - orange[2]))
+
+        return (r, g, b)
+
+    @staticmethod
+    def _interpolate_frames(
+        state_history: NDArray[np.float64],
+        time_array: NDArray[np.float64],
+        subsampling: int,
+    ) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
+        """Linearly interpolate frames for smoother visualization.
+
+        Args:
+            state_history: 2-D array (state_size x timesteps)
+            time_array: 1-D array of time points
+            subsampling: Number of intervals to split each time interval into
+                        (subsampling=1 means no interpolation, subsampling=2 splits each interval in half,
+                        subsampling=3 splits into thirds, etc.)
+
+        Returns:
+            Tuple of (interpolated_time_array, interpolated_state_history)
+        """
+        if subsampling == 1:
+            return time_array, state_history
+        elif subsampling < 1:
+            raise ValueError(
+                "Subsampling must be an integer greater than 1 for interpolation."
+            )
+
+        num_timesteps = state_history.shape[1]
+        num_interpolated = (num_timesteps - 1) * subsampling + 1
+
+        # create interpolated arrays
+        interpolated_time = np.zeros(num_interpolated, dtype=np.float64)
+        interpolated_state = np.zeros(
+            (state_history.shape[0], num_interpolated), dtype=np.float64
+        )
+
+        # fill in interpolated values by splitting each interval into 'subsampling' parts
+        for i in range(num_timesteps - 1):
+            # original frame at start of interval
+            start_idx = i * subsampling
+            interpolated_time[start_idx] = time_array[i]
+            interpolated_state[:, start_idx] = state_history[:, i]
+
+            # create (subsampling - 1) interpolated frames within the interval
+            for j in range(1, subsampling):
+                interp_idx = start_idx + j
+                alpha = j / subsampling
+                interpolated_time[interp_idx] = (
+                    time_array[i] * (1 - alpha) + time_array[i + 1] * alpha
+                )
+                interpolated_state[:, interp_idx] = (
+                    state_history[:, i] * (1 - alpha) + state_history[:, i + 1] * alpha
+                )
+
+        # last frame at end of final interval
+        interpolated_time[-1] = time_array[-1]
+        interpolated_state[:, -1] = state_history[:, -1]
+
+        return interpolated_time, interpolated_state
+
+    def visualize_simulation(
+        self,
+        results_filepath: str,
+        output_filepath: str,
+        fps: int = 25,
+        subsampling: int = 1,
+        figsize: tuple[float, float] = (10, 8),
+        dpi: int = 300,
+    ) -> None:
+        """Generate a video visualization of simulation results.
+
+        Creates an AVI video showing the network topology with links colored
+        by density. Color scheme transitions from bright green (low density)
+        through dark green (critical density) to orange and dark red (jam density).
+
+        Args:
+            results_filepath: Path to simulation results JSON file
+            output_filepath: Path for output video file (.avi)
+            fps: Frames per second for output video
+            subsampling: Number of intervals to split each time interval into for smoother animation
+                        (1=no interpolation, 2=split intervals in half, 3=split into thirds, etc.)
+            figsize: Figure size in inches (width, height)
+            dpi: Dots per inch for rendering
+
+        Raises:
+            ValueError: If nodes lack position information or metadata is missing
+            ImportError: If opencv-python is not installed
+        """
+        # load simulation results
+        time_array, state_history, _, metadata = self.load_simulation_results_json(
+            filepath=results_filepath, network=self
+        )
+
+        if metadata is None:
+            raise ValueError(
+                "Simulation results file lacks metadata. "
+                "Only files with metadata can be visualized."
+            )
+
+        critical_densities = metadata["critical_densities"]
+        link_properties = metadata["link_properties"]
+
+        # apply frame interpolation if requested
+        if subsampling > 1:
+            time_array, state_history = self._interpolate_frames(
+                state_history, time_array, subsampling
+            )
+
+        num_frames = state_history.shape[1]
+
+        # compute plot bounds from node positions
+        positions = []
+        for node in self.list_nodes():
+            if node.position is None:
+                raise ValueError(
+                    f"Node '{node.id}' lacks position information. "
+                    "All nodes must have positions set for visualization."
+                )
+            positions.append(node.position)
+
+        positions_arr = np.array(positions)
+        x_min, y_min = positions_arr.min(axis=0)
+        x_max, y_max = positions_arr.max(axis=0)
+
+        # add padding for ramps and visual clarity
+        x_padding = 0.15 * (x_max - x_min) if x_max > x_min else 1.0
+        y_padding = 0.15 * (y_max - y_min) if y_max > y_min else 1.0
+
+        x_min -= x_padding
+        x_max += x_padding
+        y_min -= y_padding
+        y_max += y_padding
+
+        # initialize video writer
+        frame_width = int(figsize[0] * dpi)
+        frame_height = int(figsize[1] * dpi)
+        video_writer = cv2.VideoWriter(
+            filename=output_filepath,
+            fourcc=cv2.VideoWriter.fourcc(*"MJPG"),
+            fps=fps,
+            frameSize=(frame_width, frame_height),
+        )
+
+        try:
+            # generate frames
+            for t in tqdm(range(num_frames)):
+                # create figure
+                fig, ax = plt.subplots(figsize=figsize, dpi=dpi)
+
+                # extract current state
+                flows, densities, _, _, onramp_queues, offramp_queues = (
+                    self.state_vec_to_network_dict(state_history[:, t])
+                )
+
+                # draw nodes
+                for node in self.list_nodes():
+                    if node.position is None:
+                        raise ValueError(
+                            f"Node '{node.id}' lacks position information. "
+                            "All nodes must have positions set for visualization."
+                        )
+
+                    x, y = node.position
+                    ax.plot(x, y, "ko", markersize=4, zorder=3)
+
+                # draw motorway links with density coloring
+                for node in self.list_nodes():
+                    for link in node.outgoing:
+                        if isinstance(link, MotorwayLink):
+                            if (
+                                link.origin_node_id is None
+                                or link.destination_node_id is None
+                            ):
+                                raise ValueError(
+                                    f"Motorway link '{link.id}' is missing origin and/or destination node IDs."
+                                )
+
+                            upstream_node = self.get_node(link.origin_node_id)
+                            downstream_node = self.get_node(link.destination_node_id)
+
+                            if upstream_node is None or downstream_node is None:
+                                raise ValueError(
+                                    f"Motorway link '{link.id}' references non-existent nodes: "
+                                    f"origin '{link.origin_node_id}', destination '{link.destination_node_id}'."
+                                )
+
+                            # compute maximum density for this link (visualize worst-case congestion per link)
+                            max_rho = float(np.max(densities[link.id]))
+                            rho_crit = critical_densities[link.id]
+                            rho_jam = link_properties[link.id]["jam_density"]
+
+                            # get color
+                            r, g, b = self._density_to_color(max_rho, rho_crit, rho_jam)
+                            color = (r / 255.0, g / 255.0, b / 255.0)
+
+                            # draw link
+                            if (
+                                upstream_node.position is None
+                                or downstream_node.position is None
+                            ):
+                                raise ValueError(
+                                    f"Motorway link '{link.id}' has nodes with missing position information: "
+                                    f"origin '{link.origin_node_id}', destination '{link.destination_node_id}'."
+                                )
+
+                            x1, y1 = upstream_node.position
+                            x2, y2 = downstream_node.position
+                            ax.plot(
+                                [x1, x2],
+                                [y1, y2],
+                                color=color,
+                                linewidth=3,
+                                solid_capstyle="round",
+                                zorder=2,
+                            )
+
+                # draw onramps with congestion coloring
+                for node in self.list_nodes():
+                    for link in node.incoming:
+                        if isinstance(link, Onramp):
+                            if link.destination_node_id is None:
+                                raise ValueError(
+                                    f"Onramp link '{link.id}' is missing destination node ID."
+                                )
+
+                            downstream_node = self.get_node(link.destination_node_id)
+                            if downstream_node and downstream_node.position:
+                                x, y = downstream_node.position
+
+                                # determine color based on queue and flow/capacity ratio
+                                queue = float(onramp_queues.get(link.id, 0.0))
+                                if queue > 0:
+                                    # red if queued
+                                    color = Network.COLOR_CONGESTION_RED
+                                else:
+                                    # green gradient based on flow/capacity ratio
+                                    flow = float(flows.get(link.id, [0.0])[0])
+                                    capacity = link.Qc
+                                    ratio = min(
+                                        flow / capacity if capacity > 0 else 0.0, 1.0
+                                    )
+                                    # light green (0.6, 1.0, 0.6) to dark green (0.0, 0.5, 0.0)
+                                    r = 0.6 * (1 - ratio)
+                                    g = 1.0 - 0.5 * ratio
+                                    b = 0.6 * (1 - ratio)
+                                    color = (r, g, b)
+
+                                # draw short line offset from node
+                                ax.plot(
+                                    [x - 0.1, x],
+                                    [y + 0.1, y],
+                                    color=color,
+                                    linewidth=2,
+                                    linestyle="--",
+                                    zorder=1,
+                                )
+
+                # draw offramps with congestion coloring
+                for node in self.list_nodes():
+                    for link in node.outgoing:
+                        if isinstance(link, Offramp):
+                            if link.origin_node_id is None:
+                                raise ValueError(
+                                    f"Offramp link '{link.id}' is missing origin node ID."
+                                )
+
+                            upstream_node = self.get_node(link.origin_node_id)
+                            if upstream_node and upstream_node.position:
+                                x, y = upstream_node.position
+
+                                # determine color based on queue and flow/capacity ratio
+                                queue = float(offramp_queues.get(link.id, 0.0))
+                                if queue > 0:
+                                    # red if queued
+                                    color = Network.COLOR_CONGESTION_RED
+                                else:
+                                    # green gradient based on flow/capacity ratio
+                                    flow = float(flows.get(link.id, [0.0])[0])
+                                    capacity = link.Qc
+                                    ratio = min(
+                                        flow / capacity if capacity > 0 else 0.0, 1.0
+                                    )
+                                    # light green (0.6, 1.0, 0.6) to dark green (0.0, 0.5, 0.0)
+                                    r = 0.6 * (1 - ratio)
+                                    g = 1.0 - 0.5 * ratio
+                                    b = 0.6 * (1 - ratio)
+                                    color = (r, g, b)
+
+                                # draw short line offset from node
+                                ax.plot(
+                                    [x, x + 0.1],
+                                    [y, y + 0.1],
+                                    color=color,
+                                    linewidth=2,
+                                    linestyle="--",
+                                    zorder=1,
+                                )
+
+                # add time annotation
+                ax.text(
+                    0.02,
+                    0.98,
+                    f"Time: {time_array[t]:.2f} h",
+                    transform=ax.transAxes,
+                    fontsize=12,
+                    verticalalignment="top",
+                    bbox=dict(boxstyle="round", facecolor="white", alpha=0.8),
+                )
+
+                # set axis limits and styling
+                ax.set_xlim(x_min, x_max)
+                ax.set_ylim(y_min, y_max)
+                ax.set_aspect("equal")
+                ax.set_title("Traffic Flow Simulation", fontsize=14, fontweight="bold")
+                ax.grid(True, alpha=0.2, linestyle=":", linewidth=0.5)
+
+                # convert figure to numpy array using backend-agnostic method
+                fig.canvas.draw()
+                # use print_to_buffer which works across all backends
+                buf, (width, height) = fig.canvas.print_to_buffer()  # type: ignore
+                # convert buffer to numpy array (RGBA format)
+                img_rgba = np.frombuffer(buf, dtype=np.uint8).reshape(height, width, 4)
+                # extract RGB channels (drop alpha)
+                img_rgb = img_rgba[:, :, :3]
+
+                # resize to target dimensions if needed
+                if (height, width) != (frame_height, frame_width):
+                    img_rgb = cv2.resize(img_rgb, (frame_width, frame_height))
+
+                # convert RGB to BGR for OpenCV
+                img_bgr = cv2.cvtColor(img_rgb, cv2.COLOR_RGB2BGR)
+
+                # write frame
+                video_writer.write(img_bgr)
+
+                # close figure to free memory
+                plt.close(fig)
+
+        finally:
+            # release video writer
+            video_writer.release()
 
     # endregion

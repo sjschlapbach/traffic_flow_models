@@ -1,5 +1,7 @@
+import os
 import argparse
 from typing import Callable
+from datetime import datetime
 
 from traffic_flow_models import CTM
 from demo.scenarios import (
@@ -31,8 +33,14 @@ if __name__ == "__main__":
         action="store_true",
         help="Disable plotting for CI/automated runs",
     )
+    parser.add_argument(
+        "--generate-video",
+        action="store_true",
+        help="Generate video visualization of simulation results",
+    )
     args = parser.parse_args()
     plot_enabled = not args.no_plot
+    generate_video = args.generate_video
 
     # select the appropriate scenario functions
     if scenario == "A":
@@ -81,6 +89,11 @@ if __name__ == "__main__":
         nid: (lambda _t, s=splits[nid]: s) for nid in splits.keys()
     }
 
+    # initialize the results directory
+    timestamp = datetime.now().strftime("simulation_results_%Y-%m-%d_%H%M%S")
+    results_dir = f"results/{timestamp}"
+    os.makedirs(results_dir, exist_ok=True)
+
     # run a simulation of the network using the CTM model
     ctm = CTM()
     time, states, disturbances = network.simulate(
@@ -95,6 +108,7 @@ if __name__ == "__main__":
         destination_flow_bc=destination_flow_bc,
         plot_results=True,
         show_plots=plot_enabled,
+        results_dir=results_dir,
     )
 
     # compute performance metrics and illustrate them
@@ -106,3 +120,15 @@ if __name__ == "__main__":
     print(f"Total VKT: {VKT:.2f} veh-km")
     print(f"Total VHT: {VHT:.2f} veh-h")
     print(f"Overall Average Speed: {avg_speed:.2f} km/h")
+
+    # generate video visualization if requested
+    if generate_video:
+        video_path = os.path.join(results_dir, "simulation.avi")
+        print(f"\nGenerating video visualization...")
+        network.visualize_simulation(
+            results_filepath=os.path.join(results_dir, "simulation_results.json"),
+            output_filepath=video_path,
+            fps=30,
+            subsampling=1,
+        )
+        print(f"Video saved to: {video_path}")

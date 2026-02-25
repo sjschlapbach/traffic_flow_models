@@ -1631,3 +1631,970 @@ class TestNetwork:
 
             with pytest.raises(FileNotFoundError):
                 Network.load_from_json(filepath)
+
+    def test_save_simulation_results_json(self):
+        """Test that simulation results can be saved to JSON format."""
+        # create simple network and run simulation
+        from traffic_flow_models import CTM
+
+        main = MotorwayLink(
+            length=2.0,
+            lanes=3,
+            lane_capacity=2000,
+            free_flow_speed=100,
+            jam_density=180,
+        )
+        origin = Origin()
+        dest = Destination()
+
+        node1 = Node(id="n1", incoming=[origin], outgoing=[main])
+        node2 = Node(id="n2", incoming=[main], outgoing=[dest])
+        net = Network(nodes=[node1, node2])
+
+        # run short simulation
+        model = CTM()
+        time_array, state_history, disturbance_history = net.simulate(
+            duration=0.1,
+            dt=0.01,
+            model=model,
+            origin_demands={origin.id: lambda t: 1000.0},
+            onramp_demands={},
+            turning_rates={},
+            destination_flow_bc={dest.id: lambda t: 0.0},
+            destination_density_bc={dest.id: lambda t: 0.0},
+            plot_results=False,
+        )
+
+        # save results
+        with tempfile.TemporaryDirectory() as tmpdir:
+            filepath = os.path.join(tmpdir, "results.json")
+            net.save_simulation_results_json(
+                time_array=time_array,
+                state_history=state_history,
+                disturbance_history=disturbance_history,
+                filepath=filepath,
+                model=model,
+                dt=0.01,
+                duration=0.1,
+                preferred_cell_size=0.5,
+                model_params=None,
+            )
+
+            # verify file exists and is valid JSON
+            assert os.path.exists(filepath)
+            with open(filepath, "r") as f:
+                data = json.load(f)
+
+            # check structure
+            assert "time_array" in data
+            assert "state_time_series" in data
+            assert "disturbance_time_series" in data
+            assert len(data["time_array"]) == len(time_array)
+
+    def test_load_simulation_results_json(self):
+        """Test that simulation results can be loaded from JSON with validation."""
+        from traffic_flow_models import CTM
+
+        # create simple network
+        main = MotorwayLink(
+            length=2.0,
+            lanes=3,
+            lane_capacity=2000,
+            free_flow_speed=100,
+            jam_density=180,
+        )
+        origin = Origin()
+        dest = Destination()
+
+        node1 = Node(id="n1", incoming=[origin], outgoing=[main])
+        node2 = Node(id="n2", incoming=[main], outgoing=[dest])
+        net = Network(nodes=[node1, node2])
+
+        # run simulation
+        model = CTM()
+        time_array, state_history, disturbance_history = net.simulate(
+            duration=0.1,
+            dt=0.01,
+            model=model,
+            origin_demands={origin.id: lambda t: 1000.0},
+            onramp_demands={},
+            turning_rates={},
+            destination_flow_bc={dest.id: lambda t: 0.0},
+            destination_density_bc={dest.id: lambda t: 0.0},
+            plot_results=False,
+        )
+
+        # save and load results
+        with tempfile.TemporaryDirectory() as tmpdir:
+            filepath = os.path.join(tmpdir, "results.json")
+            net.save_simulation_results_json(
+                time_array=time_array,
+                state_history=state_history,
+                disturbance_history=disturbance_history,
+                filepath=filepath,
+                model=model,
+                dt=0.01,
+                duration=0.1,
+                preferred_cell_size=0.5,
+                model_params=None,
+            )
+
+            loaded_time, loaded_state, loaded_disturbance, metadata = (
+                Network.load_simulation_results_json(filepath=filepath, network=net)
+            )
+
+            # verify loaded arrays match original
+            np.testing.assert_array_almost_equal(loaded_time, time_array)
+            np.testing.assert_array_almost_equal(loaded_state, state_history)
+            np.testing.assert_array_almost_equal(
+                loaded_disturbance, disturbance_history
+            )
+
+    def test_save_load_json_includes_metadata(self):
+        """Test that JSON save/load includes comprehensive metadata for reproducibility."""
+        from traffic_flow_models import CTM
+
+        # create network
+        main = MotorwayLink(
+            length=2.0,
+            lanes=3,
+            lane_capacity=2000,
+            free_flow_speed=100,
+            jam_density=180,
+        )
+        origin = Origin()
+        dest = Destination()
+
+        node1 = Node(id="n1", incoming=[origin], outgoing=[main])
+        node2 = Node(id="n2", incoming=[main], outgoing=[dest])
+        net = Network(nodes=[node1, node2])
+
+        # run simulation
+        model = CTM()
+        dt = 0.01
+        duration = 0.1
+        preferred_cell_size = 0.5
+        time_array, state_history, disturbance_history = net.simulate(
+            duration=duration,
+            dt=dt,
+            model=model,
+            origin_demands={origin.id: lambda t: 1000.0},
+            onramp_demands={},
+            turning_rates={},
+            destination_flow_bc={dest.id: lambda t: 0.0},
+            destination_density_bc={dest.id: lambda t: 0.0},
+            preferred_cell_size=preferred_cell_size,
+            plot_results=False,
+        )
+
+        # save and load
+        with tempfile.TemporaryDirectory() as tmpdir:
+            filepath = os.path.join(tmpdir, "results_with_metadata.json")
+            net.save_simulation_results_json(
+                time_array=time_array,
+                state_history=state_history,
+                disturbance_history=disturbance_history,
+                filepath=filepath,
+                model=model,
+                dt=dt,
+                duration=duration,
+                preferred_cell_size=preferred_cell_size,
+                model_params=None,
+            )
+
+            # verify metadata in file
+            with open(filepath, "r") as f:
+                data = json.load(f)
+
+            assert "metadata" in data
+            metadata_dict = data["metadata"]
+
+            # check model type
+            assert "model_type" in metadata_dict
+            assert metadata_dict["model_type"] == "CTM"
+
+            # check simulation parameters
+            assert "simulation_parameters" in metadata_dict
+            sim_params = metadata_dict["simulation_parameters"]
+            assert sim_params["dt"] == dt
+            assert sim_params["duration"] == duration
+            assert sim_params["preferred_cell_size"] == preferred_cell_size
+
+            # check link properties
+            assert "link_properties" in metadata_dict
+            link_props = metadata_dict["link_properties"]
+            assert main.id in link_props
+            assert link_props[main.id]["length"] == 2.0
+            assert link_props[main.id]["lanes"] == 3
+            assert link_props[main.id]["lane_capacity"] == 2000
+            assert link_props[main.id]["free_flow_speed"] == 100
+            assert link_props[main.id]["jam_density"] == 180
+
+            # check cell discretization info
+            assert "num_cells" in link_props[main.id]
+            assert link_props[main.id]["num_cells"] == len(main)
+            assert "cell_lengths" in link_props[main.id]
+            assert isinstance(link_props[main.id]["cell_lengths"], list)
+            assert len(link_props[main.id]["cell_lengths"]) == len(main)
+            # verify sum of cell lengths equals total link length
+            assert abs(sum(link_props[main.id]["cell_lengths"]) - 2.0) < 1e-6
+
+            # check critical densities
+            assert "critical_densities" in metadata_dict
+            crit_densities = metadata_dict["critical_densities"]
+            assert main.id in crit_densities
+            expected_rho_crit = model.critical_density(
+                lane_capacity=2000, free_flow_speed=100
+            )
+            assert abs(crit_densities[main.id] - expected_rho_crit) < 1e-6
+
+            # load and verify metadata is returned
+            loaded_time, loaded_state, loaded_disturbance, loaded_metadata = (
+                Network.load_simulation_results_json(filepath=filepath, network=net)
+            )
+
+            assert loaded_metadata is not None
+            assert loaded_metadata["model_type"] == "CTM"
+            assert loaded_metadata["simulation_parameters"]["dt"] == dt
+            assert (
+                loaded_metadata["critical_densities"][main.id]
+                == crit_densities[main.id]
+            )
+
+    def test_load_simulation_results_json_validates_structure(self):
+        """Test that loading simulation results validates required fields."""
+        # create minimal network
+        main = MotorwayLink(
+            length=1.0, lanes=2, lane_capacity=1500, free_flow_speed=80, jam_density=140
+        )
+        origin = Origin()
+        dest = Destination()
+
+        node1 = Node(id="n1", incoming=[origin], outgoing=[main])
+        node2 = Node(id="n2", incoming=[main], outgoing=[dest])
+        net = Network(nodes=[node1, node2])
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # test missing top-level fields
+            filepath = os.path.join(tmpdir, "incomplete.json")
+
+            # missing time_array
+            with open(filepath, "w") as f:
+                json.dump({"state_time_series": {}, "disturbance_time_series": {}}, f)
+
+            with pytest.raises(ValueError, match="Missing required field 'time_array'"):
+                Network.load_simulation_results_json(filepath=filepath, network=net)
+
+            # missing state fields
+            with open(filepath, "w") as f:
+                json.dump(
+                    {
+                        "time_array": [0, 1, 2],
+                        "state_time_series": {"flows": {}},
+                        "disturbance_time_series": {},
+                    },
+                    f,
+                )
+
+            with pytest.raises(ValueError, match="Missing required field.*densities"):
+                Network.load_simulation_results_json(filepath=filepath, network=net)
+
+    def test_load_simulation_results_json_validates_network_match(self):
+        """Test that loader validates saved data matches network structure."""
+        from traffic_flow_models import CTM
+
+        # create and simulate first network
+        main1 = MotorwayLink(
+            length=1.0, lanes=2, lane_capacity=1500, free_flow_speed=80, jam_density=140
+        )
+        origin1 = Origin()
+        dest1 = Destination()
+
+        node1 = Node(id="n1", incoming=[origin1], outgoing=[main1])
+        node2 = Node(id="n2", incoming=[main1], outgoing=[dest1])
+        net1 = Network(nodes=[node1, node2])
+
+        model = CTM()
+        time_array, state_history, disturbance_history = net1.simulate(
+            duration=0.05,
+            dt=0.01,
+            model=model,
+            origin_demands={origin1.id: lambda t: 1000.0},
+            onramp_demands={},
+            turning_rates={},
+            destination_flow_bc={dest1.id: lambda t: 0.0},
+            destination_density_bc={dest1.id: lambda t: 0.0},
+            plot_results=False,
+        )
+
+        # save results from first network
+        with tempfile.TemporaryDirectory() as tmpdir:
+            filepath = os.path.join(tmpdir, "results.json")
+            net1.save_simulation_results_json(
+                time_array=time_array,
+                state_history=state_history,
+                disturbance_history=disturbance_history,
+                filepath=filepath,
+                model=model,
+                dt=0.01,
+                duration=0.05,
+                preferred_cell_size=0.5,
+                model_params=None,
+            )
+
+            # create different network with different structure
+            main2 = MotorwayLink(
+                length=2.0,
+                lanes=3,
+                lane_capacity=2000,
+                free_flow_speed=100,
+                jam_density=180,
+            )
+            onramp = Onramp(
+                lanes=1, lane_capacity=1500, free_flow_speed=80, jam_density=140
+            )
+            dest2 = Destination()
+
+            node3 = Node(id="n3", incoming=[onramp], outgoing=[main2])
+            node4 = Node(id="n4", incoming=[main2], outgoing=[dest2])
+            net2 = Network(nodes=[node3, node4])
+
+            # trying to load results from net1 into net2 should fail validation
+            with pytest.raises(ValueError, match="not found in saved results"):
+                Network.load_simulation_results_json(filepath=filepath, network=net2)
+
+    def test_save_load_complex_network_with_onramps_offramps(self):
+        """Test save/load with complex network including onramps and offramps."""
+        from traffic_flow_models import CTM
+
+        # create complex network
+        origin = Origin()
+        main1 = MotorwayLink(
+            length=3.0,
+            lanes=3,
+            lane_capacity=2000,
+            free_flow_speed=100,
+            jam_density=180,
+        )
+        onramp = Onramp(
+            lanes=1, lane_capacity=1500, free_flow_speed=80, jam_density=140
+        )
+        main2 = MotorwayLink(
+            length=2.0,
+            lanes=3,
+            lane_capacity=2000,
+            free_flow_speed=100,
+            jam_density=180,
+        )
+        offramp = Offramp(
+            lanes=1, lane_capacity=1500, free_flow_speed=60, jam_density=140
+        )
+        dest_offramp = Destination()
+        dest_main = Destination()
+
+        node1 = Node(id="n1", incoming=[origin], outgoing=[main1])
+        node2 = Node(id="n2", incoming=[main1, onramp], outgoing=[main2])
+        node3 = Node(id="n3", incoming=[main2], outgoing=[offramp, dest_main])
+
+        # Note: Offramps connect to destinations via their destination property
+        net = Network(nodes=[node1, node2, node3])
+        offramp.destination = dest_offramp
+
+        # simulate
+        model = CTM()
+        time_array, state_history, disturbance_history = net.simulate(
+            duration=0.05,
+            dt=0.01,
+            model=model,
+            origin_demands={origin.id: lambda t: 2000.0},
+            onramp_demands={onramp.id: lambda t: 500.0},
+            turning_rates={"n3": lambda t: {offramp.id: 0.3, dest_main.id: 0.7}},
+            destination_flow_bc={
+                dest_offramp.id: lambda t: 0.0,
+                dest_main.id: lambda t: 0.0,
+            },
+            destination_density_bc={
+                dest_offramp.id: lambda t: 0.0,
+                dest_main.id: lambda t: 0.0,
+            },
+            plot_results=False,
+        )
+
+        # save and load
+        with tempfile.TemporaryDirectory() as tmpdir:
+            filepath = os.path.join(tmpdir, "complex_results.json")
+            net.save_simulation_results_json(
+                time_array=time_array,
+                state_history=state_history,
+                disturbance_history=disturbance_history,
+                filepath=filepath,
+                model=model,
+                dt=0.01,
+                duration=0.05,
+                preferred_cell_size=0.5,
+                model_params=None,
+            )
+
+            # verify file contents
+            with open(filepath, "r") as f:
+                data = json.load(f)
+
+            # check all link types are present
+            assert origin.id in data["state_time_series"]["origin_queues"]
+            assert onramp.id in data["state_time_series"]["onramp_queues"]
+            assert offramp.id in data["state_time_series"]["offramp_queues"]
+            assert main1.id in data["state_time_series"]["flows"]
+            assert main1.id in data["state_time_series"]["densities"]
+            assert main1.id in data["state_time_series"]["speeds"]
+
+            # check disturbance data
+            assert origin.id in data["disturbance_time_series"]["origin_demands"]
+            assert onramp.id in data["disturbance_time_series"]["onramp_demands"]
+            assert "n3" in data["disturbance_time_series"]["turning_rates"]
+
+            # load and verify
+            loaded_time, loaded_state, loaded_disturbance, metadata = (
+                Network.load_simulation_results_json(filepath=filepath, network=net)
+            )
+
+            np.testing.assert_array_almost_equal(loaded_time, time_array)
+            np.testing.assert_array_almost_equal(loaded_state, state_history)
+            np.testing.assert_array_almost_equal(
+                loaded_disturbance, disturbance_history
+            )
+
+    def test_load_simulation_results_validates_numerical_data(self):
+        """Test that loader detects non-numerical data."""
+        from traffic_flow_models import CTM
+
+        # create simple network
+        main = MotorwayLink(
+            length=1.0, lanes=2, lane_capacity=1500, free_flow_speed=80, jam_density=140
+        )
+        origin = Origin()
+        dest = Destination()
+
+        node1 = Node(id="n1", incoming=[origin], outgoing=[main])
+        node2 = Node(id="n2", incoming=[main], outgoing=[dest])
+        net = Network(nodes=[node1, node2])
+
+        # simulate to get valid structure
+        model = CTM()
+        time_array, state_history, disturbance_history = net.simulate(
+            duration=0.02,
+            dt=0.01,
+            model=model,
+            origin_demands={origin.id: lambda t: 1000.0},
+            onramp_demands={},
+            turning_rates={},
+            destination_flow_bc={dest.id: lambda t: 0.0},
+            destination_density_bc={dest.id: lambda t: 0.0},
+            plot_results=False,
+        )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            filepath = os.path.join(tmpdir, "results.json")
+            net.save_simulation_results_json(
+                time_array=time_array,
+                state_history=state_history,
+                disturbance_history=disturbance_history,
+                filepath=filepath,
+                model=model,
+                dt=0.01,
+                duration=0.02,
+                preferred_cell_size=0.5,
+                model_params=None,
+            )
+
+            # corrupt the data with non-numeric values
+            with open(filepath, "r") as f:
+                data = json.load(f)
+
+            # replace numeric data with strings
+            origin_queue_key = list(data["state_time_series"]["origin_queues"].keys())[
+                0
+            ]
+            data["state_time_series"]["origin_queues"][origin_queue_key][0] = "invalid"
+
+            # save corrupted data
+            corrupted_path = os.path.join(tmpdir, "corrupted.json")
+            with open(corrupted_path, "w") as f:
+                json.dump(data, f)
+
+            # loading should fail validation (Python's float() will raise ValueError)
+            with pytest.raises(ValueError, match="could not convert string to float"):
+                Network.load_simulation_results_json(
+                    filepath=corrupted_path, network=net
+                )
+
+    def test_save_load_preserves_link_ids(self):
+        """Test that save/load preserves exact link IDs for all link types."""
+        from traffic_flow_models import CTM
+
+        # create network with explicit IDs
+        origin = Origin()
+        origin_id = origin.id
+        main = MotorwayLink(
+            length=2.0, lanes=2, lane_capacity=1800, free_flow_speed=90, jam_density=150
+        )
+        main_id = main.id
+        dest = Destination()
+        dest_id = dest.id
+
+        node1 = Node(id="n1", incoming=[origin], outgoing=[main])
+        node2 = Node(id="n2", incoming=[main], outgoing=[dest])
+        net = Network(nodes=[node1, node2])
+
+        model = CTM()
+        time_array, state_history, disturbance_history = net.simulate(
+            duration=0.03,
+            dt=0.01,
+            model=model,
+            origin_demands={origin_id: lambda t: 1500.0},
+            onramp_demands={},
+            turning_rates={},
+            destination_flow_bc={dest_id: lambda t: 0.0},
+            destination_density_bc={dest_id: lambda t: 0.0},
+            plot_results=False,
+        )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            filepath = os.path.join(tmpdir, "results.json")
+            net.save_simulation_results_json(
+                time_array=time_array,
+                state_history=state_history,
+                disturbance_history=disturbance_history,
+                filepath=filepath,
+                model=model,
+                dt=0.01,
+                duration=0.03,
+                preferred_cell_size=0.5,
+                model_params=None,
+            )
+
+            with open(filepath, "r") as f:
+                data = json.load(f)
+
+            # verify exact IDs are preserved
+            assert origin_id in data["state_time_series"]["origin_queues"]
+            assert main_id in data["state_time_series"]["flows"]
+            assert main_id in data["state_time_series"]["densities"]
+            assert main_id in data["state_time_series"]["speeds"]
+            assert dest_id in data["state_time_series"]["flows"]
+
+    def test_load_simulation_results_with_multiple_timesteps(self):
+        """Test that loader correctly handles data with many timesteps."""
+        from traffic_flow_models import CTM
+
+        # create simple network
+        main = MotorwayLink(
+            length=5.0,
+            lanes=3,
+            lane_capacity=2000,
+            free_flow_speed=100,
+            jam_density=180,
+        )
+        origin = Origin()
+        dest = Destination()
+
+        node1 = Node(id="n1", incoming=[origin], outgoing=[main])
+        node2 = Node(id="n2", incoming=[main], outgoing=[dest])
+        net = Network(nodes=[node1, node2])
+
+        # simulate with more timesteps
+        model = CTM()
+        time_array, state_history, disturbance_history = net.simulate(
+            duration=0.5,  # longer duration
+            dt=0.01,
+            model=model,
+            origin_demands={origin.id: lambda t: 1000.0 + 500.0 * t},  # time-varying
+            onramp_demands={},
+            turning_rates={},
+            destination_flow_bc={dest.id: lambda t: 0.0},
+            destination_density_bc={dest.id: lambda t: 0.0},
+            plot_results=False,
+        )
+
+        assert len(time_array) > 10  # ensure we have many timesteps
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            filepath = os.path.join(tmpdir, "multi_timestep.json")
+            net.save_simulation_results_json(
+                time_array=time_array,
+                state_history=state_history,
+                disturbance_history=disturbance_history,
+                filepath=filepath,
+                model=model,
+                dt=0.01,
+                duration=0.5,
+                preferred_cell_size=0.5,
+                model_params=None,
+            )
+
+            with open(filepath, "r") as f:
+                data = json.load(f)
+
+            # verify all timesteps are saved
+            origin_queue_data = data["state_time_series"]["origin_queues"][origin.id]
+            assert len(origin_queue_data) == len(time_array)
+
+            # load and verify
+            loaded_time, loaded_state, loaded_disturbance, metadata = (
+                Network.load_simulation_results_json(filepath=filepath, network=net)
+            )
+
+            # check dimensions
+            assert loaded_state.shape[1] == len(time_array)
+            assert loaded_disturbance.shape[1] == len(time_array) - 1
+
+            np.testing.assert_array_almost_equal(loaded_time, time_array)
+            np.testing.assert_array_almost_equal(loaded_state, state_history)
+
+    def test_load_simulation_results_missing_link_data(self):
+        """Test that loader detects when link data is missing from saved file."""
+        from traffic_flow_models import CTM
+
+        # create network
+        main = MotorwayLink(
+            length=1.0, lanes=2, lane_capacity=1500, free_flow_speed=80, jam_density=140
+        )
+        origin = Origin()
+        dest = Destination()
+
+        node1 = Node(id="n1", incoming=[origin], outgoing=[main])
+        node2 = Node(id="n2", incoming=[main], outgoing=[dest])
+        net = Network(nodes=[node1, node2])
+
+        # simulate
+        model = CTM()
+        time_array, state_history, disturbance_history = net.simulate(
+            duration=0.02,
+            dt=0.01,
+            model=model,
+            origin_demands={origin.id: lambda t: 1000.0},
+            onramp_demands={},
+            turning_rates={},
+            destination_flow_bc={dest.id: lambda t: 0.0},
+            destination_density_bc={dest.id: lambda t: 0.0},
+            plot_results=False,
+        )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            filepath = os.path.join(tmpdir, "results.json")
+            net.save_simulation_results_json(
+                time_array=time_array,
+                state_history=state_history,
+                disturbance_history=disturbance_history,
+                filepath=filepath,
+                model=model,
+                dt=0.01,
+                duration=0.02,
+                preferred_cell_size=0.5,
+                model_params=None,
+            )
+
+            # load and remove a required field
+            with open(filepath, "r") as f:
+                data = json.load(f)
+
+            # remove density data for main link
+            del data["state_time_series"]["densities"][main.id]
+
+            # save modified data
+            modified_path = os.path.join(tmpdir, "missing_link.json")
+            with open(modified_path, "w") as f:
+                json.dump(data, f)
+
+            # loading should fail with clear error message
+            with pytest.raises(
+                ValueError, match=f"Density data for motorway link '{main.id}'"
+            ):
+                Network.load_simulation_results_json(
+                    filepath=modified_path, network=net
+                )
+
+    def test_validate_disturbance_history_numerical_valid_data(self):
+        """Test that validate_disturbance_history_numerical accepts valid numerical data."""
+        # create simple network
+        main = MotorwayLink(
+            length=1.0, lanes=2, lane_capacity=1500, free_flow_speed=80, jam_density=140
+        )
+        origin = Origin()
+        dest = Destination()
+
+        node1 = Node(id="n1", incoming=[origin], outgoing=[main])
+        node2 = Node(id="n2", incoming=[main], outgoing=[dest])
+        net = Network(nodes=[node1, node2])
+
+        # valid disturbance data
+        origin_demands = {origin.id: 1000.0}
+        onramp_demands = {}
+        turning_rates = {
+            "n1": {main.id: 1.0},
+            "n2": {dest.id: 1.0},
+        }
+        flow_bc = {dest.id: 0.0}
+        density_bc = {dest.id: 0.0}
+
+        # should not raise
+        net._validate_disturbance_history_numerical(
+            origin_demands=origin_demands,
+            onramp_demands=onramp_demands,
+            turning_rates=turning_rates,
+            flow_boundary_conditions=flow_bc,
+            density_boundary_conditions=density_bc,
+        )
+
+    def test_validate_disturbance_history_numerical_rejects_non_numerical_origin_demands(
+        self,
+    ):
+        """Test that validate_disturbance_history_numerical rejects non-numerical origin demands."""
+        # create simple network
+        main = MotorwayLink(
+            length=1.0, lanes=2, lane_capacity=1500, free_flow_speed=80, jam_density=140
+        )
+        origin = Origin()
+        dest = Destination()
+
+        node1 = Node(id="n1", incoming=[origin], outgoing=[main])
+        node2 = Node(id="n2", incoming=[main], outgoing=[dest])
+        net = Network(nodes=[node1, node2])
+
+        # invalid origin demands (string instead of number)
+        origin_demands = {origin.id: "invalid"}
+        onramp_demands = {}
+        turning_rates = {"n1": {main.id: 1.0}, "n2": {dest.id: 1.0}}
+        flow_bc = {dest.id: 0.0}
+        density_bc = {dest.id: 0.0}
+
+        with pytest.raises(ValueError, match="Non-numerical values found"):
+            net._validate_disturbance_history_numerical(
+                origin_demands=origin_demands,  # type: ignore (intentional error for testing)
+                onramp_demands=onramp_demands,
+                turning_rates=turning_rates,
+                flow_boundary_conditions=flow_bc,
+                density_boundary_conditions=density_bc,
+            )
+
+    def test_validate_disturbance_history_numerical_rejects_non_numerical_onramp_demands(
+        self,
+    ):
+        """Test that validate_disturbance_history_numerical rejects non-numerical onramp demands."""
+        # create network with onramp
+        main = MotorwayLink(
+            length=1.0, lanes=2, lane_capacity=1500, free_flow_speed=80, jam_density=140
+        )
+        onramp = Onramp(
+            lanes=1, lane_capacity=1500, free_flow_speed=80, jam_density=140
+        )
+        dest = Destination()
+
+        node1 = Node(id="n1", incoming=[onramp], outgoing=[main])
+        node2 = Node(id="n2", incoming=[main], outgoing=[dest])
+        net = Network(nodes=[node1, node2])
+
+        # invalid onramp demands
+        origin_demands = {}
+        onramp_demands = {onramp.id: [1000.0]}  # list instead of scalar
+        turning_rates = {"n1": {main.id: 1.0}, "n2": {dest.id: 1.0}}
+        flow_bc = {dest.id: 0.0}
+        density_bc = {dest.id: 0.0}
+
+        with pytest.raises(ValueError, match="Non-numerical values found"):
+            net._validate_disturbance_history_numerical(
+                origin_demands=origin_demands,
+                onramp_demands=onramp_demands,  # type: ignore (intentional error for testing)
+                turning_rates=turning_rates,
+                flow_boundary_conditions=flow_bc,
+                density_boundary_conditions=density_bc,
+            )
+
+    def test_validate_disturbance_history_numerical_rejects_non_dict_turning_rates(
+        self,
+    ):
+        """Test that validate_disturbance_history_numerical rejects non-dict turning rates."""
+        # create simple network
+        main = MotorwayLink(
+            length=1.0, lanes=2, lane_capacity=1500, free_flow_speed=80, jam_density=140
+        )
+        origin = Origin()
+        dest = Destination()
+
+        node1 = Node(id="n1", incoming=[origin], outgoing=[main])
+        node2 = Node(id="n2", incoming=[main], outgoing=[dest])
+        net = Network(nodes=[node1, node2])
+
+        # invalid turning rates (not a dict for node)
+        origin_demands = {origin.id: 1000.0}
+        onramp_demands = {}
+        turning_rates = {"n1": 1.0, "n2": {dest.id: 1.0}}  # scalar instead of dict
+        flow_bc = {dest.id: 0.0}
+        density_bc = {dest.id: 0.0}
+
+        with pytest.raises(ValueError, match="must be a dictionary"):
+            net._validate_disturbance_history_numerical(
+                origin_demands=origin_demands,
+                onramp_demands=onramp_demands,
+                turning_rates=turning_rates,
+                flow_boundary_conditions=flow_bc,
+                density_boundary_conditions=density_bc,
+            )
+
+    def test_validate_disturbance_history_numerical_rejects_non_numerical_turning_rates(
+        self,
+    ):
+        """Test that validate_disturbance_history_numerical rejects non-numerical turning rate values."""
+        # create simple network
+        main = MotorwayLink(
+            length=1.0, lanes=2, lane_capacity=1500, free_flow_speed=80, jam_density=140
+        )
+        origin = Origin()
+        dest = Destination()
+
+        node1 = Node(id="n1", incoming=[origin], outgoing=[main])
+        node2 = Node(id="n2", incoming=[main], outgoing=[dest])
+        net = Network(nodes=[node1, node2])
+
+        # invalid turning rate values (string instead of number)
+        origin_demands = {origin.id: 1000.0}
+        onramp_demands = {}
+        turning_rates = {"n1": {main.id: "invalid"}, "n2": {dest.id: 1.0}}
+        flow_bc = {dest.id: 0.0}
+        density_bc = {dest.id: 0.0}
+
+        with pytest.raises(
+            ValueError, match="Non-numerical turning rate values found for node"
+        ):
+            net._validate_disturbance_history_numerical(
+                origin_demands=origin_demands,
+                onramp_demands=onramp_demands,
+                turning_rates=turning_rates,
+                flow_boundary_conditions=flow_bc,
+                density_boundary_conditions=density_bc,
+            )
+
+    def test_validate_disturbance_history_numerical_rejects_non_numerical_flow_bc(self):
+        """Test that validate_disturbance_history_numerical rejects non-numerical flow boundary conditions."""
+        # create simple network
+        main = MotorwayLink(
+            length=1.0, lanes=2, lane_capacity=1500, free_flow_speed=80, jam_density=140
+        )
+        origin = Origin()
+        dest = Destination()
+
+        node1 = Node(id="n1", incoming=[origin], outgoing=[main])
+        node2 = Node(id="n2", incoming=[main], outgoing=[dest])
+        net = Network(nodes=[node1, node2])
+
+        # invalid flow boundary conditions
+        origin_demands = {origin.id: 1000.0}
+        onramp_demands = {}
+        turning_rates = {"n1": {main.id: 1.0}, "n2": {dest.id: 1.0}}
+        flow_bc = {dest.id: None}  # None instead of number
+        density_bc = {dest.id: 0.0}
+
+        with pytest.raises(ValueError, match="Non-numerical values found"):
+            net._validate_disturbance_history_numerical(
+                origin_demands=origin_demands,
+                onramp_demands=onramp_demands,
+                turning_rates=turning_rates,
+                flow_boundary_conditions=flow_bc,  # type: ignore (intentional error for testing)
+                density_boundary_conditions=density_bc,
+            )
+
+    def test_validate_disturbance_history_numerical_rejects_non_numerical_density_bc(
+        self,
+    ):
+        """Test that validate_disturbance_history_numerical rejects non-numerical density boundary conditions."""
+        # create simple network
+        main = MotorwayLink(
+            length=1.0, lanes=2, lane_capacity=1500, free_flow_speed=80, jam_density=140
+        )
+        origin = Origin()
+        dest = Destination()
+
+        node1 = Node(id="n1", incoming=[origin], outgoing=[main])
+        node2 = Node(id="n2", incoming=[main], outgoing=[dest])
+        net = Network(nodes=[node1, node2])
+
+        # invalid density boundary conditions
+        origin_demands = {origin.id: 1000.0}
+        onramp_demands = {}
+        turning_rates = {"n1": {main.id: 1.0}, "n2": {dest.id: 1.0}}
+        flow_bc = {dest.id: 0.0}
+        density_bc = {dest.id: {"invalid": "dict"}}  # dict instead of number
+
+        with pytest.raises(ValueError, match="Non-numerical values found"):
+            net._validate_disturbance_history_numerical(
+                origin_demands=origin_demands,
+                onramp_demands=onramp_demands,
+                turning_rates=turning_rates,
+                flow_boundary_conditions=flow_bc,
+                density_boundary_conditions=density_bc,  # type: ignore (intentional error for testing)
+            )
+
+    def test_load_simulation_results_validates_disturbance_data(self):
+        """Test that loader validates disturbance data using validate_disturbance_history_numerical."""
+        from traffic_flow_models import CTM
+
+        # create simple network
+        main = MotorwayLink(
+            length=1.0, lanes=2, lane_capacity=1500, free_flow_speed=80, jam_density=140
+        )
+        origin = Origin()
+        dest = Destination()
+
+        node1 = Node(id="n1", incoming=[origin], outgoing=[main])
+        node2 = Node(id="n2", incoming=[main], outgoing=[dest])
+        net = Network(nodes=[node1, node2])
+
+        # simulate
+        model = CTM()
+        time_array, state_history, disturbance_history = net.simulate(
+            duration=0.02,
+            dt=0.01,
+            model=model,
+            origin_demands={origin.id: lambda t: 1000.0},
+            onramp_demands={},
+            turning_rates={},
+            destination_flow_bc={dest.id: lambda t: 0.0},
+            destination_density_bc={dest.id: lambda t: 0.0},
+            plot_results=False,
+        )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            filepath = os.path.join(tmpdir, "results.json")
+            net.save_simulation_results_json(
+                time_array=time_array,
+                state_history=state_history,
+                disturbance_history=disturbance_history,
+                filepath=filepath,
+                model=model,
+                dt=0.01,
+                duration=0.02,
+                preferred_cell_size=0.5,
+                model_params=None,
+            )
+
+            # corrupt disturbance data
+            with open(filepath, "r") as f:
+                data = json.load(f)
+
+            # replace numeric data with invalid values in origin demands
+            origin_demand_key = list(
+                data["disturbance_time_series"]["origin_demands"].keys()
+            )[0]
+            data["disturbance_time_series"]["origin_demands"][origin_demand_key][
+                0
+            ] = "corrupted"
+
+            # save corrupted data
+            corrupted_path = os.path.join(tmpdir, "corrupted_disturbance.json")
+            with open(corrupted_path, "w") as f:
+                json.dump(data, f)
+
+            # loading should fail validation
+            with pytest.raises(ValueError, match="could not convert string to float"):
+                Network.load_simulation_results_json(
+                    filepath=corrupted_path, network=net
+                )
