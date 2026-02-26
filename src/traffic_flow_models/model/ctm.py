@@ -42,6 +42,54 @@ class CTM:
         """Create an empty CTM model instance."""
         return
 
+    # ! Model parameter calibration support (not applicable for CTM)
+    # region
+    def get_default_calibration_params(self):
+        """CTM has no calibratable parameters.
+
+        Raises:
+            NotImplementedError: CTM does not support parameter calibration.
+        """
+        raise NotImplementedError(
+            "CTM model does not have calibratable parameters. "
+            "All model characteristics are determined by link properties "
+            "(capacity, jam density, free-flow speed)."
+        )
+
+    def get_calibration_bounds(self, network, **kwargs):
+        """CTM has no calibratable parameters.
+
+        Raises:
+            NotImplementedError: CTM does not support parameter calibration.
+        """
+        raise NotImplementedError("CTM model does not have calibratable parameters.")
+
+    def prepare_calibration_params(self, params, network, **kwargs):
+        """CTM has no calibratable parameters.
+
+        Raises:
+            NotImplementedError: CTM does not support parameter calibration.
+        """
+        raise NotImplementedError("CTM model does not have calibratable parameters.")
+
+    def parse_calibration_params(self, param_vec, network, **kwargs):
+        """CTM has no calibratable parameters.
+
+        Raises:
+            NotImplementedError: CTM does not support parameter calibration.
+        """
+        raise NotImplementedError("CTM model does not have calibratable parameters.")
+
+    def prepare_system_params(self, param_vec, network, **kwargs):
+        """CTM has no calibratable parameters.
+
+        Raises:
+            NotImplementedError: CTM does not support parameter calibration.
+        """
+        raise NotImplementedError("CTM model does not have calibratable parameters.")
+
+    # endregion
+
     # ! Fundamental diagram helper functions
     # region
     def critical_density(

@@ -13,6 +13,7 @@ from tqdm import tqdm
 from numpy.typing import NDArray
 from datetime import datetime
 from matplotlib.lines import Line2D
+from scipy.optimize import least_squares, OptimizeResult
 from typing import (
     cast,
     Iterator,
@@ -1846,6 +1847,484 @@ class Network:
             )
 
         return time_array, state_history, disturbance_history
+
+    # endregion
+
+    # ! Model parameter calibration
+    # region
+    def _extract_measurable_states(
+        self,
+        state_history: NDArray[np.float64],
+    ) -> Tuple[NDArray[np.float64], list[Tuple[str, str, int]]]:
+        """Extract measurable quantities (flows, densities, speeds) from state history.
+
+        This helper method extracts only the measurable state components from the
+        full state history, excluding queue states which are not properly observable in
+        microsimulation. The extracted states include per-cell flows, densities,
+        and speeds for all motorway links.
+
+        Args:
+            state_history: 2-D array of state vectors over time (state_dim x num_timesteps).
+
+        Returns:
+            Tuple containing:
+            - measurable_states: 2-D array of measurable state components (measurable_dim x num_timesteps)
+            - index_map: List of tuples (link_id, quantity_type, cell_index) describing
+              the ordering of measurable states, where quantity_type is 'flow', 'density', or 'speed'.
+
+        Raises:
+            ValueError: If state_history dimensions are invalid.
+        """
+        if state_history.ndim != 2:
+            raise ValueError("state_history must be a 2-D array")
+
+        measurable_indices: list[int] = []
+        index_map: list[Tuple[str, str, int]] = []
+        current_idx = 0
+
+        # extract measurable states node by node in the same order as state vector construction
+        for node in self.list_nodes():
+            # skip incoming origin/onramp flows and queues (not part of measurable set)
+            for link in node.incoming:
+                if isinstance(link, Origin):
+                    current_idx += 2  # flow(1) + queue(1)
+                elif isinstance(link, Onramp):
+                    current_idx += 2  # flow(1) + queue(1)
+
+            # extract motorway link flows, densities, speeds
+            for link in node.outgoing:
+                if isinstance(link, MotorwayLink):
+                    num_cells = len(link)
+                    # flows
+                    for cell_idx in range(num_cells):
+                        measurable_indices.append(current_idx + cell_idx)
+                        index_map.append((link.id, "flow", cell_idx))
+                    current_idx += num_cells
+
+                    # fensities
+                    for cell_idx in range(num_cells):
+                        measurable_indices.append(current_idx + cell_idx)
+                        index_map.append((link.id, "density", cell_idx))
+                    current_idx += num_cells
+
+                    # speeds
+                    for cell_idx in range(num_cells):
+                        measurable_indices.append(current_idx + cell_idx)
+                        index_map.append((link.id, "speed", cell_idx))
+                    current_idx += num_cells
+
+                elif isinstance(link, Offramp):
+                    current_idx += 2  # flow(1) + queue(1)
+                elif isinstance(link, Destination):
+                    current_idx += 1  # flow(1)
+
+        # extract measurable states from state_history
+        measurable_states = state_history[measurable_indices, :]
+        return measurable_states, index_map
+
+    def _compute_calibration_residuals(
+        self,
+        param_vec: NDArray[np.float64],
+        model: Union["CTM", "METANET"],
+        system: casadi.Function,
+        ground_truth_states: NDArray[np.float64],
+        ground_truth_disturbances: NDArray[np.float64],
+        measurable_indices: NDArray[np.float64],
+        window_indices: list[int],
+        model_options: dict | None = None,
+    ) -> NDArray[np.float64]:
+        """Compute residuals between model predictions and ground truth over a time window.
+
+        This method simulates the model forward in time using the provided parameters
+        and compares the predicted measurable states (flows, densities, speeds) with
+        the ground truth data. The residuals are computed only for the measurable
+        quantities, excluding queue states.
+
+        Args:
+            param_vec: 1-D array of calibration parameters in model-specific format.
+            model: Macroscopic traffic flow model.
+            system: CasADi function implementing the network update step.
+            ground_truth_states: 2-D array of full ground truth state vectors (state_dim x num_timesteps).
+            ground_truth_disturbances: 2-D array of disturbances (disturbance_dim x num_timesteps-1).
+            measurable_indices: 2-D array of measurable ground truth states (measurable_dim x num_timesteps).
+            window_indices: List of timestep indices defining the calibration window.
+            model_options: Dictionary of model-specific options passed to the model's
+                          prepare_system_params method.
+
+        Returns:
+            1-D array of residuals (predicted - measured) for all measurable states
+            across all timesteps in the window.
+        """
+        # convert calibration parameter vector to system parameter vector format
+        # (model-specific conversion handled by the model)
+        try:
+            system_param_vec = model.prepare_system_params(
+                param_vec=param_vec,
+                network=self,
+                model_options=model_options,
+            )
+        except AttributeError:
+            # fallback for models without prepare_system_params (assume no conversion needed)
+            system_param_vec = param_vec
+
+        # simulate forward through the window
+        residuals_list = []
+        for _, t_idx in enumerate(window_indices[:-1]):
+            # get current state and disturbance
+            x_current = ground_truth_states[:, t_idx]
+            d_current = ground_truth_disturbances[:, t_idx]
+
+            # predict next state using model with expanded parameter vector
+            x_next_predicted = system(system_param_vec, x_current, d_current)
+            x_next_predicted = np.array(x_next_predicted).flatten()
+
+            # extract measurable components from prediction
+            predicted_measurable = measurable_indices[:, t_idx + 1]
+
+            # compute residuals for measurable states only
+            residuals = []
+            measurable_idx = 0
+            current_idx = 0
+
+            for node in self.list_nodes():
+                # skip incoming origin/onramp flows and queues
+                for link in node.incoming:
+                    if isinstance(link, Origin):
+                        current_idx += 2
+                    elif isinstance(link, Onramp):
+                        current_idx += 2
+
+                # extract motorway link flows, densities, speeds
+                for link in node.outgoing:
+                    if isinstance(link, MotorwayLink):
+                        num_cells = len(link)
+                        # flows, densities, speeds
+                        for _ in range(num_cells * 3):
+                            residuals.append(
+                                x_next_predicted[current_idx]
+                                - predicted_measurable[measurable_idx]
+                            )
+                            current_idx += 1
+                            measurable_idx += 1
+                    elif isinstance(link, Offramp):
+                        current_idx += 2
+                    elif isinstance(link, Destination):
+                        current_idx += 1
+
+            residuals_list.extend(residuals)
+
+        return np.array(residuals_list, dtype=np.float64)
+
+    def calibrate_model_params(
+        self,
+        ground_truth_filepath: str,
+        model: Union["CTM", "METANET"],
+        initial_params: METANETParams | None = None,
+        window_size: int = 50,
+        param_bounds: Tuple[NDArray[np.float64], NDArray[np.float64]] | None = None,
+        model_options: dict | None = None,
+        regularization_weight: float = 0.0,
+        verbose: bool = True,
+    ) -> Tuple[METANETParams, OptimizeResult]:
+        """Calibrate model parameters using ground truth simulation data.
+
+        This method performs parameter estimation by minimizing the prediction error
+        between the model and provided ground truth data (e.g. microsimulation). It uses a
+        sliding window approach to balance computational efficiency with capturing
+        multi-step dynamics. Only measurable quantities (flows, densities, speeds)
+        are used for calibration, excluding queue states.
+
+        The optimization is performed using scipy's Trust Region Reflective algorithm
+        (least_squares with method='trf'), which handles bounded nonlinear least squares
+        problems robustly.
+
+        The method is model-agnostic and uses the model's calibration interface methods:
+        - get_default_calibration_params(): Get default initial parameters
+        - get_calibration_bounds(): Get parameter bounds
+        - prepare_calibration_params(): Convert params to optimization vector
+        - parse_calibration_params(): Convert optimization vector to params
+
+        Performance Tips for Noisy Data:
+        ---------------------------------
+        1. METANET: Set model_options={'link_specific_alpha': False} to reduce DOF
+        2. Increase window_size (e.g., 50-100) to capture more dynamics
+        3. Add regularization (regularization_weight=0.01-0.1) to prevent overfitting
+        4. Provide good initial_params based on domain knowledge or literature values
+        5. Try multiple random initializations and pick best result
+        6. Consider filtering/smoothing ground truth data before calibration
+
+        Args:
+            ground_truth_filepath: Path to JSON file containing ground truth simulation results
+                (must be in the format produced by save_simulation_results_json).
+            model: Macroscopic flow model instance. Must implement calibration interface.
+            initial_params: Initial guess for model parameters. If None, uses model defaults.
+            window_size: Number of timesteps per calibration window. Larger windows capture
+                more dynamics but increase computational cost. Default: 50.
+            param_bounds: Optional tuple of (lower_bounds, upper_bounds) as numpy arrays.
+                If None, uses model's default bounds.
+            model_options: Dictionary of model-specific calibration options. For METANET:
+                - 'link_specific_alpha' (bool): If True, calibrates separate alpha for each
+                  link. If False (default), uses single global alpha. Setting to False
+                  reduces degrees of freedom and often improves robustness with noisy data.
+            regularization_weight: L2 regularization weight (lambda) for Ridge regression.
+                Penalizes deviation from initial_params: cost = ||residuals||^2 + lambda*||p-p0||^2.
+                Helps prevent overfitting to noisy data. Typical values: 0.0 (none) to 0.1 (strong).
+                Default: 0.0.
+            verbose: If True, print calibration progress and results.
+
+        Returns:
+            Tuple containing:
+            - calibrated_params: Dictionary of calibrated model parameters.
+            - result: scipy OptimizeResult object with detailed optimization information
+              (cost, iterations, termination status, etc.).
+
+        Raises:
+            NotImplementedError: If model does not support parameter calibration.
+            ValueError: If ground truth file is invalid or incompatible with network structure.
+            FileNotFoundError: If ground_truth_filepath does not exist.
+        """
+        if model_options is None:
+            model_options = {}
+
+        if verbose:
+            print("\n" + "=" * 80)
+            print("PARAMETER CALIBRATION")
+            print("=" * 80)
+
+        # ! 1) Try to use model's calibration interface
+        try:
+            # check if model implements calibration interface
+            _ = model.get_default_calibration_params
+            _ = model.get_calibration_bounds
+            _ = model.prepare_calibration_params
+            _ = model.parse_calibration_params
+        except (AttributeError, NotImplementedError) as e:
+            raise NotImplementedError(
+                f"Model {type(model).__name__} does not support parameter calibration. "
+                f"Models must implement: get_default_calibration_params(), "
+                f"get_calibration_bounds(), prepare_calibration_params(), "
+                f"and parse_calibration_params()."
+            ) from e
+
+        # ! 2) Load ground truth data
+        if verbose:
+            print(f"Loading ground truth data from {ground_truth_filepath}")
+
+        time_array, state_history, disturbance_history, metadata = (
+            self.load_simulation_results_json(
+                filepath=ground_truth_filepath, network=self
+            )
+        )
+
+        num_timesteps = len(time_array)
+        if verbose:
+            print(
+                f"  Loaded {num_timesteps} timesteps (duration: {time_array[-1]:.4f})"
+            )
+
+        # ! 3) Extract measurable states from ground truth
+        measurable_states, index_map = self._extract_measurable_states(state_history)
+        num_measurable = measurable_states.shape[0]
+
+        if verbose:
+            print(f"  Extracted {num_measurable} measurable state components")
+            print(
+                f"    (flows, densities, speeds for {sum(1 for _, qty, _ in index_map if qty == 'flow')} cells)"
+            )
+
+        # ! 4) Set up initial parameters using model interface
+        if initial_params is None:
+            initial_params = model.get_default_calibration_params()
+            if verbose:
+                print("  Using model default initial parameters")
+        else:
+            if verbose:
+                print("  Using provided initial parameters")
+
+        # convert to vector form using model method
+        initial_param_vec = model.prepare_calibration_params(
+            params=initial_params,
+            network=self,
+            model_options=model_options,
+        )
+
+        # set up parameter bounds using model method
+        if param_bounds is None:
+            lower_bounds, upper_bounds = model.get_calibration_bounds(
+                network=self, model_options=model_options
+            )
+            if verbose:
+                print("  Using model default parameter bounds")
+        else:
+            lower_bounds, upper_bounds = param_bounds
+            if verbose:
+                print("  Using provided parameter bounds")
+
+        if verbose:
+            print(f"  Parameter vector size: {len(initial_param_vec)}")
+
+            # display model-specific options
+            if model_options:
+                print("  Model options:")
+                for key, value in model_options.items():
+                    print(f"    {key}: {value}")
+
+            # display bounds if available
+            if len(lower_bounds) >= 6:
+                print(
+                    f"  Bounds: tau=[{lower_bounds[0]:.0e}, {upper_bounds[0]:.1f}], "
+                    f"nu=[{lower_bounds[1]:.1f}, {upper_bounds[1]:.1f}], "
+                    f"kappa=[{lower_bounds[2]:.0e}, {upper_bounds[2]:.1f}], "
+                    f"delta=[{lower_bounds[3]:.1f}, {upper_bounds[3]:.1f}], "
+                    f"phi=[{lower_bounds[4]:.1f}, {upper_bounds[4]:.1f}], "
+                    f"alpha=[{lower_bounds[5]:.0e}, {upper_bounds[5]:.1f}]"
+                )
+
+            if regularization_weight > 0:
+                print(f"  Regularization: λ={regularization_weight}")
+
+        # ! 5) Build CasADi system function
+        if verbose:
+            print("  Building CasADi system function...")
+
+        # count components for system function
+        num_flows = 0
+        num_densities = 0
+        num_speeds = 0
+        num_origins = 0
+        num_onramps = 0
+        num_offramps = 0
+        num_destinations = 0
+
+        for node in self.list_nodes():
+            for link in node.incoming:
+                if isinstance(link, Origin):
+                    num_origins += 1
+                    num_flows += 1
+                elif isinstance(link, Onramp):
+                    num_onramps += 1
+                    num_flows += 1
+
+            for link in node.outgoing:
+                if isinstance(link, MotorwayLink):
+                    num_flows += len(link)
+                    num_densities += len(link)
+                    num_speeds += len(link)
+                elif isinstance(link, Offramp):
+                    num_offramps += 1
+                    num_flows += 1
+                elif isinstance(link, Destination):
+                    num_destinations += 1
+                    num_flows += 1
+
+        # count splits
+        num_splits = sum(len(node.outgoing) for node in self.list_nodes())
+
+        # construct the system update function for the chosen model and network structure
+        dt = float(time_array[1] - time_array[0]) if len(time_array) > 1 else 0.01
+        system = model.network_update_function(
+            network=self,
+            num_flows=num_flows,
+            num_densities=num_densities,
+            num_speeds=num_speeds,
+            num_origins=num_origins,
+            num_onramps=num_onramps,
+            num_offramps=num_offramps,
+            num_splits=num_splits,
+            num_destinations=num_destinations,
+            dt=dt,
+        )
+
+        if verbose:
+            print("  System function built successfully")
+
+        # ! 6) Define residual function for optimization
+        def residual_func(param_vec: NDArray[np.float64]) -> NDArray[np.float64]:
+            """Compute residuals over all time windows with optional regularization."""
+            all_residuals = []
+
+            # use sliding windows
+            num_windows = max(1, (num_timesteps - 1) // window_size)
+            for w in range(num_windows):
+                # define window indices
+                start_idx = w * window_size
+                end_idx = min(start_idx + window_size + 1, num_timesteps)
+                window_indices = list(range(start_idx, end_idx))
+
+                if len(window_indices) < 2:
+                    continue
+
+                # compute residuals for this window
+                window_residuals = self._compute_calibration_residuals(
+                    param_vec=param_vec,
+                    model=model,
+                    system=system,
+                    ground_truth_states=state_history,
+                    ground_truth_disturbances=disturbance_history,
+                    measurable_indices=measurable_states,
+                    window_indices=window_indices,
+                    model_options=model_options,
+                )
+                all_residuals.append(window_residuals)
+
+            residuals = np.concatenate(all_residuals) if all_residuals else np.array([])
+
+            # add Tikhonov regularization term if requested
+            if regularization_weight > 0:
+                # penalize deviation from initial parameters
+                regularization_term = np.sqrt(regularization_weight) * (
+                    param_vec - initial_param_vec
+                )
+                residuals = np.concatenate([residuals, regularization_term])
+
+            return residuals
+
+        # ! 7) Run optimization
+        if verbose:
+            print("\nStarting parameter calibration...")
+            print(f"  Window size: {window_size} timesteps")
+            print(f"  Number of windows: {max(1, (num_timesteps - 1) // window_size)}")
+
+        result = least_squares(
+            fun=residual_func,
+            x0=initial_param_vec,
+            bounds=(lower_bounds, upper_bounds),
+            method="trf",
+            verbose=2 if verbose else 0,
+            max_nfev=1000,
+        )
+
+        # ! 8) Extract calibrated parameters using model method
+        calibrated_param_vec = result.x
+        calibrated_params = model.parse_calibration_params(
+            param_vec=calibrated_param_vec,
+            network=self,
+            model_options=model_options,
+        )
+
+        if verbose:
+            print("\n" + "=" * 80)
+            print("CALIBRATION RESULTS")
+            print("=" * 80)
+            print(f"  Status: {result.message}")
+            print(f"  Success: {result.success}")
+            print(f"  Function evaluations: {result.nfev}")
+            print(f"  Final cost: {result.cost:.6e}")
+            print(f"  Optimality: {result.optimality:.2e}")
+            print("\nCalibrated parameters:")
+
+            # print parameters (model-agnostic)
+            for key, value in calibrated_params.items():
+                if isinstance(value, dict):
+                    print(f"  {key}: (link-specific)")
+                    for link_id, param_val in value.items():
+                        print(f"    {link_id}: {param_val:.6f}")
+                elif isinstance(value, (int, float)):
+                    print(f"  {key}: {value:.6f}")
+                else:
+                    print(f"  {key}: {value}")
+
+        return calibrated_params, result
 
     # endregion
 

@@ -1,5 +1,6 @@
-import numpy as np
 import casadi
+import warnings
+import numpy as np
 from typing import cast, TYPE_CHECKING, Tuple, TypedDict, Union
 from numpy.typing import NDArray
 
@@ -41,6 +42,292 @@ class METANET:
     def __init__(self):
         """Create an empty METANET model instance."""
         return
+
+    # ! Model parameter calibration support
+    # region
+    def get_default_calibration_params(self) -> METANETParams:
+        """Return default initial parameters for calibration.
+
+        These defaults provide reasonable starting values for the optimization
+        procedure when no initial guess is provided.
+
+        Returns:
+            Dictionary of default METANET parameters.
+        """
+        return METANETParams(
+            tau=10 / 3600,
+            nu=20.0,
+            kappa=2.0,
+            delta=1.0,
+            phi=1.0,
+            alpha=1.0,
+        )
+
+    def _validate_model_options(self, model_options: dict | None) -> dict:
+        """Validate and return model_options for METANET calibration.
+
+        Args:
+            model_options: Dictionary of model-specific options.
+
+        Returns:
+            Validated model_options dictionary (empty dict if None provided).
+
+        Raises:
+            ValueError: If model_options contains invalid keys or values.
+        """
+        if model_options is None:
+            return {}
+
+        # validate that only known options are provided
+        valid_options = {"link_specific_alpha"}
+        unknown_options = set(model_options.keys()) - valid_options
+        if unknown_options:
+            raise ValueError(
+                f"Unknown model_options for METANET: {unknown_options}. "
+                f"Valid options are: {valid_options}"
+            )
+
+        # validate link_specific_alpha if present
+        if "link_specific_alpha" in model_options:
+            link_specific_alpha = model_options["link_specific_alpha"]
+            if not isinstance(link_specific_alpha, bool):
+                raise ValueError(
+                    f"model_options['link_specific_alpha'] must be a bool, "
+                    f"got {type(link_specific_alpha).__name__}"
+                )
+
+        return model_options
+
+    def get_calibration_bounds(
+        self,
+        network: "Network",
+        model_options: dict | None = None,
+    ) -> Tuple[NDArray[np.float64], NDArray[np.float64]]:
+        """Return default parameter bounds for calibration.
+
+        Provides conservative bounds that ensure physical validity of parameters
+        while allowing sufficient freedom for optimization.
+
+        Args:
+            network: Network instance (used to count links for alpha bounds).
+            model_options: Dictionary of METANET-specific calibration options:
+                - 'link_specific_alpha' (bool): If True, returns bounds for per-link
+                  alpha values. If False, returns bounds for a single global alpha
+                  parameter. Default: False.
+
+        Returns:
+            Tuple of (lower_bounds, upper_bounds) as numpy arrays.
+        """
+        model_options = self._validate_model_options(model_options)
+        link_specific_alpha = model_options.get("link_specific_alpha", False)
+
+        # TODO: change alpha parameters to be specified only for mainline links, because calibration is not really possible otherwise...
+        # count number of alpha parameters needed
+        if link_specific_alpha:
+            # count unique motorway links, onramps, and offramps
+            # use a set to avoid double-counting links that appear in both incoming and outgoing
+            unique_links = set()
+            for node in network.list_nodes():
+                for link in node.incoming + node.outgoing:
+                    if isinstance(link, (Onramp, MotorwayLink, Offramp)):
+                        unique_links.add(link.id)
+            num_alpha = len(unique_links)
+        else:
+            num_alpha = 1
+
+        lower_bounds = np.array(
+            [
+                5 / 3600,  # tau > 5 seconds (typically around 18 s)
+                10.0,  # nu >= 10 (typically around 60 km^2/h)
+                1,  # kappa > 1 (typically around 40 veh/km/lane)
+                1e-3,  # delta >= 0.001 (typically around 0.1-1)
+                0.01,  # phi >= 0.01 (typically around 0.1-1)
+            ]
+            + [1e-6] * num_alpha,  # alpha > 0 for each link (or global)
+            dtype=np.float64,
+        )
+        upper_bounds = np.array(
+            [
+                100 / 3600,  # tau < 100 seconds
+                100.0,  # nu < 100
+                100.0,  # kappa < 100
+                5.0,  # delta < 5
+                15.0,  # phi < 15
+            ]
+            + [10.0] * num_alpha,  # alpha < 10 for each link (or global)
+            dtype=np.float64,
+        )
+
+        return lower_bounds, upper_bounds
+
+    def prepare_calibration_params(
+        self,
+        params: METANETParams,
+        network: "Network",
+        model_options: dict | None = None,
+    ) -> NDArray[np.float64]:
+        """Convert METANET parameters to a calibration vector.
+
+        This method extends model_params_to_vec with support for choosing between
+        link-specific and global alpha parameters, which is useful for reducing
+        degrees of freedom and improving calibration robustness.
+
+        Args:
+            params: METANET parameter dictionary.
+            network: Network instance.
+            model_options: Dictionary of METANET-specific calibration options:
+                - 'link_specific_alpha' (bool): If True, treats alpha as link-specific
+                  (dict or scalar expanded to all links). If False, uses a single
+                  global alpha value. Default: False.
+
+        Returns:
+            1-D numpy array of calibration parameters.
+
+        Raises:
+            ValueError: If params are invalid or inconsistent.
+        """
+        model_options = self._validate_model_options(model_options)
+        link_specific_alpha = model_options.get("link_specific_alpha", False)
+
+        # validate parameters
+        self.validate_model_params(params)
+
+        # extract scalar parameters
+        scalar_params = np.array(
+            [
+                params["tau"],
+                params["nu"],
+                params["kappa"],
+                params["delta"],
+                params["phi"],
+            ],
+            dtype=np.float64,
+        )
+
+        # handle alpha parameter
+        if link_specific_alpha:
+            # use existing model_params_to_vec for link-specific alpha
+            return self.model_params_to_vec(network=network, model_params=params)
+        else:
+            # use single global alpha value
+            if isinstance(params["alpha"], dict):
+                # if dict provided, take the mean (or first value)
+                alpha_val = np.mean(list(params["alpha"].values()))
+            else:
+                alpha_val = params["alpha"]
+
+            return np.concatenate(
+                (scalar_params, np.array([alpha_val], dtype=np.float64))
+            )
+
+    def parse_calibration_params(
+        self,
+        param_vec: NDArray[np.float64],
+        network: "Network",
+        model_options: dict | None = None,
+    ) -> METANETParams:
+        """Convert a calibration vector back to METANET parameters.
+
+        Inverse of prepare_calibration_params. Handles both link-specific and
+        global alpha configurations.
+
+        Args:
+            param_vec: 1-D calibration parameter vector.
+            network: Network instance.
+            model_options: Dictionary of METANET-specific calibration options:
+                - 'link_specific_alpha' (bool): If True, parses link-specific alpha
+                  values. If False, parses a single global alpha. Default: False.
+
+        Returns:
+            METANET parameter dictionary.
+        """
+        model_options = self._validate_model_options(model_options)
+        link_specific_alpha = model_options.get("link_specific_alpha", False)
+
+        if link_specific_alpha:
+            # use existing model_params_vec_to_dict for link-specific alpha
+            # return value is known to be numerical based on inputs (non-symbolic)
+            return cast(
+                METANETParams,
+                self.model_params_vec_to_dict(
+                    network=network, model_params_vec=param_vec
+                ),
+            )
+        else:
+            # parse with global alpha
+            return METANETParams(
+                tau=param_vec[0],
+                nu=param_vec[1],
+                kappa=param_vec[2],
+                delta=param_vec[3],
+                phi=param_vec[4],
+                alpha=param_vec[5],  # single global value
+            )
+
+    def prepare_system_params(
+        self,
+        param_vec: NDArray[np.float64],
+        network: "Network",
+        model_options: dict | None = None,
+    ) -> NDArray[np.float64]:
+        """Convert calibration parameter vector to system parameter vector.
+
+        The CasADi system function always expects a full parameter vector with
+        per-link alpha values. When using global alpha (link_specific_alpha=False),
+        this method expands the single alpha value to all links. When using
+        link-specific alpha, the parameter vector is returned unchanged.
+
+        This method encapsulates model-specific logic for parameter vector conversion,
+        keeping the Network class model-agnostic.
+
+        Args:
+            param_vec: 1-D calibration parameter vector. If link_specific_alpha=False,
+                      this should have 6 elements (tau, nu, kappa, delta, phi, alpha_global).
+                      If True, it should have (5 + num_links) elements with per-link alphas.
+            network: Network instance (used to count links for alpha expansion).
+            model_options: Dictionary of METANET-specific calibration options:
+                - 'link_specific_alpha' (bool): If False, param_vec contains a single
+                  global alpha that will be replicated for all links. Default: False.
+
+        Returns:
+            System parameter vector ready to be passed to the CasADi system function.
+            Always has format: [tau, nu, kappa, delta, phi, alpha_1, alpha_2, ..., alpha_n]
+        """
+        model_options = self._validate_model_options(model_options)
+        link_specific_alpha = model_options.get("link_specific_alpha", False)
+
+        # if using link-specific alpha, parameter vector is already in system format
+        if link_specific_alpha:
+            return param_vec
+
+        # if using global alpha, expand to per-link format
+        # param_vec is [tau, nu, kappa, delta, phi, alpha_global]
+        # need to expand to [tau, nu, kappa, delta, phi, alpha_1, alpha_2, ..., alpha_n]
+        if len(param_vec) == 6:
+            # count unique motorway links, onramps, and offramps
+            # use a set to avoid double-counting links that appear in both incoming and outgoing
+            unique_links = set()
+            for node in network.list_nodes():
+                for link in node.incoming + node.outgoing:
+                    if isinstance(link, (Onramp, MotorwayLink, Offramp)):
+                        unique_links.add(link.id)
+
+            num_links = len(unique_links)
+
+            # expand parameter vector
+            system_param_vec = np.zeros(5 + num_links)
+            system_param_vec[:5] = param_vec[:5]  # tau, nu, kappa, delta, phi
+            system_param_vec[5:] = param_vec[5]  # replicate global alpha
+            return system_param_vec
+        else:
+            # parameter vector already in system format
+            warnings.warn(
+                "Expected 6 parameters for global alpha configuration, but got "
+                f"{len(param_vec)}. Assuming parameter vector is already in system format."
+            )
+            return param_vec
+
+    # endregion
 
     # ! Fundamental diagram helper functions
     # region
