@@ -1967,18 +1967,22 @@ class Network:
             # fallback for models without prepare_system_params (assume no conversion needed)
             system_param_vec = param_vec
 
-        # simulate forward through the window
+        # simulate forward through the window using multi-step prediction
+        # (start from ground truth only at window beginning, then propagate predictions)
         residuals_list = []
+
+        # initialize with ground truth at window start
+        x_current_predicted = ground_truth_states[:, window_indices[0]]
+
         for _, t_idx in enumerate(window_indices[:-1]):
-            # get current state and disturbance
-            x_current = ground_truth_states[:, t_idx]
+            # get disturbance at current time
             d_current = ground_truth_disturbances[:, t_idx]
 
             # predict next state using model with expanded parameter vector
-            x_next_predicted = system(system_param_vec, x_current, d_current)
+            x_next_predicted = system(system_param_vec, x_current_predicted, d_current)
             x_next_predicted = np.array(x_next_predicted).flatten()
 
-            # extract measurable components from prediction
+            # extract measurable components from ground truth
             predicted_measurable = measurable_indices[:, t_idx + 1]
 
             # compute residuals for measurable states only
@@ -2013,6 +2017,9 @@ class Network:
 
             residuals_list.extend(residuals)
 
+            # use predicted state as current state for next iteration (multi-step prediction)
+            x_current_predicted = x_next_predicted
+
         return np.array(residuals_list, dtype=np.float64)
 
     def calibrate_model_params(
@@ -2025,7 +2032,7 @@ class Network:
         model_options: dict | None = None,
         regularization_weight: float = 0.0,
         verbose: bool = True,
-    ) -> Tuple[METANETParams, OptimizeResult]:
+    ) -> Tuple[METANETParams, OptimizeResult, NDArray[np.float64]]:
         """Calibrate model parameters using ground truth simulation data.
 
         This method performs parameter estimation by minimizing the prediction error
@@ -2077,6 +2084,8 @@ class Network:
             - calibrated_params: Dictionary of calibrated model parameters.
             - result: scipy OptimizeResult object with detailed optimization information
               (cost, iterations, termination status, etc.).
+            - param_history: 2-D array of parameter vectors over optimization iterations
+              (shape: num_evaluations x num_parameters).
 
         Raises:
             NotImplementedError: If model does not support parameter calibration.
@@ -2239,15 +2248,22 @@ class Network:
             print("  System function built successfully")
 
         # ! 6) Define residual function for optimization
+        # track parameter history for convergence analysis
+        param_history: list[NDArray[np.float64]] = []
+
         def residual_func(param_vec: NDArray[np.float64]) -> NDArray[np.float64]:
             """Compute residuals over all time windows with optional regularization."""
+            # store parameter vector for convergence tracking
+            param_history.append(param_vec.copy())
+
             all_residuals = []
 
-            # use sliding windows
-            num_windows = max(1, (num_timesteps - 1) // window_size)
+            # use overlapping sliding windows with 50% stride
+            stride = window_size // 2
+            num_windows = max(1, (num_timesteps - window_size - 1) // stride + 1)
             for w in range(num_windows):
                 # define window indices
-                start_idx = w * window_size
+                start_idx = w * stride
                 end_idx = min(start_idx + window_size + 1, num_timesteps)
                 window_indices = list(range(start_idx, end_idx))
 
@@ -2324,7 +2340,10 @@ class Network:
                 else:
                     print(f"  {key}: {value}")
 
-        return calibrated_params, result
+        # convert parameter history to array
+        param_history_array = np.array(param_history)
+
+        return calibrated_params, result, param_history_array
 
     # endregion
 
