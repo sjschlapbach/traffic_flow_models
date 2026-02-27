@@ -139,22 +139,22 @@ class METANET:
             [
                 5 / 3600,  # tau > 5 seconds (typically around 18 s)
                 10.0,  # nu >= 10 (typically around 60 km^2/h)
-                1,  # kappa > 1 (typically around 40 veh/km/lane)
+                10,  # kappa > 10 (typically around 40 veh/km/lane)
                 1e-3,  # delta >= 0.001 (typically around 0.1-1)
                 0.01,  # phi >= 0.01 (typically around 0.1-1)
             ]
-            + [1e-6] * num_alpha,  # alpha > 0 for each link (or global)
+            + [1.0] * num_alpha,  # alpha > 0 for each link (or global)
             dtype=np.float64,
         )
         upper_bounds = np.array(
             [
-                100 / 3600,  # tau < 100 seconds
-                100.0,  # nu < 100
-                100.0,  # kappa < 100
+                50 / 3600,  # tau < 50 seconds
+                200.0,  # nu < 200
+                150.0,  # kappa < 150
                 5.0,  # delta < 5
                 15.0,  # phi < 15
             ]
-            + [10.0] * num_alpha,  # alpha < 10 for each link (or global)
+            + [6.0] * num_alpha,  # alpha < 5 for each link (or global)
             dtype=np.float64,
         )
 
