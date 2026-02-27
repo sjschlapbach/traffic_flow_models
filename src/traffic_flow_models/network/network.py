@@ -2314,11 +2314,11 @@ class Network:
             # validate numerical data using existing validation (for first timestep)
             if t == 0:
                 network._validate_disturbance_history_numerical(
-                    origin_demands=cast(dict[str, float], origin_demands_t),  # type: ignore
-                    onramp_demands=cast(dict[str, float], onramp_demands_t),  # type: ignore
-                    turning_rates=cast(dict[str, dict[str, float]], turning_rates_t),  # type: ignore
-                    flow_boundary_conditions=cast(dict[str, float], flow_bc_t),  # type: ignore
-                    density_boundary_conditions=cast(dict[str, float], density_bc_t),  # type: ignore
+                    origin_demands=cast(dict[str, float], origin_demands_t),
+                    onramp_demands=cast(dict[str, float], onramp_demands_t),
+                    turning_rates=cast(dict[str, dict[str, float]], turning_rates_t),
+                    flow_boundary_conditions=cast(dict[str, float], flow_bc_t),
+                    density_boundary_conditions=cast(dict[str, float], density_bc_t),
                 )
 
             d_t = network.network_dict_to_disturbance_vec(
