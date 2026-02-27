@@ -57,7 +57,7 @@ class METANET:
         return METANETParams(
             tau=10 / 3600,
             nu=20.0,
-            kappa=2.0,
+            kappa=20.0,
             delta=1.0,
             phi=1.0,
             alpha=1.0,
@@ -121,7 +121,6 @@ class METANET:
         model_options = self._validate_model_options(model_options)
         link_specific_alpha = model_options.get("link_specific_alpha", False)
 
-        # TODO: change alpha parameters to be specified only for mainline links, because calibration is not really possible otherwise...
         # count number of alpha parameters needed
         if link_specific_alpha:
             # count unique motorway links, onramps, and offramps
