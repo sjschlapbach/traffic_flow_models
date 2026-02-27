@@ -4,19 +4,21 @@ METANET Model Parameter Calibration Demo
 This demo script demonstrates the parameter calibration functionality for the
 METANET macroscopic traffic flow model using realistic network scenarios. It
 performs calibration experiments on two different network configurations (scenarios
-A and C from metanet_simulation.py) with three data conditions each:
+A and C from metanet_simulation.py) with four data conditions each:
 
 1. **Exact Calibration**: Ground truth data with no noise
 2. **Noisy Calibration (no regularization)**: Realistic measurement noise
 3. **Noisy Calibration (with regularization)**: Noisy data + Tikhonov regularization
+4. **Noisy Calibration (link-specific alpha)**: Link-specific alpha parameters with regularization
 
-Total: 6 calibration experiments (2 scenarios × 3 conditions)
+Total: 8 calibration experiments (2 scenarios × 4 conditions)
 
 The script demonstrates:
-- model-agnostic calibration interface
+- Model-agnostic calibration interface
+- Multi-start parameter search using Latin Hypercube Sampling (optional)
 - METANET-specific options (global vs. link-specific alpha)
-- robustness strategies for noisy data (regularization)
-- performance comparison across different network topologies
+- Robustness strategies for noisy data (Tikhonov regularization)
+- Performance comparison across different network topologies
 """
 
 import os
@@ -347,6 +349,14 @@ def run_calibration_experiment(
 ) -> None:
     """Run complete calibration experiment for one scenario.
 
+    Performs 4 calibration experiments for the given scenario:
+    1. Exact ground truth data (optional multi-start with 40 LHS samples)
+    2. Noisy data without regularization (optional multi-start with 40 LHS samples)
+    3. Noisy data with Tikhonov regularization (λ=0.01)
+    4. Noisy data with link-specific alpha parameters (λ=0.01)
+
+    Also generates comparison plots and convergence analysis.
+
     Args:
         scenario_name: Name of the scenario (e.g., "Scenario A")
         network: Network instance
@@ -355,11 +365,13 @@ def run_calibration_experiment(
         onramp_demand: Onramp demand function
         true_params: True METANET parameters for ground truth generation
         initial_params: Initial guess for calibration (used in standard mode)
-        dt: Simulation timestep
-        duration: Simulation duration
-        preferred_cell_size: Preferred cell size for discretization
+        dt: Simulation timestep (hours)
+        duration: Simulation duration (hours)
+        preferred_cell_size: Preferred cell size for discretization (km)
         timestamp: Timestamp string for results directory
-        use_parameter_search: If True, use multi-start parameter search for initialization. If False, use single initial_params.
+        use_parameter_search: If True, use multi-start parameter search with Latin
+            Hypercube Sampling (40 samples) for Experiments 1 and 2. If False, use
+            single initial_params for all experiments.
     """
     print("\n" + "=" * 80)
     print(f"{scenario_name}")
@@ -804,7 +816,17 @@ def run_calibration_experiment(
 
 
 def main():
-    """Run the calibration demonstration."""
+    """Run the calibration demonstration.
+
+    Executes 8 calibration experiments across 2 network scenarios (A and C):
+    - Experiment 1: Exact ground truth data (optional multi-start)
+    - Experiment 2: Noisy data without regularization (optional multi-start)
+    - Experiment 3: Noisy data with Tikhonov regularization
+    - Experiment 4: Noisy data with link-specific alpha parameters
+
+    Use --parameter-search flag to enable multi-start parameter search with
+    Latin Hypercube Sampling for Experiments 1 and 2.
+    """
     # track existing simulation_results folders before starting
     existing_sim_dirs = set(glob.glob("results/simulation_results_*"))
 
@@ -816,7 +838,7 @@ def main():
     parser.add_argument(
         "--parameter-search",
         action="store_true",
-        help="Use multi-start parameter search with Latin Hypercube Sampling for initialization (default: 20 samples per experiment)",
+        help="Use multi-start parameter search with Latin Hypercube Sampling for initialization (default: 40 samples per experiment)",
     )
     args = parser.parse_args()
 
@@ -824,12 +846,12 @@ def main():
     print("METANET Model Parameter Calibration Demo")
     print("=" * 80)
     print("\nTesting scenarios A and C with exact and noisy measurements")
-    print("Total experiments: 6 (2 scenarios × 3 conditions)")
+    print("Total experiments: 8 (2 scenarios × 4 conditions)")
 
     if args.parameter_search:
         print("\n*** MULTI-START PARAMETER SEARCH MODE ENABLED ***")
-        print("  - Exact data: Multi-start parameter search (20 LHS samples)")
-        print("  - Noisy data (no reg): Multi-start parameter search (20 LHS samples)")
+        print("  - Exact data: Multi-start parameter search (40 LHS samples)")
+        print("  - Noisy data (no reg): Multi-start parameter search (40 LHS samples)")
         print("  - Noisy data (with reg): Standard (single initialization)")
         print("  - Link-specific alpha: Standard (single initialization)")
     else:

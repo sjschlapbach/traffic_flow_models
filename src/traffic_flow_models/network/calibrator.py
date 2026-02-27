@@ -8,6 +8,7 @@ from the Network class to improve maintainability and separation of concerns.
 from __future__ import annotations
 
 import os
+import math
 import casadi
 import numpy as np
 import matplotlib.pyplot as plt
@@ -682,6 +683,7 @@ class Calibrator:
                             model=model,
                             initial_params=initial_params_grid,
                             window_size=window_size,
+                            stride=stride,
                             param_bounds=(lower_bounds, upper_bounds),
                             model_options=model_options,
                             regularization_weight=regularization_weight,
@@ -949,7 +951,8 @@ class Calibrator:
             param_history.append(param_vec.copy())
 
             # use overlapping sliding windows
-            num_windows = max(1, (num_timesteps - window_size - 1) // stride + 1)
+            # ceiling-style calculation ensures all timesteps are covered
+            num_windows = max(1, math.ceil((num_timesteps - window_size) / stride) + 1)
             all_residuals = []
             for w in range(num_windows):
                 # define window indices
