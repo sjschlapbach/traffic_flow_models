@@ -9,10 +9,10 @@ from __future__ import annotations
 
 import os
 import casadi
-import itertools
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.optimize import least_squares
+from scipy.stats import qmc
 from numpy.typing import NDArray
 from matplotlib.lines import Line2D
 from scipy.optimize import OptimizeResult
@@ -203,22 +203,22 @@ class Calibrator:
 
         print(f"\n  Correlation analysis plot saved to: {plot_path}")
 
-    def plot_grid_search_convergence(
+    def plot_parameter_search_convergence(
         self,
         results_list: list[dict],
         save_dir: str,
-        filename: str = "grid_search_convergence.png",
+        filename: str = "parameter_search_convergence.png",
         title: str | None = None,
     ) -> None:
-        """Plot convergence statistics across grid search runs.
+        """Plot convergence statistics across multi-start parameter search runs.
 
         Args:
-            results_list: List of dictionaries with grid search results
+            results_list: List of dictionaries with parameter search results
             save_dir: Directory to save plots
-            filename: Name of the output file (default: "grid_search_convergence.png")
-            title: Optional title for the plot (default: "Grid Search Convergence Analysis")
+            filename: Name of the output file (default: "parameter_search_convergence.png")
+            title: Optional title for the plot (default: "Multi-Start Parameter Search Convergence")
         """
-        print("\n  Creating grid search convergence plot...")
+        print("\n  Creating parameter search convergence plot...")
 
         successful_runs = [r for r in results_list if r["success"]]
         if not successful_runs:
@@ -243,7 +243,7 @@ class Calibrator:
         ax.scatter(run_indices, costs, c=colors, alpha=0.7, s=50)
         ax.set_ylabel("Final Cost", fontweight="bold")
         ax.set_yscale("log")
-        plot_title = title if title else "Grid Search Convergence Analysis"
+        plot_title = title if title else "Multi-Start Parameter Search Convergence"
         ax.set_title(plot_title, fontsize=14, fontweight="bold")
         ax.grid(True, alpha=0.3)
         ax.legend(
@@ -484,7 +484,8 @@ class Calibrator:
         regularization_weight: float = 0.0,
         max_nfev: int = 1000,
         verbose: bool = True,
-        use_grid_search: bool = False,
+        use_parameter_search: bool = False,
+        n_samples: int | None = None,
         plot_convergence: bool | str = False,
         plot_correlation: bool | str = False,
         save_dir: str | None = None,
@@ -509,12 +510,12 @@ class Calibrator:
         - prepare_calibration_params(): Convert params to optimization vector
         - parse_calibration_params(): Convert optimization vector to params
 
-        Grid Search Mode:
-        ----------------
-        When use_grid_search=True, the method tests 2^N initial parameter configurations
-        where each parameter is set to either its minimum or maximum bound (N = number of
-        parameters). This multi-start approach helps avoid local minima. The best solution
-        across all runs is returned.
+        Multi-Start Parameter Search Mode:
+        -----------------------------------
+        When use_parameter_search=True, the method uses Latin Hypercube Sampling (LHS)
+        to generate diverse initial parameter configurations within the parameter bounds.
+        This multi-start approach helps avoid local minima by exploring the parameter
+        space efficiently. The best solution across all runs is returned.
 
         Performance Tips for Noisy Data:
         ---------------------------------
@@ -530,7 +531,7 @@ class Calibrator:
                 (must be in the format produced by save_simulation_results_json).
             model: Macroscopic flow model instance. Must implement calibration interface.
             initial_params: Initial guess for model parameters. If None, uses model defaults.
-                Ignored when use_grid_search=True.
+                Ignored when use_parameter_search=True.
             window_size: Number of timesteps per calibration window. Larger windows capture
                 more dynamics but increase computational cost. Default: 50.
             stride: Stride between consecutive calibration windows. Must be <= window_size to
@@ -549,19 +550,22 @@ class Calibrator:
                 Default: 0.0.
             max_nfev: Maximum number of function evaluations for the optimizer. Default: 1000.
             verbose: If True, print calibration progress and results.
-            use_grid_search: If True, perform grid search over 2^N parameter configurations
-                (each parameter at min or max bound). If False, use single initial_params.
-                Default: False.
-            plot_convergence: If True and use_grid_search=True and save_dir is provided,
+            use_parameter_search: If True, perform multi-start optimization using Latin Hypercube
+                Sampling to generate initial parameter configurations. If False, use single
+                initial_params. Default: False.
+            n_samples: Number of Latin Hypercube samples when use_parameter_search=True. If None,
+                defaults to min(20, 2^n_params) to balance exploration and computational cost.
+                Default: None.
+            plot_convergence: If True and use_parameter_search=True and save_dir is provided,
                 generate convergence plot showing cost, evaluations, and optimality across
-                grid search runs. Can also be a string specifying the output filename.
+                parameter search runs. Can also be a string specifying the output filename.
                 Default: False.
             plot_correlation: If True and save_dir is provided, generate parameter correlation
                 analysis plot showing correlation matrix and singular values. Can also be a
                 string specifying the output filename. Default: False.
             save_dir: Directory to save diagnostic plots. If None, no plots are saved.
                 Default: None.
-            convergence_title: Optional custom title for  grid search convergence plot.
+            convergence_title: Optional custom title for parameter search convergence plot.
                 Default: None.
             correlation_title: Optional custom title for parameter correlation plot.
                 Default: None.
@@ -595,11 +599,11 @@ class Calibrator:
         if stride < 1:
             raise ValueError(f"stride ({stride}) must be >= 1")
 
-        # ! Grid Search Mode: Test all min/max parameter combinations
-        if use_grid_search:
+        # ! Multi-Start Parameter Search Mode: Use LHS to explore parameter space
+        if use_parameter_search:
             if verbose:
                 print("\n" + "=" * 80)
-                print("GRID SEARCH CALIBRATION")
+                print("MULTI-START PARAMETER SEARCH CALIBRATION")
                 print("=" * 80)
 
             # set up parameter bounds first to determine grid size
@@ -616,12 +620,17 @@ class Calibrator:
                 lower_bounds, upper_bounds = param_bounds
 
             n_params = len(lower_bounds)
-            total_configs = 2**n_params
+
+            # determine number of LHS samples
+            if n_samples is None:
+                # default: min(20, 2^n_params) to balance exploration and cost
+                n_samples = min(20, 2**n_params)
+            total_configs = n_samples
 
             if verbose:
                 print(f"  Parameters: {n_params}")
-                print(f"  Grid points: 2^{n_params} = {total_configs} configurations")
-                print(f"  Each parameter set to min or max bound")
+                print(f"  Sampling method: Latin Hypercube Sampling (LHS)")
+                print(f"  Number of samples: {total_configs}")
                 print(f"  Max iterations per run: {max_nfev}")
                 print()
 
@@ -630,25 +639,23 @@ class Calibrator:
             if n_params > 5:
                 param_names.extend([f"alpha_{i}" for i in range(n_params - 5)])
 
-            # track results across all grid search runs
+            # generate Latin Hypercube samples in [0, 1]^n_params
+            rng = np.random.default_rng(seed=42)
+            sampler = qmc.LatinHypercube(d=n_params, rng=rng)
+            lhs_samples = sampler.random(n=n_samples)
+
+            # scale samples to parameter bounds
+            scaled_samples = qmc.scale(lhs_samples, lower_bounds, upper_bounds)
+
+            # track results across all parameter search runs
             results_list = []
             best_cost = float("inf")
             best_params = None
             best_result = None
             best_param_history = None
 
-            # test all binary combinations (0 = min, 1 = max)
-            for config_idx, config in enumerate(
-                itertools.product([0, 1], repeat=n_params), start=1
-            ):
-                # construct initial parameter vector from bounds
-                initial_vec = np.array(
-                    [
-                        lower_bounds[i] if config[i] == 0 else upper_bounds[i]
-                        for i in range(n_params)
-                    ]
-                )
-
+            # test each LHS sample
+            for config_idx, initial_vec in enumerate(scaled_samples, start=1):
                 # convert to parameter dict for the model
                 initial_params_grid = model.parse_calibration_params(
                     param_vec=initial_vec,
@@ -656,17 +663,18 @@ class Calibrator:
                     model_options=model_options,
                 )
 
+                # create config string showing parameter values
                 config_str = ", ".join(
                     [
-                        f"{param_names[i]}={'min' if config[i] == 0 else 'max'}"
-                        for i in range(n_params)
+                        f"{param_names[i]}={initial_vec[i]:.3f}"
+                        for i in range(min(3, n_params))  # show first 3 params
                     ]
-                )
+                ) + ("..." if n_params > 3 else "")
 
                 if verbose:
                     print(f"  [{config_idx}/{total_configs}] Testing: {config_str}")
 
-                # run calibration with this initialization (recursive call with use_grid_search=False)
+                # run calibration with this initialization (recursive call with use_parameter_search=False)
                 try:
                     calibrated_params_run, result_run, param_history_run = (
                         self.calibrate_model_params(
@@ -679,16 +687,15 @@ class Calibrator:
                             regularization_weight=regularization_weight,
                             max_nfev=max_nfev,
                             verbose=False,  # suppress per-run output
-                            use_grid_search=False,  # disable recursive grid search
+                            use_parameter_search=False,  # disable recursive parameter search
                         )
                     )
 
                     # store results
                     results_list.append(
                         {
-                            "config": config,
                             "config_str": config_str,
-                            "initial_vec": initial_vec,
+                            "initial_vec": initial_vec.copy(),
                             "cost": result_run.cost,
                             "success": result_run.success,
                             "nfev": result_run.nfev,
@@ -718,9 +725,8 @@ class Calibrator:
                         print(f"       ERROR: {e}")
                     results_list.append(
                         {
-                            "config": config,
                             "config_str": config_str,
-                            "initial_vec": initial_vec,
+                            "initial_vec": initial_vec.copy(),
                             "cost": float("inf"),
                             "success": False,
                             "nfev": 0,
@@ -735,7 +741,7 @@ class Calibrator:
 
             if verbose:
                 print("\n" + "=" * 80)
-                print("GRID SEARCH SUMMARY")
+                print("PARAMETER SEARCH SUMMARY")
                 print("=" * 80)
                 print(f"  Successful runs: {len(successful_runs)} / {total_configs}")
                 if costs:
@@ -748,13 +754,17 @@ class Calibrator:
 
             # check if we found a solution
             if best_params is None or best_result is None or best_param_history is None:
-                raise RuntimeError("Grid search failed - no successful calibrations")
+                raise RuntimeError(
+                    "Parameter search failed - no successful calibrations"
+                )
 
             if verbose:
                 print(
-                    f"\n  Grid search correlation plot requested: {bool(plot_correlation)}"
+                    f"\n  Parameter search correlation plot requested: {bool(plot_correlation)}"
                 )
-                print(f"  Grid search save directory provided: {save_dir is not None}")
+                print(
+                    f"  Parameter search save directory provided: {save_dir is not None}"
+                )
 
             # plot convergence if requested
             if plot_convergence and save_dir is not None:
@@ -763,9 +773,9 @@ class Calibrator:
                 convergence_filename = (
                     plot_convergence
                     if isinstance(plot_convergence, str)
-                    else "grid_search_convergence.png"
+                    else "parameter_search_convergence.png"
                 )
-                self.plot_grid_search_convergence(
+                self.plot_parameter_search_convergence(
                     results_list=results_list,
                     save_dir=save_dir,
                     filename=convergence_filename,

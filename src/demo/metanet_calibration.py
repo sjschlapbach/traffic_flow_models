@@ -343,7 +343,7 @@ def run_calibration_experiment(
     duration: float,
     preferred_cell_size: float,
     timestamp: str,
-    use_grid_search: bool = False,
+    use_parameter_search: bool = False,
 ) -> None:
     """Run complete calibration experiment for one scenario.
 
@@ -359,7 +359,7 @@ def run_calibration_experiment(
         duration: Simulation duration
         preferred_cell_size: Preferred cell size for discretization
         timestamp: Timestamp string for results directory
-        use_grid_search: If True, use grid search for initialization. If False, use single initial_params.
+        use_parameter_search: If True, use multi-start parameter search for initialization. If False, use single initial_params.
     """
     print("\n" + "=" * 80)
     print(f"{scenario_name}")
@@ -424,13 +424,13 @@ def run_calibration_experiment(
 
     # ! 2) Calibration Experiment 1: Exact data
     print("\n" + "-" * 80)
-    if use_grid_search:
-        print("[2] Calibration Experiment 1: Exact Ground Truth Data (Grid Search)")
+    if use_parameter_search:
+        print("[2] Calibration Experiment 1: Exact Ground Truth Data (Multi-Start)")
     else:
         print("[2] Calibration Experiment 1: Exact Ground Truth Data")
     print("-" * 80)
 
-    # run calibration (with or without grid search based on flag)
+    # run calibration (with or without parameter search based on flag)
     calibrated_params_exact, result_exact, param_history_exact = (
         calibrator.calibrate_model_params(
             verbose=True,
@@ -441,14 +441,17 @@ def run_calibration_experiment(
             stride=15,
             model_options={"link_specific_alpha": False},
             regularization_weight=0.0,
-            max_nfev=500 if use_grid_search else 1000,
-            use_grid_search=use_grid_search,
+            max_nfev=150 if use_parameter_search else 200,
+            use_parameter_search=use_parameter_search,
+            n_samples=40 if use_parameter_search else 0,
             plot_convergence=(
-                "exact_data_grid_search_convergence.png" if use_grid_search else False
+                "exact_data_param_search_convergence.png"
+                if use_parameter_search
+                else False
             ),
             plot_correlation="exact_data_parameter_correlation.png",
             save_dir=scenario_dir,
-            convergence_title="Grid Search Convergence - Exact Data",
+            convergence_title="Multi-Start Parameter Search Convergence - Exact Data",
             correlation_title="Parameter Correlation Analysis - Exact Data",
         )
     )
@@ -555,15 +558,15 @@ def run_calibration_experiment(
 
     # ! 4) Calibration Experiment 2: Noisy data without regularization
     print("\n" + "-" * 80)
-    if use_grid_search:
+    if use_parameter_search:
         print(
-            "[4] Calibration Experiment 2: Noisy Data (No Regularization, Grid Search)"
+            "[4] Calibration Experiment 2: Noisy Data (No Regularization, Multi-Start)"
         )
     else:
         print("[4] Calibration Experiment 2: Noisy Data (No Regularization)")
     print("-" * 80)
 
-    # run calibration (with or without grid search based on flag)
+    # run calibration (with or without parameter search based on flag)
     calibrated_params_noisy_noreg, result_noisy_noreg, param_history_noreg = (
         calibrator.calibrate_model_params(
             verbose=True,
@@ -574,14 +577,17 @@ def run_calibration_experiment(
             stride=15,
             model_options={"link_specific_alpha": False},
             regularization_weight=0.0,
-            max_nfev=500 if use_grid_search else 1000,
-            use_grid_search=use_grid_search,
+            max_nfev=150 if use_parameter_search else 200,
+            use_parameter_search=use_parameter_search,
+            n_samples=40 if use_parameter_search else 0,
             plot_convergence=(
-                "noisy_noreg_grid_search_convergence.png" if use_grid_search else False
+                "noisy_noreg_param_search_convergence.png"
+                if use_parameter_search
+                else False
             ),
             plot_correlation="noisy_noreg_parameter_correlation.png",
             save_dir=scenario_dir,
-            convergence_title="Grid Search Convergence - Noisy Data (No Regularization)",
+            convergence_title="Multi-Start Parameter Search Convergence - Noisy Data (No Regularization)",
             correlation_title="Parameter Correlation Analysis - Noisy Data (No Regularization)",
         )
     )
@@ -624,6 +630,7 @@ def run_calibration_experiment(
             initial_params=initial_params,
             window_size=30,
             stride=15,
+            use_parameter_search=False,  # do not use parameter search for regularized case to isolate effect of regularization
             model_options={"link_specific_alpha": False},
             regularization_weight=0.01,
             plot_correlation="noisy_reg_parameter_correlation.png",
@@ -670,6 +677,7 @@ def run_calibration_experiment(
             initial_params=initial_params,
             window_size=30,
             stride=15,
+            use_parameter_search=False,  # do not use parameter search for link-specific alpha case due to complexity limitations
             model_options={"link_specific_alpha": True},
             regularization_weight=0.01,
             plot_correlation="link_specific_alpha_parameter_correlation.png",
@@ -806,9 +814,9 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument(
-        "--parameter-grid-search",
+        "--parameter-search",
         action="store_true",
-        help="Use grid search over min/max parameter combinations for initialization (64 runs per experiment)",
+        help="Use multi-start parameter search with Latin Hypercube Sampling for initialization (default: 20 samples per experiment)",
     )
     args = parser.parse_args()
 
@@ -818,10 +826,10 @@ def main():
     print("\nTesting scenarios A and C with exact and noisy measurements")
     print("Total experiments: 6 (2 scenarios × 3 conditions)")
 
-    if args.parameter_grid_search:
-        print("\n*** GRID SEARCH MODE ENABLED ***")
-        print("  - Exact data: Grid search (64 configurations)")
-        print("  - Noisy data (no reg): Grid search (64 configurations)")
+    if args.parameter_search:
+        print("\n*** MULTI-START PARAMETER SEARCH MODE ENABLED ***")
+        print("  - Exact data: Multi-start parameter search (20 LHS samples)")
+        print("  - Noisy data (no reg): Multi-start parameter search (20 LHS samples)")
         print("  - Noisy data (with reg): Standard (single initialization)")
         print("  - Link-specific alpha: Standard (single initialization)")
     else:
@@ -846,7 +854,7 @@ def main():
     initial_params: METANETParams = {
         "tau": 10.0 / 3600,
         "nu": 20.0,
-        "kappa": 2.0,
+        "kappa": 20.0,
         "delta": 1.0,
         "phi": 1.0,
         "alpha": 1.0,
@@ -877,7 +885,7 @@ def main():
         duration=duration,
         preferred_cell_size=preferred_cell_size,
         timestamp=timestamp,
-        use_grid_search=args.parameter_grid_search,
+        use_parameter_search=args.parameter_search,
     )
 
     # ! Scenario C (with lane drop/bottleneck)
@@ -894,7 +902,7 @@ def main():
         duration=duration,
         preferred_cell_size=preferred_cell_size,
         timestamp=timestamp,
-        use_grid_search=args.parameter_grid_search,
+        use_parameter_search=args.parameter_search,
     )
 
     # clean up simulation_results folders created during this calibration run
