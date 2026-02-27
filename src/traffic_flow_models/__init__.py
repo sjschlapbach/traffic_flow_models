@@ -13,6 +13,7 @@ from .network.offramp import Offramp
 from .network.motorway_link import MotorwayLink
 from .network.node import Node
 from .network.network import Network
+from .network.calibrator import Calibrator
 
 # re-export model components
 from .model.ctm import CTM
@@ -37,6 +38,7 @@ __all__ = [
     "MotorwayLink",
     "Node",
     "Network",
+    "Calibrator",
     "CTM",
     "METANET",
     "METANETParams",

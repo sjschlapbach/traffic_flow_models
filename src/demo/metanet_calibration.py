@@ -21,13 +21,16 @@ The script demonstrates:
 
 import os
 import json
+import argparse
+import glob
+import shutil
 import numpy as np
 import matplotlib.pyplot as plt
 from typing import Callable, Tuple
 from datetime import datetime
 from numpy.typing import NDArray
 
-from traffic_flow_models import METANET, METANETParams, Network
+from traffic_flow_models import METANET, METANETParams, Network, Calibrator
 from demo.scenarios import (
     mainline_demand_a,
     mainline_demand_c,
@@ -57,13 +60,13 @@ def calculate_parameter_errors(
 
     # calculate errors for all parameters
     for param_name in ["tau", "nu", "kappa", "delta", "phi"]:
-        true_val = true_params[param_name]  # type: ignore
-        calib_val = calibrated_params[param_name]  # type: ignore
+        true_val = true_params[param_name]
+        calib_val = calibrated_params[param_name]
         rel_error = abs(calib_val - true_val) / (true_val + 1e-10) * 100
         errors[param_name] = rel_error
 
     # handle alpha (can be float or dict)
-    true_alpha = true_params["alpha"]  # type: ignore
+    true_alpha = true_params["alpha"]
     calib_alpha = calibrated_params["alpha"]
 
     if isinstance(true_alpha, float) and isinstance(calib_alpha, float):
@@ -328,111 +331,6 @@ def plot_calibration_comparison(
     print("  Calibration comparison plots complete.")
 
 
-def plot_parameter_convergence(
-    param_history_exact: NDArray[np.float64],
-    param_history_noreg: NDArray[np.float64],
-    param_history_reg: NDArray[np.float64],
-    param_names: list[str],
-    true_params: METANETParams,
-    save_dir: str,
-) -> None:
-    """Plot convergence of calibration parameters for multiple experiments.
-
-    Creates a single figure with subplots showing how each parameter evolves
-    during the optimization process for all three calibration cases:
-    - Exact data (noiseless)
-    - Noisy data without regularization
-    - Noisy data with regularization
-
-    Args:
-        param_history_exact: 2-D array of parameter vectors for exact data
-        param_history_noreg: 2-D array of parameter vectors for noisy data (no reg)
-        param_history_reg: 2-D array of parameter vectors for noisy data (with reg)
-        param_names: List of parameter names in order
-        true_params: True METANET parameters for reference lines
-        save_dir: Directory to save the plot
-    """
-    print("  Creating combined convergence plot...")
-
-    num_params = len(param_names)
-
-    # create subplot grid (2 columns)
-    ncols = 2
-    nrows = (num_params + 1) // 2
-
-    _, axes = plt.subplots(nrows, ncols, figsize=(14, 3.5 * nrows))
-    axes = axes.flatten() if num_params > 1 else [axes]
-
-    for idx, param_name in enumerate(param_names):
-        ax = axes[idx]
-
-        # plot parameter evolution for all three cases
-        iterations_exact = np.arange(param_history_exact.shape[0])
-        iterations_noreg = np.arange(param_history_noreg.shape[0])
-        iterations_reg = np.arange(param_history_reg.shape[0])
-
-        param_values_exact = param_history_exact[:, idx]
-        param_values_noreg = param_history_noreg[:, idx]
-        param_values_reg = param_history_reg[:, idx]
-
-        ax.plot(
-            iterations_exact,
-            param_values_exact,
-            "g-",
-            linewidth=2,
-            alpha=0.7,
-            label="Exact data",
-        )
-        ax.plot(
-            iterations_noreg,
-            param_values_noreg,
-            "b--",
-            linewidth=1.5,
-            alpha=0.7,
-            label="Noisy (no reg)",
-        )
-        ax.plot(
-            iterations_reg,
-            param_values_reg,
-            "r-",
-            linewidth=1.5,
-            alpha=0.7,
-            label="Noisy (with reg)",
-        )
-
-        # plot true value as horizontal line
-        true_val = true_params[param_name]  # type: ignore
-        if isinstance(true_val, (int, float)):
-            ax.axhline(
-                y=true_val,
-                color="k",
-                linestyle=":",
-                linewidth=2,
-                label="True value",
-                alpha=0.6,
-            )
-
-        ax.set_xlabel("Function Evaluation", fontsize=10)
-        ax.set_ylabel(param_name, fontsize=11, fontweight="bold")
-        ax.set_title(f"Parameter: {param_name}", fontsize=11)
-        ax.legend(loc="best", fontsize=9)
-        ax.grid(True, alpha=0.3)
-
-    # hide unused subplots
-    for idx in range(num_params, len(axes)):
-        axes[idx].set_visible(False)
-
-    plt.suptitle("Parameter Convergence Comparison", fontsize=16, fontweight="bold")
-    plt.tight_layout()
-
-    # save figure
-    plot_path = os.path.join(save_dir, "convergence_comparison.png")
-    plt.savefig(plot_path, dpi=150, bbox_inches="tight")
-    plt.close()
-
-    print(f"    Saved to: {plot_path}")
-
-
 def run_calibration_experiment(
     scenario_name: str,
     network: Network,
@@ -445,6 +343,7 @@ def run_calibration_experiment(
     duration: float,
     preferred_cell_size: float,
     timestamp: str,
+    use_grid_search: bool = False,
 ) -> None:
     """Run complete calibration experiment for one scenario.
 
@@ -455,11 +354,12 @@ def run_calibration_experiment(
         mainline_demand: Mainline demand function
         onramp_demand: Onramp demand function
         true_params: True METANET parameters for ground truth generation
-        initial_params: Initial guess for calibration
+        initial_params: Initial guess for calibration (used in standard mode)
         dt: Simulation timestep
         duration: Simulation duration
         preferred_cell_size: Preferred cell size for discretization
         timestamp: Timestamp string for results directory
+        use_grid_search: If True, use grid search for initialization. If False, use single initial_params.
     """
     print("\n" + "=" * 80)
     print(f"{scenario_name}")
@@ -519,20 +419,37 @@ def run_calibration_experiment(
     print(f"    Duration: {duration} hours ({len(time_array)} timesteps)")
     print(f"    Saved to: {ground_truth_filepath}")
 
+    # create calibrator for parameter estimation
+    calibrator = Calibrator(network=network)
+
     # ! 2) Calibration Experiment 1: Exact data
     print("\n" + "-" * 80)
-    print("[2] Calibration Experiment 1: Exact Ground Truth Data")
+    if use_grid_search:
+        print("[2] Calibration Experiment 1: Exact Ground Truth Data (Grid Search)")
+    else:
+        print("[2] Calibration Experiment 1: Exact Ground Truth Data")
     print("-" * 80)
 
+    # run calibration (with or without grid search based on flag)
     calibrated_params_exact, result_exact, param_history_exact = (
-        network.calibrate_model_params(
+        calibrator.calibrate_model_params(
+            verbose=True,
             ground_truth_filepath=ground_truth_filepath,
             model=metanet,
             initial_params=initial_params,
             window_size=30,
-            model_options={"link_specific_alpha": False},  # use global alpha
+            stride=15,
+            model_options={"link_specific_alpha": False},
             regularization_weight=0.0,
-            verbose=True,
+            max_nfev=500 if use_grid_search else 1000,
+            use_grid_search=use_grid_search,
+            plot_convergence=(
+                "exact_data_grid_search_convergence.png" if use_grid_search else False
+            ),
+            plot_correlation="exact_data_parameter_correlation.png",
+            save_dir=scenario_dir,
+            convergence_title="Grid Search Convergence - Exact Data",
+            correlation_title="Parameter Correlation Analysis - Exact Data",
         )
     )
 
@@ -543,15 +460,15 @@ def run_calibration_experiment(
     print("-" * 80)
 
     for param_name in ["tau", "nu", "kappa", "delta", "phi"]:
-        true_val = true_params[param_name]  # type: ignore
-        calib_val = calibrated_params_exact[param_name]  # type: ignore
+        true_val = true_params[param_name]
+        calib_val = calibrated_params_exact[param_name]
         rel_error = abs(calib_val - true_val) / (true_val + 1e-10) * 100
         print(
             f"{param_name:<10} {true_val:<15.6f} {calib_val:<15.6f} {rel_error:<15.2f}%"
         )
 
     # handle alpha
-    true_alpha = true_params["alpha"]  # type: ignore
+    true_alpha = true_params["alpha"]
     calib_alpha = calibrated_params_exact["alpha"]
     if isinstance(true_alpha, float) and isinstance(calib_alpha, float):
         rel_error = abs(calib_alpha - true_alpha) / (true_alpha + 1e-10) * 100
@@ -638,18 +555,34 @@ def run_calibration_experiment(
 
     # ! 4) Calibration Experiment 2: Noisy data without regularization
     print("\n" + "-" * 80)
-    print("[4] Calibration Experiment 2: Noisy Data (No Regularization)")
+    if use_grid_search:
+        print(
+            "[4] Calibration Experiment 2: Noisy Data (No Regularization, Grid Search)"
+        )
+    else:
+        print("[4] Calibration Experiment 2: Noisy Data (No Regularization)")
     print("-" * 80)
 
+    # run calibration (with or without grid search based on flag)
     calibrated_params_noisy_noreg, result_noisy_noreg, param_history_noreg = (
-        network.calibrate_model_params(
+        calibrator.calibrate_model_params(
+            verbose=True,
             ground_truth_filepath=noisy_filepath,
             model=metanet,
             initial_params=initial_params,
             window_size=30,
+            stride=15,
             model_options={"link_specific_alpha": False},
             regularization_weight=0.0,
-            verbose=True,
+            max_nfev=500 if use_grid_search else 1000,
+            use_grid_search=use_grid_search,
+            plot_convergence=(
+                "noisy_noreg_grid_search_convergence.png" if use_grid_search else False
+            ),
+            plot_correlation="noisy_noreg_parameter_correlation.png",
+            save_dir=scenario_dir,
+            convergence_title="Grid Search Convergence - Noisy Data (No Regularization)",
+            correlation_title="Parameter Correlation Analysis - Noisy Data (No Regularization)",
         )
     )
 
@@ -660,8 +593,8 @@ def run_calibration_experiment(
     print("-" * 80)
 
     for param_name in ["tau", "nu", "kappa", "delta", "phi"]:
-        true_val = true_params[param_name]  # type: ignore
-        calib_val = calibrated_params_noisy_noreg[param_name]  # type: ignore
+        true_val = true_params[param_name]
+        calib_val = calibrated_params_noisy_noreg[param_name]
         rel_error = abs(calib_val - true_val) / (true_val + 1e-10) * 100
         print(
             f"{param_name:<10} {true_val:<15.6f} {calib_val:<15.6f} {rel_error:<15.2f}%"
@@ -684,14 +617,18 @@ def run_calibration_experiment(
     print("-" * 80)
 
     calibrated_params_noisy_reg, result_noisy_reg, param_history_reg = (
-        network.calibrate_model_params(
+        calibrator.calibrate_model_params(
+            verbose=True,
             ground_truth_filepath=noisy_filepath,
             model=metanet,
             initial_params=initial_params,
             window_size=30,
+            stride=15,
             model_options={"link_specific_alpha": False},
             regularization_weight=0.01,
-            verbose=True,
+            plot_correlation="noisy_reg_parameter_correlation.png",
+            save_dir=scenario_dir,
+            correlation_title="Parameter Correlation Analysis - Noisy Data (With Regularization)",
         )
     )
 
@@ -702,8 +639,8 @@ def run_calibration_experiment(
     print("-" * 80)
 
     for param_name in ["tau", "nu", "kappa", "delta", "phi"]:
-        true_val = true_params[param_name]  # type: ignore
-        calib_val = calibrated_params_noisy_reg[param_name]  # type: ignore
+        true_val = true_params[param_name]
+        calib_val = calibrated_params_noisy_reg[param_name]
         rel_error = abs(calib_val - true_val) / (true_val + 1e-10) * 100
         print(
             f"{param_name:<10} {true_val:<15.6f} {calib_val:<15.6f} {rel_error:<15.2f}%"
@@ -726,14 +663,18 @@ def run_calibration_experiment(
     print("-" * 80)
 
     calibrated_params_noisy_link_alpha, result_noisy_link_alpha, param_history_link = (
-        network.calibrate_model_params(
+        calibrator.calibrate_model_params(
+            verbose=True,
             ground_truth_filepath=noisy_filepath,
             model=metanet,
             initial_params=initial_params,
             window_size=30,
+            stride=15,
             model_options={"link_specific_alpha": True},
             regularization_weight=0.01,
-            verbose=True,
+            plot_correlation="link_specific_alpha_parameter_correlation.png",
+            save_dir=scenario_dir,
+            correlation_title="Parameter Correlation Analysis - Link-Specific Alpha",
         )
     )
 
@@ -806,7 +747,7 @@ def run_calibration_experiment(
     # parameter names for METANET (in order)
     param_names = ["tau", "nu", "kappa", "delta", "phi", "alpha"]
 
-    plot_parameter_convergence(
+    calibrator.plot_parameter_convergence(
         param_history_exact=param_history_exact,
         param_history_noreg=param_history_noreg,
         param_history_reg=param_history_reg,
@@ -856,11 +797,35 @@ def run_calibration_experiment(
 
 def main():
     """Run the calibration demonstration."""
+    # track existing simulation_results folders before starting
+    existing_sim_dirs = set(glob.glob("results/simulation_results_*"))
+
+    # parse command line arguments
+    parser = argparse.ArgumentParser(
+        description="METANET Model Parameter Calibration Demo",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    parser.add_argument(
+        "--parameter-grid-search",
+        action="store_true",
+        help="Use grid search over min/max parameter combinations for initialization (64 runs per experiment)",
+    )
+    args = parser.parse_args()
+
     print("=" * 80)
     print("METANET Model Parameter Calibration Demo")
     print("=" * 80)
     print("\nTesting scenarios A and C with exact and noisy measurements")
     print("Total experiments: 6 (2 scenarios × 3 conditions)")
+
+    if args.parameter_grid_search:
+        print("\n*** GRID SEARCH MODE ENABLED ***")
+        print("  - Exact data: Grid search (64 configurations)")
+        print("  - Noisy data (no reg): Grid search (64 configurations)")
+        print("  - Noisy data (with reg): Standard (single initialization)")
+        print("  - Link-specific alpha: Standard (single initialization)")
+    else:
+        print("\n*** STANDARD MODE (single initialization) ***")
 
     # common simulation parameters
     dt = 10.0 / 3600  # hours (10 seconds)
@@ -912,6 +877,7 @@ def main():
         duration=duration,
         preferred_cell_size=preferred_cell_size,
         timestamp=timestamp,
+        use_grid_search=args.parameter_grid_search,
     )
 
     # ! Scenario C (with lane drop/bottleneck)
@@ -928,7 +894,26 @@ def main():
         duration=duration,
         preferred_cell_size=preferred_cell_size,
         timestamp=timestamp,
+        use_grid_search=args.parameter_grid_search,
     )
+
+    # clean up simulation_results folders created during this calibration run
+    print("\n" + "-" * 80)
+    print("Cleaning up temporary simulation_results folders...")
+    print("-" * 80)
+    current_sim_dirs = set(glob.glob("results/simulation_results_*"))
+    new_sim_dirs = current_sim_dirs - existing_sim_dirs
+
+    if new_sim_dirs:
+        print(f"  Found {len(new_sim_dirs)} new simulation_results folder(s) to remove")
+        for sim_dir in new_sim_dirs:
+            try:
+                shutil.rmtree(sim_dir)
+                print(f"    Deleted: {sim_dir}")
+            except Exception as e:
+                print(f"    Failed to delete {sim_dir}: {e}")
+    else:
+        print("  No new simulation_results folders were created during this run")
 
     # overall summary
     print("\n" + "=" * 80)
