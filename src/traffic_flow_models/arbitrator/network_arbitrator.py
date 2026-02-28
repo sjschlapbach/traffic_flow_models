@@ -39,12 +39,12 @@ class NetworkArbitrator:
     ROAD_PARAMS = {
         "motorway": {
             "lane_capacity": 2000.0,
-            "jam_density": 150.0,
+            "jam_density": 180.0,
             "free_flow_speed": 120.0,
         },
         "trunk": {
             "lane_capacity": 1800.0,
-            "jam_density": 160.0,
+            "jam_density": 180.0,
             "free_flow_speed": 100.0,
         },
         "primary": {
@@ -63,9 +63,9 @@ class NetworkArbitrator:
             "free_flow_speed": 30.0,
         },
         "default": {
-            "lane_capacity": 1500.0,
-            "jam_density": 160.0,
-            "free_flow_speed": 60.0,
+            "lane_capacity": 2000.0,
+            "jam_density": 180.0,
+            "free_flow_speed": 100.0,
         },
     }
 

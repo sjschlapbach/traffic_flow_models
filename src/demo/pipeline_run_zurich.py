@@ -1,6 +1,12 @@
 import argparse
 
-from traffic_flow_models import CTM, SUMOPipeline, SUMOSimulation, DemandAggregator
+from traffic_flow_models import (
+    CTM,
+    SUMOPipeline,
+    SUMOSimulation,
+    DemandAggregator,
+    Simulation,
+)
 
 if __name__ == "__main__":
     args = argparse.ArgumentParser(description="Run the Zurich demo scenario.")
@@ -66,10 +72,10 @@ if __name__ == "__main__":
 
     # run a simulation of the network using the CTM model
     ctm = CTM()
-    time, states, disturbances = network.simulate(
+    sim = Simulation(network=network, model=ctm)
+    time, states, disturbances = sim.run(
         duration=duration,
         dt=dt,
-        model=ctm,
         preferred_cell_size=0.5,
         origin_demands=origin_demands,
         onramp_demands=onramp_demands,
@@ -81,7 +87,7 @@ if __name__ == "__main__":
     )
 
     # compute performance metrics and illustrate them
-    VKT, VHT, avg_speed = network.compute_performance_metrics(
+    VKT, VHT, avg_speed = sim.compute_metrics(
         states=states,
         dt=dt,
         timesteps=len(time),
