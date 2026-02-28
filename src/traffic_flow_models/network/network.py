@@ -4323,14 +4323,26 @@ class Network:
                 }
             )
 
-        # validate all simulations have same length
+        # validate all simulations have same length and aligned timestamps
         num_timesteps = simulations[0]["time_array"].shape[0]
+        reference_time_array = simulations[0]["time_array"]
+
         for i, sim in enumerate(simulations[1:], start=1):
             if sim["time_array"].shape[0] != num_timesteps:
                 raise ValueError(
                     f"Simulation {i+1} has {sim['time_array'].shape[0]} timesteps, "
                     f"but simulation 1 has {num_timesteps}. All simulations must have "
                     "the same number of timesteps for comparison."
+                )
+
+            # verify that time arrays are actually aligned (not just same length)
+            if not np.allclose(
+                sim["time_array"], reference_time_array, rtol=1e-9, atol=1e-12
+            ):
+                raise ValueError(
+                    f"Simulation {i+1} has misaligned timestamps compared to simulation 1. "
+                    f"All simulations must have identical time arrays for synchronized comparison. "
+                    f"If comparing simulations with different time grids, resampling is required."
                 )
 
         # apply frame interpolation if requested
