@@ -1,14 +1,44 @@
+import json
 import math
 import warnings
 import networkx as nx
 import xml.etree.ElementTree as ET
-from typing import Union, Tuple, Callable
+from typing import Union, Tuple, Callable, TypedDict, cast
 
 from traffic_flow_models.network.node import Node
 from traffic_flow_models.network.motorway_link import MotorwayLink
 from traffic_flow_models.network.origin import Origin
 from traffic_flow_models.network.destination import Destination
 from traffic_flow_models.network.network import Network
+
+
+class RoadTypeParams(TypedDict):
+    """Parameters for a specific road type.
+
+    Attributes:
+        lane_capacity: Maximum flow capacity per lane (veh/h/lane).
+        jam_density: Maximum density at jam conditions (veh/km/lane).
+        free_flow_speed: Speed at free-flow conditions (km/h).
+    """
+
+    lane_capacity: float
+    jam_density: float
+    free_flow_speed: float
+
+
+class RoadParamsConfig(TypedDict):
+    """Configuration for road parameters by road type.
+
+    Must include the following road types: motorway, trunk, primary,
+    secondary, tertiary, default.
+    """
+
+    motorway: RoadTypeParams
+    trunk: RoadTypeParams
+    primary: RoadTypeParams
+    secondary: RoadTypeParams
+    tertiary: RoadTypeParams
+    default: RoadTypeParams
 
 
 class NetworkArbitrator:
@@ -32,46 +62,13 @@ class NetworkArbitrator:
         node_coordinates: Dictionary mapping node IDs to (x, y) coordinates.
         selected_types: List of road types selected for the network.
         hwy_filter: Hierarchical list of road type groups for filtering.
+        road_params: Road parameters configuration loaded from JSON file.
     """
-
-    # TODO: we need to extract these values to a configuration file for better access
-    # Capacity per lane, Jam density, Fundamental diagram exponent, Free-flow speed, Relaxation time, Anticipation factor (km²), Lane-changing sensitivity
-    ROAD_PARAMS = {
-        "motorway": {
-            "lane_capacity": 2000.0,
-            "jam_density": 180.0,
-            "free_flow_speed": 120.0,
-        },
-        "trunk": {
-            "lane_capacity": 1800.0,
-            "jam_density": 180.0,
-            "free_flow_speed": 100.0,
-        },
-        "primary": {
-            "lane_capacity": 1600.0,
-            "jam_density": 180.0,
-            "free_flow_speed": 80.0,
-        },
-        "secondary": {
-            "lane_capacity": 1200.0,
-            "jam_density": 200.0,
-            "free_flow_speed": 50.0,
-        },
-        "tertiary": {
-            "lane_capacity": 1000.0,
-            "jam_density": 210.0,
-            "free_flow_speed": 30.0,
-        },
-        "default": {
-            "lane_capacity": 2000.0,
-            "jam_density": 180.0,
-            "free_flow_speed": 100.0,
-        },
-    }
 
     def __init__(
         self,
         net_xml_path: str,
+        road_params_config_path: str,
         target_cell_length: float = 0.3,
         hwy_filter: Union[list[Tuple[str, str]], None] = None,
     ):
@@ -79,6 +76,9 @@ class NetworkArbitrator:
 
         Args:
             net_xml_path: Path to the SUMO network XML file (.net.xml).
+            road_params_config_path: Path to JSON configuration file containing
+                road parameters (lane_capacity, jam_density, free_flow_speed for each road type).
+            target_cell_length: Target length for cells in the macroscopic network (km).
             hwy_filter: Optional hierarchical list of road type groups for filtering.
                 If None, uses default hierarchy: motorway > trunk > primary > secondary > tertiary.
                 Format: [["motorway", "motorway_link"], ["trunk", "trunk_link"], ...]
@@ -105,6 +105,92 @@ class NetworkArbitrator:
             ]
         )
 
+        # load road parameters from config file
+        self.road_params: RoadParamsConfig = self._load_road_params_from_json(
+            road_params_config_path
+        )
+
+    def _validate_road_params(self, params: dict) -> None:
+        """Validate road parameters configuration.
+
+        Ensures all required road types are present with correct parameter structure.
+        Validates that all parameter values are positive numbers.
+
+        Args:
+            params: Dictionary containing road parameters to validate.
+
+        Raises:
+            ValueError: If required road types are missing, parameters are missing,
+                or parameter values are invalid (not positive numbers).
+        """
+        required_road_types = [
+            "motorway",
+            "trunk",
+            "primary",
+            "secondary",
+            "tertiary",
+            "default",
+        ]
+        required_params = ["lane_capacity", "jam_density", "free_flow_speed"]
+
+        # check all required road types are present
+        for road_type in required_road_types:
+            if road_type not in params:
+                raise ValueError(
+                    f"Missing required road type '{road_type}' in road parameters configuration."
+                )
+
+            # check all required parameters are present for this road type
+            for param in required_params:
+                if param not in params[road_type]:
+                    raise ValueError(
+                        f"Missing required parameter '{param}' for road type '{road_type}'."
+                    )
+
+                # validate parameter type and value
+                value = params[road_type][param]
+                if not isinstance(value, (int, float)):
+                    raise ValueError(
+                        f"Parameter '{param}' for road type '{road_type}' must be a number, got {type(value).__name__}."
+                    )
+                if value <= 0:
+                    raise ValueError(
+                        f"Parameter '{param}' for road type '{road_type}' must be positive, got {value}."
+                    )
+
+    def _load_road_params_from_json(self, config_path: str) -> RoadParamsConfig:
+        """Load and validate road parameters from JSON configuration file.
+
+        Args:
+            config_path: Path to the JSON configuration file.
+
+        Returns:
+            Validated road parameters configuration dictionary.
+
+        Raises:
+            FileNotFoundError: If the configuration file does not exist.
+            json.JSONDecodeError: If the file is not valid JSON.
+            ValueError: If the configuration is invalid (see _validate_road_params).
+        """
+        try:
+            with open(config_path, "r") as f:
+                params = json.load(f)
+        except FileNotFoundError:
+            raise FileNotFoundError(
+                f"Road parameters configuration file not found: {config_path}"
+            )
+        except json.JSONDecodeError as e:
+            raise json.JSONDecodeError(
+                f"Invalid JSON in road parameters configuration file: {config_path}",
+                e.doc,
+                e.pos,
+            )
+
+        # validate the loaded parameters
+        self._validate_road_params(params)
+
+        return params
+
     def run(
         self,
     ) -> Tuple[
@@ -113,6 +199,7 @@ class NetworkArbitrator:
         list[str],
         list[str],
         dict[str, Callable[[float], dict[str, float]]],
+        RoadParamsConfig,
     ]:
         """Execute the complete network arbitration pipeline.
 
@@ -128,6 +215,7 @@ class NetworkArbitrator:
                 - destination_ids: List of destination node IDs in the network.
                 - splits: Dictionary mapping node IDs to their outgoing link split ratios
                     as time-dependent callable functions.
+                - road_params: Road parameters configuration used for the network.
 
         Raises:
             ValueError: If no edges are found after parsing or if no matching road types exist.
@@ -158,7 +246,14 @@ class NetworkArbitrator:
         ) = self.instantiate_network()
         self._log_network_statistics(macroscopic_network)
 
-        return macroscopic_network, origin_ids, onramp_ids, destination_ids, splits
+        return (
+            macroscopic_network,
+            origin_ids,
+            onramp_ids,
+            destination_ids,
+            splits,
+            self.road_params,
+        )
 
     def parse_sumo_xml(self) -> None:
         """Parse SUMO .net.xml file and extract network topology.
@@ -463,9 +558,12 @@ class NetworkArbitrator:
 
         for u, v, data in self.graph.edges(data=True):
             edge_type = data.get("type", "default").lower()
-            params = next(
-                (val for key, val in self.ROAD_PARAMS.items() if key in edge_type),
-                self.ROAD_PARAMS["default"],
+            params: RoadTypeParams = cast(
+                RoadTypeParams,
+                next(
+                    (val for key, val in self.road_params.items() if key in edge_type),
+                    self.road_params["default"],
+                ),
             )
 
             # initiate motorway link and directly connect it to the connected nodes

@@ -1,13 +1,56 @@
 import os
+import json
+import pytest
 
 from traffic_flow_models import SUMOPipeline
 
 
+@pytest.fixture
+def road_params_config(tmp_path):
+    """Create a temporary road parameters config file for testing."""
+    config = {
+        "motorway": {
+            "lane_capacity": 2000.0,
+            "jam_density": 180.0,
+            "free_flow_speed": 120.0,
+        },
+        "trunk": {
+            "lane_capacity": 1800.0,
+            "jam_density": 180.0,
+            "free_flow_speed": 100.0,
+        },
+        "primary": {
+            "lane_capacity": 1600.0,
+            "jam_density": 180.0,
+            "free_flow_speed": 80.0,
+        },
+        "secondary": {
+            "lane_capacity": 1200.0,
+            "jam_density": 200.0,
+            "free_flow_speed": 50.0,
+        },
+        "tertiary": {
+            "lane_capacity": 1000.0,
+            "jam_density": 210.0,
+            "free_flow_speed": 30.0,
+        },
+        "default": {
+            "lane_capacity": 2000.0,
+            "jam_density": 180.0,
+            "free_flow_speed": 100.0,
+        },
+    }
+    config_path = tmp_path / "test_road_params.json"
+    with open(config_path, "w") as f:
+        json.dump(config, f)
+    return str(config_path)
+
+
 class TestSUMOPipeline:
-    def test_init_creates_output_dir(self, tmp_path, monkeypatch):
+    def test_init_creates_output_dir(self, tmp_path, monkeypatch, road_params_config):
         # run inside temporary working dir so results/ is created there
         monkeypatch.chdir(tmp_path)
-        p = SUMOPipeline("myloc", "Somewhere")
+        p = SUMOPipeline("myloc", "Somewhere", road_params_config)
         assert os.path.isdir(os.path.join("results", "myloc"))
 
         # verify that class parameters have been set correctly
@@ -20,9 +63,11 @@ class TestSUMOPipeline:
         assert p.net_file.endswith(os.path.join("results", "myloc", "myloc.net.xml"))
         assert p.rou_file.endswith(os.path.join("results", "myloc", "myloc.rou.xml"))
 
-    def test_skip_if_exists_decorator_skips(self, monkeypatch, tmp_path, capsys):
+    def test_skip_if_exists_decorator_skips(
+        self, monkeypatch, tmp_path, capsys, road_params_config
+    ):
         monkeypatch.chdir(tmp_path)
-        p = SUMOPipeline("skiptest", "Nowhere")
+        p = SUMOPipeline("skiptest", "Nowhere", road_params_config)
 
         # create the osm file so fetch_OSM should be skipped
         os.makedirs(os.path.dirname(p.osm_file), exist_ok=True)
@@ -33,9 +78,11 @@ class TestSUMOPipeline:
         captured = capsys.readouterr()
         assert ".osm already exists" in captured.out
 
-    def test_convert_to_sumo_runs_netconvert(self, monkeypatch, tmp_path):
+    def test_convert_to_sumo_runs_netconvert(
+        self, monkeypatch, tmp_path, road_params_config
+    ):
         monkeypatch.chdir(tmp_path)
-        p = SUMOPipeline("convtest", "Loc")
+        p = SUMOPipeline("convtest", "Loc", road_params_config)
 
         # create a dummy osm file path
         os.makedirs(os.path.dirname(p.osm_file), exist_ok=True)
@@ -60,10 +107,10 @@ class TestSUMOPipeline:
         assert called["cmd"][out_index] == p.net_file
 
     def test_generate_demand_handles_missing_sumo_home(
-        self, monkeypatch, tmp_path, capsys
+        self, monkeypatch, tmp_path, capsys, road_params_config
     ):
         monkeypatch.chdir(tmp_path)
-        p = SUMOPipeline("dtest", "Loc")
+        p = SUMOPipeline("dtest", "Loc", road_params_config)
 
         # ensure SUMO_HOME not set
         monkeypatch.delenv("SUMO_HOME", raising=False)
@@ -72,9 +119,11 @@ class TestSUMOPipeline:
         captured = capsys.readouterr()
         assert "Please set the 'SUMO_HOME' environment variable" in captured.out
 
-    def test_generate_demand_invokes_randomTrips(self, monkeypatch, tmp_path):
+    def test_generate_demand_invokes_randomTrips(
+        self, monkeypatch, tmp_path, road_params_config
+    ):
         monkeypatch.chdir(tmp_path)
-        p = SUMOPipeline("dtest2", "Loc")
+        p = SUMOPipeline("dtest2", "Loc", road_params_config)
 
         # create fake SUMO_HOME and a dummy randomTrips.py
         fake_sumo = tmp_path / "sumo"
@@ -99,9 +148,11 @@ class TestSUMOPipeline:
         # command should contain path to our fake randomTrips.py
         assert any(str(random_trips) in str(c) for c in called["cmd"])
 
-    def test_convert_to_sumo_skips_when_net_exists(self, monkeypatch, tmp_path, capsys):
+    def test_convert_to_sumo_skips_when_net_exists(
+        self, monkeypatch, tmp_path, capsys, road_params_config
+    ):
         monkeypatch.chdir(tmp_path)
-        p = SUMOPipeline("convskip", "Place")
+        p = SUMOPipeline("convskip", "Place", road_params_config)
 
         # create the net file so convert_to_sumo should be skipped
         os.makedirs(os.path.dirname(p.net_file), exist_ok=True)

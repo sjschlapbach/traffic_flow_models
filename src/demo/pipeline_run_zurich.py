@@ -1,4 +1,5 @@
 import argparse
+import os
 
 from traffic_flow_models import (
     CTM,
@@ -27,8 +28,15 @@ if __name__ == "__main__":
     duration = 5000.0 / 3600
     plot_enabled = not parsed_args.no_plot
 
+    # path to road parameters configuration
+    road_params_config_path = os.path.join(
+        os.path.dirname(__file__), "road_params_config.json"
+    )
+
     # run the pipeline to generate files for the SUMO simulation
-    pipeline = SUMOPipeline(name=name, location=location)
+    pipeline = SUMOPipeline(
+        name=name, location=location, road_params_config_path=road_params_config_path
+    )
     pipeline.fetch_OSM()
     pipeline.convert_to_sumo()
     pipeline.create_consolidated_network()
@@ -40,6 +48,7 @@ if __name__ == "__main__":
         onramp_ids,
         destination_ids,
         splits,
+        road_params,
     ) = pipeline.get_consolidated_network()
 
     # run the SUMO simulation
