@@ -778,7 +778,102 @@ def run_calibration_experiment(
 
     print("  Parameter convergence comparison complete.")
 
-    # ! 10) Summary for this scenario
+    # ! 10) Generate simulation comparison video
+    print("\n" + "-" * 80)
+    print("Generating simulation comparison video...")
+    print("-" * 80)
+
+    # create subdirectories for calibrated simulation results
+    exact_sim_dir = f"{scenario_dir}/simulation_exact_data_calibration"
+    noreg_sim_dir = f"{scenario_dir}/simulation_noisy_noreg_calibration"
+    reg_sim_dir = f"{scenario_dir}/simulation_noisy_reg_calibration"
+    os.makedirs(exact_sim_dir, exist_ok=True)
+    os.makedirs(noreg_sim_dir, exist_ok=True)
+    os.makedirs(reg_sim_dir, exist_ok=True)
+
+    # run and save simulation with exact-calibration parameters
+    print("  Saving simulation with exact-calibration parameters...")
+    network.simulate(
+        duration=duration,
+        dt=dt,
+        model=metanet,
+        model_params=calibrated_params_exact,
+        preferred_cell_size=preferred_cell_size,
+        origin_demands=origin_demands,
+        onramp_demands=onramp_demands,
+        turning_rates=turning_rates,
+        destination_flow_bc=destination_flow_bc,
+        destination_density_bc=destination_density_bc,
+        plot_results=True,
+        show_plots=False,
+        results_dir=exact_sim_dir,
+    )
+
+    # run and save simulation with no-regularization parameters
+    print("  Saving simulation with no-regularization parameters...")
+    network.simulate(
+        duration=duration,
+        dt=dt,
+        model=metanet,
+        model_params=calibrated_params_noisy_noreg,
+        preferred_cell_size=preferred_cell_size,
+        origin_demands=origin_demands,
+        onramp_demands=onramp_demands,
+        turning_rates=turning_rates,
+        destination_flow_bc=destination_flow_bc,
+        destination_density_bc=destination_density_bc,
+        plot_results=True,
+        show_plots=False,
+        results_dir=noreg_sim_dir,
+    )
+
+    # run and save simulation with regularization parameters
+    print("  Saving simulation with regularization parameters...")
+    network.simulate(
+        duration=duration,
+        dt=dt,
+        model=metanet,
+        model_params=calibrated_params_noisy_reg,
+        preferred_cell_size=preferred_cell_size,
+        origin_demands=origin_demands,
+        onramp_demands=onramp_demands,
+        turning_rates=turning_rates,
+        destination_flow_bc=destination_flow_bc,
+        destination_density_bc=destination_density_bc,
+        plot_results=True,
+        show_plots=False,
+        results_dir=reg_sim_dir,
+    )
+
+    # generate comparison video
+    print("  Generating comparison video...")
+    result_files = [
+        ground_truth_filepath,
+        os.path.join(exact_sim_dir, "simulation_results.json"),
+        os.path.join(noreg_sim_dir, "simulation_results.json"),
+        os.path.join(reg_sim_dir, "simulation_results.json"),
+    ]
+
+    labels = [
+        "Ground Truth",
+        "Exact Data",
+        "Noisy (No Regularization)",
+        "Noisy (With Regularization)",
+    ]
+
+    comparison_video_path = os.path.join(scenario_dir, "simulation_comparison.avi")
+    network.visualize_simulation_comparison(
+        result_filepaths=result_files,
+        labels=labels,
+        output_filepath=comparison_video_path,
+        fps=25,
+        subsampling=2,
+        figsize=(16, 12),
+        dpi=150,
+    )
+    print(f"  Comparison video saved to: {comparison_video_path}")
+
+    # ! 11) Summary for this scenario
     print("\n" + "=" * 80)
     print(f"SUMMARY: {scenario_name}")
     print("=" * 80)
