@@ -160,7 +160,7 @@ class TestVisualization:
         # create simulation with very short duration
         model = CTM()
         sim = Simulation(net, model)
-        time_array, state_history, disturbance_history = sim.run(
+        _, _, _ = sim.run(
             duration=0.03,  # very short
             dt=0.01,
             preferred_cell_size=0.5,

@@ -858,7 +858,7 @@ def run_calibration_experiment(
         ]
 
         comparison_video_path = os.path.join(scenario_dir, "simulation_comparison.avi")
-        Simulation.visualize_comparison(
+        sim.visualize_comparison(
             result_filepaths=result_files,
             labels=labels,
             output_filepath=comparison_video_path,

@@ -1655,7 +1655,7 @@ class TestNetwork:
         # run short simulation
         model = CTM()
         sim = Simulation(net, model)
-        time_array, state_history, disturbance_history = sim.run(
+        time_array, _, _ = sim.run(
             duration=0.1,
             dt=0.01,
             origin_demands={origin.id: lambda t: 1000.0},
