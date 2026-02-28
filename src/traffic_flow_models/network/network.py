@@ -4323,6 +4323,12 @@ class Network:
                 }
             )
 
+        n_sims = len(simulations)
+        if n_sims == 1:
+            raise ValueError(
+                "Only one simulation provided. Simulation comparison plotting requires results from at least 2 simulation runs."
+            )
+
         # validate all simulations have same length and aligned timestamps
         num_timesteps = simulations[0]["time_array"].shape[0]
         reference_time_array = simulations[0]["time_array"]
@@ -4355,7 +4361,6 @@ class Network:
         num_frames = simulations[0]["state_history"].shape[1]
 
         # determine subplot layout
-        n_sims = len(simulations)
         if layout is None:
             # auto-compute roughly square layout
             ncols = int(np.ceil(np.sqrt(n_sims)))
@@ -4407,11 +4412,8 @@ class Network:
                 # create figure with subplots
                 fig, axes = plt.subplots(nrows, ncols, figsize=figsize, dpi=dpi)
 
-                # ensure axes is always a flat array for consistent indexing
-                if n_sims == 1:
-                    axes = np.array([axes])
-                else:
-                    axes = np.array(axes).flatten()
+                # flatten array for consistent indexing
+                axes = np.array(axes).flatten()
 
                 # draw each simulation on its subplot
                 for i, (sim, label) in enumerate(zip(simulations, labels)):
