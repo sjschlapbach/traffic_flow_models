@@ -950,6 +950,7 @@ class Simulation:
                 dt=dt,
                 duration=duration,
                 preferred_cell_size=preferred_cell_size,
+                model_params=self.model_params,
             )
             print(f"  Simulation results saved to {results_path}")
 
