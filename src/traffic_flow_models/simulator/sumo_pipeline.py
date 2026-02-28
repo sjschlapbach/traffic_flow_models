@@ -7,7 +7,10 @@ from functools import wraps
 import matplotlib.pyplot as plt
 from typing import Optional, Tuple, Callable
 from traffic_flow_models.arbitrator.loop_detector_generator import LoopDetectorGenerator
-from traffic_flow_models.arbitrator.network_arbitrator import NetworkArbitrator
+from traffic_flow_models.arbitrator.network_arbitrator import (
+    NetworkArbitrator,
+    RoadParamsConfig,
+)
 from traffic_flow_models.network.network import Network
 
 
@@ -44,15 +47,18 @@ class SUMOPipeline:
         splits: Dictionary mapping node IDs to their outgoing link split ratios.
     """
 
-    def __init__(self, name: str, location: str):
+    def __init__(self, name: str, location: str, road_params_config_path: str):
         """Initialize the SUMO pipeline.
 
         Args:
             name: Name identifier for the simulation.
             location: Geographic location to fetch OSM data from.
+            road_params_config_path: Path to JSON configuration file containing
+                road parameters (lane_capacity, jam_density, free_flow_speed for each road type).
         """
         self.name: str = name
         self.location: str = location
+        self.road_params_config_path: str = road_params_config_path
 
         # set up output directory
         self.output_dir: str = os.path.join("results", name)
@@ -74,6 +80,7 @@ class SUMOPipeline:
         self.onramp_ids: Optional[list[str]] = None
         self.destination_ids: Optional[list[str]] = None
         self.splits: Optional[dict[str, Callable[[float], dict[str, float]]]] = None
+        self.road_params: Optional[RoadParamsConfig] = None
 
     @skip_if_exists("osm_file")
     def fetch_OSM(self) -> None:
@@ -189,6 +196,7 @@ class SUMOPipeline:
         list[str],
         list[str],
         dict[str, Callable[[float], dict[str, float]]],
+        RoadParamsConfig,
     ]:
         """Create consolidated network from SUMO network.
 
@@ -204,14 +212,19 @@ class SUMOPipeline:
                 - onramp_ids: List of onramp node IDs in the network.
                 - destination_ids: List of destination node IDs in the network.
                 - splits: Dictionary mapping node IDs to their outgoing link split ratios as functions of time.
+                - road_params: Road parameters configuration used for the network.
         """
-        self.arbitrator = NetworkArbitrator(os.path.normpath(self.net_file))
+        self.arbitrator = NetworkArbitrator(
+            net_xml_path=os.path.normpath(self.net_file),
+            road_params_config_path=self.road_params_config_path,
+        )
         (
             self.consolidated_network,
             self.origin_ids,
             self.onramp_ids,
             self.destination_ids,
             self.splits,
+            self.road_params,
         ) = self.arbitrator.run()
 
         return (
@@ -220,6 +233,7 @@ class SUMOPipeline:
             self.onramp_ids,
             self.destination_ids,
             self.splits,
+            self.road_params,
         )
 
     def generate_detectors(self) -> Tuple[str, str]:
@@ -276,6 +290,7 @@ class SUMOPipeline:
         list[str],
         list[str],
         dict[str, Callable[[float], dict[str, float]]],
+        RoadParamsConfig,
     ]:
         """Retrieve the consolidated macroscopic network and metadata.
 
@@ -291,6 +306,7 @@ class SUMOPipeline:
                 - destination_ids: List of destination node IDs in the network.
                 - splits: Dictionary mapping node IDs to their outgoing link split ratios
                     as a time-varying function.
+                - road_params: Road parameters configuration used for the network.
 
         Raises:
             ValueError: If consolidated network has not been created yet.
@@ -305,6 +321,7 @@ class SUMOPipeline:
             or self.onramp_ids is None
             or self.destination_ids is None
             or self.splits is None
+            or self.road_params is None
         ):
             raise ValueError("Network parameters have not been properly initialized.")
 
@@ -314,4 +331,5 @@ class SUMOPipeline:
             self.onramp_ids,
             self.destination_ids,
             self.splits,
+            self.road_params,
         )
