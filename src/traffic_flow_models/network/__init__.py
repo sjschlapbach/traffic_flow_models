@@ -12,6 +12,7 @@ from .offramp import Offramp
 from .motorway_link import MotorwayLink
 from .node import Node
 from .network import Network
+from .simulation import Simulation
 
 __all__ = [
     "Cell",
@@ -22,4 +23,5 @@ __all__ = [
     "MotorwayLink",
     "Node",
     "Network",
+    "Simulation",
 ]

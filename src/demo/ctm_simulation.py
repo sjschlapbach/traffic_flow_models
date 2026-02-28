@@ -3,7 +3,7 @@ import argparse
 from typing import Callable
 from datetime import datetime
 
-from traffic_flow_models import CTM
+from traffic_flow_models import CTM, Simulation
 from demo.scenarios import (
     mainline_demand_a,
     mainline_demand_b,
@@ -96,10 +96,10 @@ if __name__ == "__main__":
 
     # run a simulation of the network using the CTM model
     ctm = CTM()
-    time, states, disturbances = network.simulate(
+    sim = Simulation(network=network, model=ctm)
+    time, states, disturbances = sim.run(
         duration=duration,
         dt=dt,
-        model=ctm,
         preferred_cell_size=0.5,
         origin_demands=origin_demands,
         onramp_demands=onramp_demands,
@@ -112,7 +112,7 @@ if __name__ == "__main__":
     )
 
     # compute performance metrics and illustrate them
-    VKT, VHT, avg_speed = network.compute_performance_metrics(
+    VKT, VHT, avg_speed = sim.compute_metrics(
         states=states,
         dt=dt,
         timesteps=len(time),
@@ -125,7 +125,7 @@ if __name__ == "__main__":
     if generate_video:
         video_path = os.path.join(results_dir, "simulation.avi")
         print(f"\nGenerating video visualization...")
-        network.visualize_simulation(
+        sim.visualize(
             results_filepath=os.path.join(results_dir, "simulation_results.json"),
             output_filepath=video_path,
             fps=30,

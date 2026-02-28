@@ -32,7 +32,7 @@ from typing import Callable, Tuple
 from datetime import datetime
 from numpy.typing import NDArray
 
-from traffic_flow_models import METANET, METANETParams, Network, Calibrator
+from traffic_flow_models import METANET, METANETParams, Network, Calibrator, Simulation
 from demo.scenarios import (
     mainline_demand_a,
     mainline_demand_c,
@@ -139,22 +139,21 @@ def plot_calibration_comparison(
     print("-" * 80)
 
     # load ground truth and noisy data
-    time_array_gt, state_history_gt, _, _ = network.load_simulation_results_json(
+    time_array_gt, state_history_gt, _, _ = Simulation.load_results(
         filepath=ground_truth_filepath, network=network
     )
 
-    time_array_noisy, state_history_noisy, _, _ = network.load_simulation_results_json(
+    time_array_noisy, state_history_noisy, _, _ = Simulation.load_results(
         filepath=noisy_filepath, network=network
     )
 
     # run simulations with exact calibration parameters
     print("  Running simulation with exact-calibration parameters...")
     metanet = METANET()
-    _, state_history_exact, _ = network.simulate(
+    sim = Simulation(network, metanet, calibrated_params_exact)
+    _, state_history_exact, _ = sim.run(
         duration=duration,
         dt=dt,
-        model=metanet,
-        model_params=calibrated_params_exact,
         preferred_cell_size=preferred_cell_size,
         origin_demands=origin_demands,
         onramp_demands=onramp_demands,
@@ -167,11 +166,10 @@ def plot_calibration_comparison(
 
     # run simulations with calibrated parameters (no regularization)
     print("  Running simulation with no-regularization parameters...")
-    _, state_history_noreg, _ = network.simulate(
+    sim = Simulation(network, metanet, calibrated_params_noreg)
+    _, state_history_noreg, _ = sim.run(
         duration=duration,
         dt=dt,
-        model=metanet,
-        model_params=calibrated_params_noreg,
         preferred_cell_size=preferred_cell_size,
         origin_demands=origin_demands,
         onramp_demands=onramp_demands,
@@ -184,11 +182,10 @@ def plot_calibration_comparison(
 
     # run simulations with calibrated parameters (with regularization)
     print("  Running simulation with regularization parameters...")
-    _, state_history_reg, _ = network.simulate(
+    sim = Simulation(network, metanet, calibrated_params_reg)
+    _, state_history_reg, _ = sim.run(
         duration=duration,
         dt=dt,
-        model=metanet,
-        model_params=calibrated_params_reg,
         preferred_cell_size=preferred_cell_size,
         origin_demands=origin_demands,
         onramp_demands=onramp_demands,
@@ -413,11 +410,10 @@ def run_calibration_experiment(
     os.makedirs(ground_truth_dir, exist_ok=True)
 
     metanet = METANET()
-    time_array, _, _ = network.simulate(
+    sim = Simulation(network, metanet, true_params)
+    time_array, _, _ = sim.run(
         duration=duration,
         dt=dt,
-        model=metanet,
-        model_params=true_params,
         preferred_cell_size=preferred_cell_size,
         origin_demands=origin_demands,
         onramp_demands=onramp_demands,
@@ -796,11 +792,10 @@ def run_calibration_experiment(
 
         # run and save simulation with exact-calibration parameters
         print("  Saving simulation with exact-calibration parameters...")
-        network.simulate(
+        sim = Simulation(network, metanet, calibrated_params_exact)
+        sim.run(
             duration=duration,
             dt=dt,
-            model=metanet,
-            model_params=calibrated_params_exact,
             preferred_cell_size=preferred_cell_size,
             origin_demands=origin_demands,
             onramp_demands=onramp_demands,
@@ -814,11 +809,10 @@ def run_calibration_experiment(
 
         # run and save simulation with no-regularization parameters
         print("  Saving simulation with no-regularization parameters...")
-        network.simulate(
+        sim = Simulation(network, metanet, calibrated_params_noisy_noreg)
+        sim.run(
             duration=duration,
             dt=dt,
-            model=metanet,
-            model_params=calibrated_params_noisy_noreg,
             preferred_cell_size=preferred_cell_size,
             origin_demands=origin_demands,
             onramp_demands=onramp_demands,
@@ -832,11 +826,10 @@ def run_calibration_experiment(
 
         # run and save simulation with regularization parameters
         print("  Saving simulation with regularization parameters...")
-        network.simulate(
+        sim = Simulation(network, metanet, calibrated_params_noisy_reg)
+        sim.run(
             duration=duration,
             dt=dt,
-            model=metanet,
-            model_params=calibrated_params_noisy_reg,
             preferred_cell_size=preferred_cell_size,
             origin_demands=origin_demands,
             onramp_demands=onramp_demands,
@@ -865,7 +858,7 @@ def run_calibration_experiment(
         ]
 
         comparison_video_path = os.path.join(scenario_dir, "simulation_comparison.avi")
-        network.visualize_simulation_comparison(
+        Simulation.visualize_comparison(
             result_filepaths=result_files,
             labels=labels,
             output_filepath=comparison_video_path,

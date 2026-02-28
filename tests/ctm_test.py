@@ -10,6 +10,7 @@ from traffic_flow_models import (
     Onramp,
     Offramp,
     Destination,
+    Simulation,
 )
 
 
@@ -77,11 +78,10 @@ class TestCTM:
         mainline_demand = lambda t: 500.0
 
         # run simulation for one timestep
-        _, states, _ = network.simulate(
+        sim = Simulation(network, model)
+        _, states, _ = sim.run(
             duration=dt,
             dt=dt,
-            model=model,
-            model_params=None,  # CTM has no model parameters
             origin_demands={origin.id: mainline_demand},
             onramp_demands={},
             initial_flows={
@@ -155,11 +155,10 @@ class TestCTM:
         onramp_demand = lambda t: 200.0
 
         # run simulation
-        _, states, _ = network.simulate(
+        sim = Simulation(network, model)
+        _, states, _ = sim.run(
             duration=dt * 2,
             dt=dt,
-            model=model,
-            model_params=None,
             origin_demands={origin.id: mainline_demand},
             onramp_demands={onramp.id: onramp_demand},
             initial_flows={
@@ -234,11 +233,10 @@ class TestCTM:
         mainline_split = 0.7  # remaining to mainline destination
 
         # run simulation
-        _, states, _ = network.simulate(
+        sim = Simulation(network, model)
+        _, states, _ = sim.run(
             duration=dt * 2,
             dt=dt,
-            model=model,
-            model_params=None,
             origin_demands={origin.id: mainline_demand},
             onramp_demands={},
             initial_flows={
@@ -373,11 +371,10 @@ class TestCTM:
         high_demand = lambda t: 5000.0
 
         # run simulation
-        _, states, _ = network.simulate(
+        sim = Simulation(network, model)
+        _, states, _ = sim.run(
             duration=dt * 5,
             dt=dt,
-            model=model,
-            model_params=None,
             origin_demands={origin.id: high_demand},
             onramp_demands={},
             initial_flows={

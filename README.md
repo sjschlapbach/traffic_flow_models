@@ -37,7 +37,7 @@ Networks are built using nodes that connect motorway links, onramps, offramps, o
 
 ```python
 from traffic_flow_models import (
-    Network, Node, MotorwayLink, Onramp, Origin, Destination
+    Network, Node, MotorwayLink, Onramp, Origin, Destination, Simulation
 )
 
 # Create network components
@@ -79,7 +79,7 @@ network = Network(nodes=[n0, n1, n2])
 Simulations use dictionaries of time-dependent demand functions:
 
 ```python
-from traffic_flow_models import CTM, METANET, METANETParams
+from traffic_flow_models import CTM, METANET, METANETParams, Simulation
 from typing import Callable
 
 # Define demand functions
@@ -110,10 +110,10 @@ turning_rates: dict[str, Callable[[float], dict[str, float]]] = {
 
 # CTM simulation
 ctm = CTM()
-time, states, disturbances = network.simulate(
+sim = Simulation(network, ctm)
+time, states, disturbances = sim.run(
     duration=1.0,
     dt=10.0/3600,
-    model=ctm,
     preferred_cell_size=0.5,
     origin_demands=origin_demands,
     onramp_demands=onramp_demands,
@@ -135,11 +135,10 @@ model_params: METANETParams = {
     "alpha": 2
 }
 
-time, states, disturbances = network.simulate(
+sim = Simulation(network, metanet, model_params)
+time, states, disturbances = sim.run(
     duration=1.0,
     dt=10.0/3600,
-    model=metanet,
-    model_params=model_params,
     preferred_cell_size=0.5,
     origin_demands=origin_demands,
     onramp_demands=onramp_demands,
@@ -155,7 +154,7 @@ time, states, disturbances = network.simulate(
 
 ```python
 # Compute network performance metrics
-VKT, VHT, avg_speed = network.compute_performance_metrics(
+VKT, VHT, avg_speed = sim.compute_metrics(
     states=states,
     dt=10.0/3600,
     timesteps=len(time)
@@ -165,7 +164,7 @@ print(f"Total VHT: {VHT:.2f} veh-h")
 print(f"Average Speed: {avg_speed:.2f} km/h")
 
 # Generate video visualization
-network.visualize_simulation(
+sim.visualize(
     results_filepath="results/simulation_results.json",
     output_filepath="results/simulation.avi",
     fps=30,

@@ -10,6 +10,7 @@ from traffic_flow_models.network.destination import Destination
 from traffic_flow_models.network.motorway_link import MotorwayLink
 from traffic_flow_models.network.onramp import Onramp
 from traffic_flow_models.network.offramp import Offramp
+from traffic_flow_models.network.simulation import Simulation
 from traffic_flow_models import CTM
 
 
@@ -20,16 +21,16 @@ class TestVisualization:
         rho_jam = 180.0
 
         # At zero density, should be bright green
-        r, g, b = Network._density_to_color(0.0, rho_crit, rho_jam)
-        assert r == Network.COLOR_BRIGHT_GREEN[0]
-        assert g == Network.COLOR_BRIGHT_GREEN[1]
-        assert b == Network.COLOR_BRIGHT_GREEN[2]
+        r, g, b = Simulation._density_to_color(0.0, rho_crit, rho_jam)
+        assert r == Simulation.COLOR_BRIGHT_GREEN[0]
+        assert g == Simulation.COLOR_BRIGHT_GREEN[1]
+        assert b == Simulation.COLOR_BRIGHT_GREEN[2]
 
         # At critical density, should be dark green
-        r, g, b = Network._density_to_color(rho_crit, rho_crit, rho_jam)
-        assert r == Network.COLOR_DARK_GREEN[0]
-        assert g == Network.COLOR_DARK_GREEN[1]
-        assert b == Network.COLOR_DARK_GREEN[2]
+        r, g, b = Simulation._density_to_color(rho_crit, rho_crit, rho_jam)
+        assert r == Simulation.COLOR_DARK_GREEN[0]
+        assert g == Simulation.COLOR_DARK_GREEN[1]
+        assert b == Simulation.COLOR_DARK_GREEN[2]
 
     def test_density_to_color_high_density(self):
         """Test color mapping for high densities."""
@@ -37,22 +38,22 @@ class TestVisualization:
         rho_jam = 180.0
 
         # At critical density, should be dark green
-        r, g, b = Network._density_to_color(rho_crit, rho_crit, rho_jam)
-        assert r == Network.COLOR_DARK_GREEN[0]
-        assert g == Network.COLOR_DARK_GREEN[1]
-        assert b == Network.COLOR_DARK_GREEN[2]
+        r, g, b = Simulation._density_to_color(rho_crit, rho_crit, rho_jam)
+        assert r == Simulation.COLOR_DARK_GREEN[0]
+        assert g == Simulation.COLOR_DARK_GREEN[1]
+        assert b == Simulation.COLOR_DARK_GREEN[2]
 
         # At jam density, should be dark red
-        r, g, b = Network._density_to_color(rho_jam, rho_crit, rho_jam)
-        assert r == Network.COLOR_DARK_RED[0]
-        assert g == Network.COLOR_DARK_RED[1]
-        assert b == Network.COLOR_DARK_RED[2]
+        r, g, b = Simulation._density_to_color(rho_jam, rho_crit, rho_jam)
+        assert r == Simulation.COLOR_DARK_RED[0]
+        assert g == Simulation.COLOR_DARK_RED[1]
+        assert b == Simulation.COLOR_DARK_RED[2]
 
         # Above jam density, should still be capped at dark red
-        r, g, b = Network._density_to_color(rho_jam * 1.5, rho_crit, rho_jam)
-        assert r == Network.COLOR_DARK_RED[0]
-        assert g == Network.COLOR_DARK_RED[1]
-        assert b == Network.COLOR_DARK_RED[2]
+        r, g, b = Simulation._density_to_color(rho_jam * 1.5, rho_crit, rho_jam)
+        assert r == Simulation.COLOR_DARK_RED[0]
+        assert g == Simulation.COLOR_DARK_RED[1]
+        assert b == Simulation.COLOR_DARK_RED[2]
 
     def test_density_to_color_midpoint(self):
         """Test color interpolation at midpoints."""
@@ -60,22 +61,34 @@ class TestVisualization:
         rho_jam = 180.0
 
         # at 50% of critical density
-        r, g, b = Network._density_to_color(rho_crit * 0.5, rho_crit, rho_jam)
+        r, g, b = Simulation._density_to_color(rho_crit * 0.5, rho_crit, rho_jam)
         # should be roughly halfway between bright and dark green
-        midpoint_0 = (Network.COLOR_BRIGHT_GREEN[0] + Network.COLOR_DARK_GREEN[0]) / 2.0
-        midpoint_1 = (Network.COLOR_BRIGHT_GREEN[1] + Network.COLOR_DARK_GREEN[1]) / 2.0
-        midpoint_2 = (Network.COLOR_BRIGHT_GREEN[2] + Network.COLOR_DARK_GREEN[2]) / 2.0
+        midpoint_0 = (
+            Simulation.COLOR_BRIGHT_GREEN[0] + Simulation.COLOR_DARK_GREEN[0]
+        ) / 2.0
+        midpoint_1 = (
+            Simulation.COLOR_BRIGHT_GREEN[1] + Simulation.COLOR_DARK_GREEN[1]
+        ) / 2.0
+        midpoint_2 = (
+            Simulation.COLOR_BRIGHT_GREEN[2] + Simulation.COLOR_DARK_GREEN[2]
+        ) / 2.0
         assert midpoint_0 - 10 < r < midpoint_0 + 10
         assert midpoint_1 - 10 < g < midpoint_1 + 10
         assert midpoint_2 - 10 < b < midpoint_2 + 10
 
         # at midpoint between critical and jam
         mid_density = (rho_crit + rho_jam) / 2.0
-        r, g, b = Network._density_to_color(mid_density, rho_crit, rho_jam)
+        r, g, b = Simulation._density_to_color(mid_density, rho_crit, rho_jam)
         # should be orange-ish (slightly closer to orange than red)
-        orange_0 = (1.2 * Network.COLOR_ORANGE[0] + Network.COLOR_DARK_RED[0]) / 2.2
-        orange_1 = (1.2 * Network.COLOR_ORANGE[1] + Network.COLOR_DARK_RED[1]) / 2.2
-        orange_2 = (1.2 * Network.COLOR_ORANGE[2] + Network.COLOR_DARK_RED[2]) / 2.2
+        orange_0 = (
+            1.2 * Simulation.COLOR_ORANGE[0] + Simulation.COLOR_DARK_RED[0]
+        ) / 2.2
+        orange_1 = (
+            1.2 * Simulation.COLOR_ORANGE[1] + Simulation.COLOR_DARK_RED[1]
+        ) / 2.2
+        orange_2 = (
+            1.2 * Simulation.COLOR_ORANGE[2] + Simulation.COLOR_DARK_RED[2]
+        ) / 2.2
         assert orange_0 - 10 < r < orange_0 + 10
         assert orange_1 - 10 < g < orange_1 + 10
         assert orange_2 - 10 < b < orange_2 + 10
@@ -84,7 +97,7 @@ class TestVisualization:
         """Test that subsampling=1 returns unchanged arrays."""
         state_history = np.array([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
         time_array = np.array([0.0, 1.0, 2.0])
-        interp_time, interp_state = Network._interpolate_frames(
+        interp_time, interp_state = Simulation._interpolate_frames(
             state_history, time_array, subsampling=1
         )
 
@@ -95,7 +108,7 @@ class TestVisualization:
         """Test that subsampling=2 correctly interpolates."""
         state_history = np.array([[0.0, 2.0, 4.0], [10.0, 20.0, 30.0]])
         time_array = np.array([0.0, 1.0, 2.0])
-        interp_time, interp_state = Network._interpolate_frames(
+        interp_time, interp_state = Simulation._interpolate_frames(
             state_history, time_array, subsampling=2
         )
 
@@ -146,8 +159,8 @@ class TestVisualization:
 
         # create simulation with very short duration
         model = CTM()
-        time_array, state_history, disturbance_history = net.simulate(
-            model=model,
+        sim = Simulation(net, model)
+        time_array, state_history, disturbance_history = sim.run(
             duration=0.03,  # very short
             dt=0.01,
             preferred_cell_size=0.5,
@@ -163,19 +176,10 @@ class TestVisualization:
             results_path = os.path.join(tmpdir, "results.json")
             video_path = os.path.join(tmpdir, "output.avi")
 
-            net.save_simulation_results_json(
-                time_array=time_array,
-                state_history=state_history,
-                disturbance_history=disturbance_history,
-                filepath=results_path,
-                model=model,
-                dt=0.01,
-                duration=0.03,
-                preferred_cell_size=0.5,
-            )
+            sim.save_results(filepath=results_path)
 
             # generate visualization
-            net.visualize_simulation(
+            sim.visualize(
                 results_filepath=results_path,
                 output_filepath=video_path,
                 fps=1,  # Low fps for fast test
@@ -213,8 +217,8 @@ class TestVisualization:
         main.partition_link(preferred_cell_size=0.5, dt=0.01)
 
         model = CTM()
-        time_array, state_history, disturbance_history = net.simulate(
-            model=model,
+        sim = Simulation(net, model)
+        time_array, state_history, disturbance_history = sim.run(
             duration=0.03,
             dt=0.01,
             preferred_cell_size=0.5,
@@ -229,19 +233,10 @@ class TestVisualization:
             results_path = os.path.join(tmpdir, "results.json")
             video_path = os.path.join(tmpdir, "output_subsampled.avi")
 
-            net.save_simulation_results_json(
-                time_array=time_array,
-                state_history=state_history,
-                disturbance_history=disturbance_history,
-                filepath=results_path,
-                model=model,
-                dt=0.01,
-                duration=0.03,
-                preferred_cell_size=0.5,
-            )
+            sim.save_results(filepath=results_path)
 
             # generate with subsampling
-            net.visualize_simulation(
+            sim.visualize(
                 results_filepath=results_path,
                 output_filepath=video_path,
                 fps=1,
@@ -277,8 +272,8 @@ class TestVisualization:
         main.partition_link(preferred_cell_size=0.5, dt=0.01)
 
         model = CTM()
-        time_array, state_history, disturbance_history = net.simulate(
-            model=model,
+        sim = Simulation(net, model)
+        time_array, state_history, disturbance_history = sim.run(
             duration=0.03,
             dt=0.01,
             preferred_cell_size=0.5,
@@ -293,20 +288,11 @@ class TestVisualization:
             results_path = os.path.join(tmpdir, "results.json")
             video_path = os.path.join(tmpdir, "output.avi")
 
-            net.save_simulation_results_json(
-                time_array=time_array,
-                state_history=state_history,
-                disturbance_history=disturbance_history,
-                filepath=results_path,
-                model=model,
-                dt=0.01,
-                duration=0.03,
-                preferred_cell_size=0.5,
-            )
+            sim.save_results(filepath=results_path)
 
             # should raise ValueError
             with pytest.raises(ValueError, match="lacks position information"):
-                net.visualize_simulation(
+                sim.visualize(
                     results_filepath=results_path,
                     output_filepath=video_path,
                     fps=1,
@@ -380,8 +366,8 @@ class TestVisualization:
                     link.partition_link(preferred_cell_size=0.5, dt=0.01)
 
         model = CTM()
-        time_array, state_history, disturbance_history = net.simulate(
-            model=model,
+        sim = Simulation(net, model)
+        time_array, state_history, disturbance_history = sim.run(
             duration=0.03,
             dt=0.01,
             preferred_cell_size=0.5,
@@ -402,19 +388,10 @@ class TestVisualization:
             results_path = os.path.join(tmpdir, "results.json")
             video_path = os.path.join(tmpdir, "output_ramps.avi")
 
-            net.save_simulation_results_json(
-                time_array=time_array,
-                state_history=state_history,
-                disturbance_history=disturbance_history,
-                filepath=results_path,
-                model=model,
-                dt=0.01,
-                duration=0.03,
-                preferred_cell_size=0.5,
-            )
+            sim.save_results(filepath=results_path)
 
             # should complete without error
-            net.visualize_simulation(
+            sim.visualize(
                 results_filepath=results_path,
                 output_filepath=video_path,
                 fps=1,

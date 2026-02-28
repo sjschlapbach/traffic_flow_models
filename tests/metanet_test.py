@@ -13,6 +13,7 @@ from traffic_flow_models import (
     Onramp,
     Offramp,
     Destination,
+    Simulation,
 )
 
 
@@ -175,11 +176,10 @@ class TestMETANET:
         onramp_demand = lambda t: 0.0
         onramp_queue = np.array([0, 0], dtype=np.float64)
 
-        _, states, _ = network.simulate(
+        sim = Simulation(network, model, model_params)
+        _, states, _ = sim.run(
             duration=dt,
             dt=dt,
-            model=model,
-            model_params=model_params,
             origin_demands={origin.id: mainline_demand},
             onramp_demands={onramp.id: onramp_demand},
             initial_flows={
@@ -379,15 +379,14 @@ class TestMETANET:
         mainline_demand = lambda t: 100.0
 
         def run_model(model):
-            _, states, _ = network.simulate(
+            sim = Simulation(
+                network,
+                model,
+                model_no_phi_params if model is model_no_phi else model_with_phi_params,
+            )
+            _, states, _ = sim.run(
                 duration=dt,
                 dt=dt,
-                model=model,
-                model_params=(
-                    model_no_phi_params
-                    if model is model_no_phi
-                    else model_with_phi_params
-                ),
                 origin_demands={origin.id: mainline_demand},
                 onramp_demands={},
                 initial_flows={
@@ -607,11 +606,10 @@ class TestMETANET:
         }
 
         # run short simulation
-        time_array, states, disturbances = network.simulate(
+        sim = Simulation(network, model, model_params)
+        time_array, states, disturbances = sim.run(
             duration=3 * dt,  # just 3 timesteps
             dt=dt,
-            model=model,
-            model_params=model_params,
             origin_demands={origin.id: mainline_demand},
             onramp_demands={},
             initial_flows=initial_flow_dict,

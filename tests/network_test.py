@@ -13,6 +13,7 @@ from traffic_flow_models.network.destination import Destination
 from traffic_flow_models.network.offramp import Offramp
 from traffic_flow_models.network.onramp import Onramp
 from traffic_flow_models.network.motorway_link import MotorwayLink
+from traffic_flow_models.network.simulation import Simulation
 
 
 # helper function to partition motorway links for tests
@@ -1653,10 +1654,10 @@ class TestNetwork:
 
         # run short simulation
         model = CTM()
-        time_array, state_history, disturbance_history = net.simulate(
+        sim = Simulation(net, model)
+        time_array, state_history, disturbance_history = sim.run(
             duration=0.1,
             dt=0.01,
-            model=model,
             origin_demands={origin.id: lambda t: 1000.0},
             onramp_demands={},
             turning_rates={},
@@ -1668,17 +1669,7 @@ class TestNetwork:
         # save results
         with tempfile.TemporaryDirectory() as tmpdir:
             filepath = os.path.join(tmpdir, "results.json")
-            net.save_simulation_results_json(
-                time_array=time_array,
-                state_history=state_history,
-                disturbance_history=disturbance_history,
-                filepath=filepath,
-                model=model,
-                dt=0.01,
-                duration=0.1,
-                preferred_cell_size=0.5,
-                model_params=None,
-            )
+            sim.save_results(filepath=filepath)
 
             # verify file exists and is valid JSON
             assert os.path.exists(filepath)
@@ -1712,10 +1703,10 @@ class TestNetwork:
 
         # run simulation
         model = CTM()
-        time_array, state_history, disturbance_history = net.simulate(
+        sim = Simulation(net, model)
+        time_array, state_history, disturbance_history = sim.run(
             duration=0.1,
             dt=0.01,
-            model=model,
             origin_demands={origin.id: lambda t: 1000.0},
             onramp_demands={},
             turning_rates={},
@@ -1727,20 +1718,10 @@ class TestNetwork:
         # save and load results
         with tempfile.TemporaryDirectory() as tmpdir:
             filepath = os.path.join(tmpdir, "results.json")
-            net.save_simulation_results_json(
-                time_array=time_array,
-                state_history=state_history,
-                disturbance_history=disturbance_history,
-                filepath=filepath,
-                model=model,
-                dt=0.01,
-                duration=0.1,
-                preferred_cell_size=0.5,
-                model_params=None,
-            )
+            sim.save_results(filepath=filepath)
 
             loaded_time, loaded_state, loaded_disturbance, metadata = (
-                Network.load_simulation_results_json(filepath=filepath, network=net)
+                Simulation.load_results(filepath=filepath, network=net)
             )
 
             # verify loaded arrays match original
@@ -1774,10 +1755,10 @@ class TestNetwork:
         dt = 0.01
         duration = 0.1
         preferred_cell_size = 0.5
-        time_array, state_history, disturbance_history = net.simulate(
+        sim = Simulation(net, model)
+        time_array, state_history, disturbance_history = sim.run(
             duration=duration,
             dt=dt,
-            model=model,
             origin_demands={origin.id: lambda t: 1000.0},
             onramp_demands={},
             turning_rates={},
@@ -1790,17 +1771,7 @@ class TestNetwork:
         # save and load
         with tempfile.TemporaryDirectory() as tmpdir:
             filepath = os.path.join(tmpdir, "results_with_metadata.json")
-            net.save_simulation_results_json(
-                time_array=time_array,
-                state_history=state_history,
-                disturbance_history=disturbance_history,
-                filepath=filepath,
-                model=model,
-                dt=dt,
-                duration=duration,
-                preferred_cell_size=preferred_cell_size,
-                model_params=None,
-            )
+            sim.save_results(filepath=filepath)
 
             # verify metadata in file
             with open(filepath, "r") as f:
@@ -1850,7 +1821,7 @@ class TestNetwork:
 
             # load and verify metadata is returned
             loaded_time, loaded_state, loaded_disturbance, loaded_metadata = (
-                Network.load_simulation_results_json(filepath=filepath, network=net)
+                Simulation.load_results(filepath=filepath, network=net)
             )
 
             assert loaded_metadata is not None
@@ -1883,7 +1854,7 @@ class TestNetwork:
                 json.dump({"state_time_series": {}, "disturbance_time_series": {}}, f)
 
             with pytest.raises(ValueError, match="Missing required field 'time_array'"):
-                Network.load_simulation_results_json(filepath=filepath, network=net)
+                Simulation.load_results(filepath=filepath, network=net)
 
             # missing state fields
             with open(filepath, "w") as f:
@@ -1897,7 +1868,7 @@ class TestNetwork:
                 )
 
             with pytest.raises(ValueError, match="Missing required field.*densities"):
-                Network.load_simulation_results_json(filepath=filepath, network=net)
+                Simulation.load_results(filepath=filepath, network=net)
 
     def test_load_simulation_results_json_validates_network_match(self):
         """Test that loader validates saved data matches network structure."""
@@ -1915,10 +1886,10 @@ class TestNetwork:
         net1 = Network(nodes=[node1, node2])
 
         model = CTM()
-        time_array, state_history, disturbance_history = net1.simulate(
+        sim = Simulation(net1, model)
+        time_array, state_history, disturbance_history = sim.run(
             duration=0.05,
             dt=0.01,
-            model=model,
             origin_demands={origin1.id: lambda t: 1000.0},
             onramp_demands={},
             turning_rates={},
@@ -1930,17 +1901,7 @@ class TestNetwork:
         # save results from first network
         with tempfile.TemporaryDirectory() as tmpdir:
             filepath = os.path.join(tmpdir, "results.json")
-            net1.save_simulation_results_json(
-                time_array=time_array,
-                state_history=state_history,
-                disturbance_history=disturbance_history,
-                filepath=filepath,
-                model=model,
-                dt=0.01,
-                duration=0.05,
-                preferred_cell_size=0.5,
-                model_params=None,
-            )
+            sim.save_results(filepath=filepath)
 
             # create different network with different structure
             main2 = MotorwayLink(
@@ -1961,7 +1922,7 @@ class TestNetwork:
 
             # trying to load results from net1 into net2 should fail validation
             with pytest.raises(ValueError, match="not found in saved results"):
-                Network.load_simulation_results_json(filepath=filepath, network=net2)
+                Simulation.load_results(filepath=filepath, network=net2)
 
     def test_save_load_complex_network_with_onramps_offramps(self):
         """Test save/load with complex network including onramps and offramps."""
@@ -2002,10 +1963,10 @@ class TestNetwork:
 
         # simulate
         model = CTM()
-        time_array, state_history, disturbance_history = net.simulate(
+        sim = Simulation(net, model)
+        time_array, state_history, disturbance_history = sim.run(
             duration=0.05,
             dt=0.01,
-            model=model,
             origin_demands={origin.id: lambda t: 2000.0},
             onramp_demands={onramp.id: lambda t: 500.0},
             turning_rates={"n3": lambda t: {offramp.id: 0.3, dest_main.id: 0.7}},
@@ -2023,17 +1984,7 @@ class TestNetwork:
         # save and load
         with tempfile.TemporaryDirectory() as tmpdir:
             filepath = os.path.join(tmpdir, "complex_results.json")
-            net.save_simulation_results_json(
-                time_array=time_array,
-                state_history=state_history,
-                disturbance_history=disturbance_history,
-                filepath=filepath,
-                model=model,
-                dt=0.01,
-                duration=0.05,
-                preferred_cell_size=0.5,
-                model_params=None,
-            )
+            sim.save_results(filepath=filepath)
 
             # verify file contents
             with open(filepath, "r") as f:
@@ -2054,7 +2005,7 @@ class TestNetwork:
 
             # load and verify
             loaded_time, loaded_state, loaded_disturbance, metadata = (
-                Network.load_simulation_results_json(filepath=filepath, network=net)
+                Simulation.load_results(filepath=filepath, network=net)
             )
 
             np.testing.assert_array_almost_equal(loaded_time, time_array)
@@ -2080,10 +2031,10 @@ class TestNetwork:
 
         # simulate to get valid structure
         model = CTM()
-        time_array, state_history, disturbance_history = net.simulate(
+        sim = Simulation(net, model)
+        time_array, state_history, disturbance_history = sim.run(
             duration=0.02,
             dt=0.01,
-            model=model,
             origin_demands={origin.id: lambda t: 1000.0},
             onramp_demands={},
             turning_rates={},
@@ -2094,17 +2045,7 @@ class TestNetwork:
 
         with tempfile.TemporaryDirectory() as tmpdir:
             filepath = os.path.join(tmpdir, "results.json")
-            net.save_simulation_results_json(
-                time_array=time_array,
-                state_history=state_history,
-                disturbance_history=disturbance_history,
-                filepath=filepath,
-                model=model,
-                dt=0.01,
-                duration=0.02,
-                preferred_cell_size=0.5,
-                model_params=None,
-            )
+            sim.save_results(filepath=filepath)
 
             # corrupt the data with non-numeric values
             with open(filepath, "r") as f:
@@ -2123,9 +2064,7 @@ class TestNetwork:
 
             # loading should fail validation (Python's float() will raise ValueError)
             with pytest.raises(ValueError, match="could not convert string to float"):
-                Network.load_simulation_results_json(
-                    filepath=corrupted_path, network=net
-                )
+                Simulation.load_results(filepath=corrupted_path, network=net)
 
     def test_save_load_preserves_link_ids(self):
         """Test that save/load preserves exact link IDs for all link types."""
@@ -2146,10 +2085,10 @@ class TestNetwork:
         net = Network(nodes=[node1, node2])
 
         model = CTM()
-        time_array, state_history, disturbance_history = net.simulate(
+        sim = Simulation(net, model)
+        time_array, state_history, disturbance_history = sim.run(
             duration=0.03,
             dt=0.01,
-            model=model,
             origin_demands={origin_id: lambda t: 1500.0},
             onramp_demands={},
             turning_rates={},
@@ -2160,17 +2099,7 @@ class TestNetwork:
 
         with tempfile.TemporaryDirectory() as tmpdir:
             filepath = os.path.join(tmpdir, "results.json")
-            net.save_simulation_results_json(
-                time_array=time_array,
-                state_history=state_history,
-                disturbance_history=disturbance_history,
-                filepath=filepath,
-                model=model,
-                dt=0.01,
-                duration=0.03,
-                preferred_cell_size=0.5,
-                model_params=None,
-            )
+            sim.save_results(filepath=filepath)
 
             with open(filepath, "r") as f:
                 data = json.load(f)
@@ -2203,10 +2132,10 @@ class TestNetwork:
 
         # simulate with more timesteps
         model = CTM()
-        time_array, state_history, disturbance_history = net.simulate(
+        sim = Simulation(net, model)
+        time_array, state_history, disturbance_history = sim.run(
             duration=0.5,  # longer duration
             dt=0.01,
-            model=model,
             origin_demands={origin.id: lambda t: 1000.0 + 500.0 * t},  # time-varying
             onramp_demands={},
             turning_rates={},
@@ -2219,17 +2148,7 @@ class TestNetwork:
 
         with tempfile.TemporaryDirectory() as tmpdir:
             filepath = os.path.join(tmpdir, "multi_timestep.json")
-            net.save_simulation_results_json(
-                time_array=time_array,
-                state_history=state_history,
-                disturbance_history=disturbance_history,
-                filepath=filepath,
-                model=model,
-                dt=0.01,
-                duration=0.5,
-                preferred_cell_size=0.5,
-                model_params=None,
-            )
+            sim.save_results(filepath=filepath)
 
             with open(filepath, "r") as f:
                 data = json.load(f)
@@ -2240,7 +2159,7 @@ class TestNetwork:
 
             # load and verify
             loaded_time, loaded_state, loaded_disturbance, metadata = (
-                Network.load_simulation_results_json(filepath=filepath, network=net)
+                Simulation.load_results(filepath=filepath, network=net)
             )
 
             # check dimensions
@@ -2267,10 +2186,10 @@ class TestNetwork:
 
         # simulate
         model = CTM()
-        time_array, state_history, disturbance_history = net.simulate(
+        sim = Simulation(net, model)
+        time_array, state_history, disturbance_history = sim.run(
             duration=0.02,
             dt=0.01,
-            model=model,
             origin_demands={origin.id: lambda t: 1000.0},
             onramp_demands={},
             turning_rates={},
@@ -2281,17 +2200,7 @@ class TestNetwork:
 
         with tempfile.TemporaryDirectory() as tmpdir:
             filepath = os.path.join(tmpdir, "results.json")
-            net.save_simulation_results_json(
-                time_array=time_array,
-                state_history=state_history,
-                disturbance_history=disturbance_history,
-                filepath=filepath,
-                model=model,
-                dt=0.01,
-                duration=0.02,
-                preferred_cell_size=0.5,
-                model_params=None,
-            )
+            sim.save_results(filepath=filepath)
 
             # load and remove a required field
             with open(filepath, "r") as f:
@@ -2309,9 +2218,7 @@ class TestNetwork:
             with pytest.raises(
                 ValueError, match=f"Density data for motorway link '{main.id}'"
             ):
-                Network.load_simulation_results_json(
-                    filepath=modified_path, network=net
-                )
+                Simulation.load_results(filepath=modified_path, network=net)
 
     def test_validate_disturbance_history_numerical_valid_data(self):
         """Test that validate_disturbance_history_numerical accepts valid numerical data."""
@@ -2550,10 +2457,10 @@ class TestNetwork:
 
         # simulate
         model = CTM()
-        time_array, state_history, disturbance_history = net.simulate(
+        sim = Simulation(net, model)
+        time_array, state_history, disturbance_history = sim.run(
             duration=0.02,
             dt=0.01,
-            model=model,
             origin_demands={origin.id: lambda t: 1000.0},
             onramp_demands={},
             turning_rates={},
@@ -2564,17 +2471,7 @@ class TestNetwork:
 
         with tempfile.TemporaryDirectory() as tmpdir:
             filepath = os.path.join(tmpdir, "results.json")
-            net.save_simulation_results_json(
-                time_array=time_array,
-                state_history=state_history,
-                disturbance_history=disturbance_history,
-                filepath=filepath,
-                model=model,
-                dt=0.01,
-                duration=0.02,
-                preferred_cell_size=0.5,
-                model_params=None,
-            )
+            sim.save_results(filepath=filepath)
 
             # corrupt disturbance data
             with open(filepath, "r") as f:
@@ -2595,6 +2492,4 @@ class TestNetwork:
 
             # loading should fail validation
             with pytest.raises(ValueError, match="could not convert string to float"):
-                Network.load_simulation_results_json(
-                    filepath=corrupted_path, network=net
-                )
+                Simulation.load_results(filepath=corrupted_path, network=net)

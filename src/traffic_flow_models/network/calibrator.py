@@ -24,6 +24,7 @@ from traffic_flow_models.network import (
     MotorwayLink,
     Offramp,
     Destination,
+    Simulation,
 )
 
 if TYPE_CHECKING:
@@ -813,10 +814,8 @@ class Calibrator:
         if verbose:
             print(f"Loading ground truth data from {ground_truth_filepath}")
 
-        time_array, state_history, disturbance_history, _ = (
-            self.network.load_simulation_results_json(
-                filepath=ground_truth_filepath, network=self.network
-            )
+        time_array, state_history, disturbance_history, _ = Simulation.load_results(
+            filepath=ground_truth_filepath, network=self.network
         )
 
         num_timesteps = len(time_array)
