@@ -346,6 +346,7 @@ def run_calibration_experiment(
     preferred_cell_size: float,
     timestamp: str,
     use_parameter_search: bool = False,
+    generate_video: bool = False,
 ) -> None:
     """Run complete calibration experiment for one scenario.
 
@@ -372,6 +373,7 @@ def run_calibration_experiment(
         use_parameter_search: If True, use multi-start parameter search with Latin
             Hypercube Sampling (40 samples) for Experiments 1 and 2. If False, use
             single initial_params for all experiments.
+        generate_video: If True, generate a comparison video of all simulations.
     """
     print("\n" + "=" * 80)
     print(f"{scenario_name}")
@@ -779,99 +781,104 @@ def run_calibration_experiment(
     print("  Parameter convergence comparison complete.")
 
     # ! 10) Generate simulation comparison video
-    print("\n" + "-" * 80)
-    print("Generating simulation comparison video...")
-    print("-" * 80)
+    if generate_video:
+        print("\n" + "-" * 80)
+        print("Generating simulation comparison video...")
+        print("-" * 80)
 
-    # create subdirectories for calibrated simulation results
-    exact_sim_dir = f"{scenario_dir}/simulation_exact_data_calibration"
-    noreg_sim_dir = f"{scenario_dir}/simulation_noisy_noreg_calibration"
-    reg_sim_dir = f"{scenario_dir}/simulation_noisy_reg_calibration"
-    os.makedirs(exact_sim_dir, exist_ok=True)
-    os.makedirs(noreg_sim_dir, exist_ok=True)
-    os.makedirs(reg_sim_dir, exist_ok=True)
+        # create subdirectories for calibrated simulation results
+        exact_sim_dir = f"{scenario_dir}/simulation_exact_data_calibration"
+        noreg_sim_dir = f"{scenario_dir}/simulation_noisy_noreg_calibration"
+        reg_sim_dir = f"{scenario_dir}/simulation_noisy_reg_calibration"
+        os.makedirs(exact_sim_dir, exist_ok=True)
+        os.makedirs(noreg_sim_dir, exist_ok=True)
+        os.makedirs(reg_sim_dir, exist_ok=True)
 
-    # run and save simulation with exact-calibration parameters
-    print("  Saving simulation with exact-calibration parameters...")
-    network.simulate(
-        duration=duration,
-        dt=dt,
-        model=metanet,
-        model_params=calibrated_params_exact,
-        preferred_cell_size=preferred_cell_size,
-        origin_demands=origin_demands,
-        onramp_demands=onramp_demands,
-        turning_rates=turning_rates,
-        destination_flow_bc=destination_flow_bc,
-        destination_density_bc=destination_density_bc,
-        plot_results=True,
-        show_plots=False,
-        results_dir=exact_sim_dir,
-    )
+        # run and save simulation with exact-calibration parameters
+        print("  Saving simulation with exact-calibration parameters...")
+        network.simulate(
+            duration=duration,
+            dt=dt,
+            model=metanet,
+            model_params=calibrated_params_exact,
+            preferred_cell_size=preferred_cell_size,
+            origin_demands=origin_demands,
+            onramp_demands=onramp_demands,
+            turning_rates=turning_rates,
+            destination_flow_bc=destination_flow_bc,
+            destination_density_bc=destination_density_bc,
+            plot_results=True,
+            show_plots=False,
+            results_dir=exact_sim_dir,
+        )
 
-    # run and save simulation with no-regularization parameters
-    print("  Saving simulation with no-regularization parameters...")
-    network.simulate(
-        duration=duration,
-        dt=dt,
-        model=metanet,
-        model_params=calibrated_params_noisy_noreg,
-        preferred_cell_size=preferred_cell_size,
-        origin_demands=origin_demands,
-        onramp_demands=onramp_demands,
-        turning_rates=turning_rates,
-        destination_flow_bc=destination_flow_bc,
-        destination_density_bc=destination_density_bc,
-        plot_results=True,
-        show_plots=False,
-        results_dir=noreg_sim_dir,
-    )
+        # run and save simulation with no-regularization parameters
+        print("  Saving simulation with no-regularization parameters...")
+        network.simulate(
+            duration=duration,
+            dt=dt,
+            model=metanet,
+            model_params=calibrated_params_noisy_noreg,
+            preferred_cell_size=preferred_cell_size,
+            origin_demands=origin_demands,
+            onramp_demands=onramp_demands,
+            turning_rates=turning_rates,
+            destination_flow_bc=destination_flow_bc,
+            destination_density_bc=destination_density_bc,
+            plot_results=True,
+            show_plots=False,
+            results_dir=noreg_sim_dir,
+        )
 
-    # run and save simulation with regularization parameters
-    print("  Saving simulation with regularization parameters...")
-    network.simulate(
-        duration=duration,
-        dt=dt,
-        model=metanet,
-        model_params=calibrated_params_noisy_reg,
-        preferred_cell_size=preferred_cell_size,
-        origin_demands=origin_demands,
-        onramp_demands=onramp_demands,
-        turning_rates=turning_rates,
-        destination_flow_bc=destination_flow_bc,
-        destination_density_bc=destination_density_bc,
-        plot_results=True,
-        show_plots=False,
-        results_dir=reg_sim_dir,
-    )
+        # run and save simulation with regularization parameters
+        print("  Saving simulation with regularization parameters...")
+        network.simulate(
+            duration=duration,
+            dt=dt,
+            model=metanet,
+            model_params=calibrated_params_noisy_reg,
+            preferred_cell_size=preferred_cell_size,
+            origin_demands=origin_demands,
+            onramp_demands=onramp_demands,
+            turning_rates=turning_rates,
+            destination_flow_bc=destination_flow_bc,
+            destination_density_bc=destination_density_bc,
+            plot_results=True,
+            show_plots=False,
+            results_dir=reg_sim_dir,
+        )
 
-    # generate comparison video
-    print("  Generating comparison video...")
-    result_files = [
-        ground_truth_filepath,
-        os.path.join(exact_sim_dir, "simulation_results.json"),
-        os.path.join(noreg_sim_dir, "simulation_results.json"),
-        os.path.join(reg_sim_dir, "simulation_results.json"),
-    ]
+        # generate comparison video
+        print("  Generating comparison video...")
+        result_files = [
+            ground_truth_filepath,
+            os.path.join(exact_sim_dir, "simulation_results.json"),
+            os.path.join(noreg_sim_dir, "simulation_results.json"),
+            os.path.join(reg_sim_dir, "simulation_results.json"),
+        ]
 
-    labels = [
-        "Ground Truth",
-        "Exact Data",
-        "Noisy (No Regularization)",
-        "Noisy (With Regularization)",
-    ]
+        labels = [
+            "Ground Truth",
+            "Exact Data",
+            "Noisy (No Regularization)",
+            "Noisy (With Regularization)",
+        ]
 
-    comparison_video_path = os.path.join(scenario_dir, "simulation_comparison.avi")
-    network.visualize_simulation_comparison(
-        result_filepaths=result_files,
-        labels=labels,
-        output_filepath=comparison_video_path,
-        fps=25,
-        subsampling=2,
-        figsize=(16, 12),
-        dpi=150,
-    )
-    print(f"  Comparison video saved to: {comparison_video_path}")
+        comparison_video_path = os.path.join(scenario_dir, "simulation_comparison.avi")
+        network.visualize_simulation_comparison(
+            result_filepaths=result_files,
+            labels=labels,
+            output_filepath=comparison_video_path,
+            fps=25,
+            subsampling=2,
+            figsize=(16, 12),
+            dpi=150,
+        )
+        print(f"  Comparison video saved to: {comparison_video_path}")
+    else:
+        print("\n" + "-" * 80)
+        print("Skipping video generation (use --generate-video to enable)")
+        print("-" * 80)
 
     # ! 11) Summary for this scenario
     print("\n" + "=" * 80)
@@ -934,6 +941,11 @@ def main():
         "--parameter-search",
         action="store_true",
         help="Use multi-start parameter search with Latin Hypercube Sampling for initialization (default: 40 samples per experiment)",
+    )
+    parser.add_argument(
+        "--generate-video",
+        action="store_true",
+        help="Generate comparison videos showing all four simulations side-by-side (can be time-consuming)",
     )
     args = parser.parse_args()
 
@@ -1003,6 +1015,7 @@ def main():
         preferred_cell_size=preferred_cell_size,
         timestamp=timestamp,
         use_parameter_search=args.parameter_search,
+        generate_video=args.generate_video,
     )
 
     # ! Scenario C (with lane drop/bottleneck)
@@ -1020,6 +1033,7 @@ def main():
         preferred_cell_size=preferred_cell_size,
         timestamp=timestamp,
         use_parameter_search=args.parameter_search,
+        generate_video=args.generate_video,
     )
 
     # clean up simulation_results folders created during this calibration run
