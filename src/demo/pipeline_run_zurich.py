@@ -47,8 +47,8 @@ if __name__ == "__main__":
         origin_ids,
         onramp_ids,
         destination_ids,
-        splits,
         road_params,
+        diverge_node_info,
     ) = pipeline.get_consolidated_network()
 
     # run the SUMO simulation
@@ -62,15 +62,23 @@ if __name__ == "__main__":
     sim.write_config()
     sim.run_simulation()
 
-    # initialize a demand generator and run it to obtain origin and onramp demands
+    # get the path to the detector output file (written by SUMO)
+    detector_output_path = os.path.join(pipeline.output_dir, "detectors_output.xml")
+
+    # aggregate demands from detector data
     demand_generator = DemandAggregator(
-        detector_output_path=detector_file, detector_spec_path=spec_file
+        detector_output_path=detector_output_path, detector_spec_path=spec_file
     )
     origin_demands, onramp_demands = demand_generator.run(
         origin_ids=origin_ids,
         onramp_ids=onramp_ids,
         sumo_network_path=pipeline.net_file,
     )
+
+    # compute splits (turning rates) from detector data
+    # This is the primary source of splits - detector-based with lane-based fallback
+    # Uses rolling window aggregation (2 minutes by default) over small detector intervals (15 seconds)
+    splits = pipeline.compute_splits(window_size_minutes=2.0)
 
     # TODO: replace these, once they can be obtained from data
     destination_density_bc = {dest_id: lambda t: 0.1 for dest_id in destination_ids}

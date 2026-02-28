@@ -7,6 +7,7 @@ from functools import wraps
 import matplotlib.pyplot as plt
 from typing import Optional, Tuple, Callable
 from traffic_flow_models.arbitrator.loop_detector_generator import LoopDetectorGenerator
+from traffic_flow_models.arbitrator.turning_rate_aggregator import TurningRateAggregator
 from traffic_flow_models.arbitrator.network_arbitrator import (
     NetworkArbitrator,
     RoadParamsConfig,
@@ -74,13 +75,16 @@ class SUMOPipeline:
         self.detector_spec_path: str = os.path.join(
             self.output_dir, f"{name}_detectors_spec.csv"
         )
+        self.detector_output_path: str = os.path.join(
+            self.output_dir, "detectors_output.xml"
+        )
         self.consolidated_network: Optional[Network] = None
         self.arbitrator: Optional[NetworkArbitrator] = None
         self.origin_ids: Optional[list[str]] = None
         self.onramp_ids: Optional[list[str]] = None
         self.destination_ids: Optional[list[str]] = None
-        self.splits: Optional[dict[str, Callable[[float], dict[str, float]]]] = None
         self.road_params: Optional[RoadParamsConfig] = None
+        self.diverge_node_info: Optional[dict[str, list[str]]] = None
 
     @skip_if_exists("osm_file")
     def fetch_OSM(self) -> None:
@@ -195,8 +199,8 @@ class SUMOPipeline:
         list[str],
         list[str],
         list[str],
-        dict[str, Callable[[float], dict[str, float]]],
         RoadParamsConfig,
+        dict[str, list[str]],
     ]:
         """Create consolidated network from SUMO network.
 
@@ -211,8 +215,8 @@ class SUMOPipeline:
                 - origin_ids: List of origin node IDs in the network.
                 - onramp_ids: List of onramp node IDs in the network.
                 - destination_ids: List of destination node IDs in the network.
-                - splits: Dictionary mapping node IDs to their outgoing link split ratios as functions of time.
                 - road_params: Road parameters configuration used for the network.
+                - diverge_node_info: Dictionary mapping diverge node IDs to lists of SUMO edge IDs.
         """
         self.arbitrator = NetworkArbitrator(
             net_xml_path=os.path.normpath(self.net_file),
@@ -223,8 +227,8 @@ class SUMOPipeline:
             self.origin_ids,
             self.onramp_ids,
             self.destination_ids,
-            self.splits,
             self.road_params,
+            self.diverge_node_info,
         ) = self.arbitrator.run()
 
         return (
@@ -232,8 +236,8 @@ class SUMOPipeline:
             self.origin_ids,
             self.onramp_ids,
             self.destination_ids,
-            self.splits,
             self.road_params,
+            self.diverge_node_info,
         )
 
     def generate_detectors(self) -> Tuple[str, str]:
@@ -277,10 +281,85 @@ class SUMOPipeline:
             onramp_ids=self.onramp_ids,
             destination_ids=self.destination_ids,
             output_dir=self.output_dir,
+            diverge_node_info=(
+                self.diverge_node_info if self.diverge_node_info is not None else {}
+            ),
         )
         self.detector_file, self.detector_spec_path = generator.generate()
 
         return self.detector_file, self.detector_spec_path
+
+    def compute_splits(
+        self, window_size_minutes: float = 2.0
+    ) -> dict[str, Callable[[float], dict[str, float]]]:
+        """Compute split ratios (turning rates) from SUMO detector data.
+
+        This is the primary method to obtain splits for the macroscopic network.
+        It processes loop detector outputs from SUMO simulations placed at diverge
+        nodes to compute time-varying split ratios based on actual observed traffic
+        distribution using rolling window temporal aggregation.
+
+        If detector data is unavailable for some diverge nodes, falls back to
+        lane-based splits for those nodes.
+
+        This method should be called after running the SUMO simulation with
+        detector outputs available.
+
+        Args:
+            window_size_minutes: Rolling window size in minutes for temporal aggregation (default: 2.0).
+                At query time t, vehicle counts from [t - window/2, t + window/2] are aggregated.
+
+        Returns:
+            Dictionary mapping diverge node IDs to split functions.
+            Each function takes time in hours and returns a dictionary mapping
+            edge IDs to their split ratios (fractions between 0 and 1).
+
+        Raises:
+            ValueError: If detector files have not been generated.
+        """
+        if not os.path.exists(self.detector_output_path):
+            raise ValueError(
+                f"Detector output file not found: {self.detector_output_path}. "
+                "Please run the SUMO simulation first."
+            )
+
+        if not os.path.exists(self.detector_spec_path):
+            raise ValueError(
+                f"Detector specification file not found: {self.detector_spec_path}. "
+                "Please generate detectors first using generate_detectors()."
+            )
+
+        if not self.diverge_node_info:
+            print(
+                "Warning: No diverge nodes found in network. "
+                "Returning empty splits dictionary."
+            )
+            return {}
+
+        # compute detector-based turning rates
+        aggregator = TurningRateAggregator(
+            detector_output_path=self.detector_output_path,
+            detector_spec_path=self.detector_spec_path,
+            window_size_minutes=window_size_minutes,
+        )
+        detector_based_splits = aggregator.run()
+
+        # fall back to lane-based splits for nodes without detector data
+        if self.consolidated_network and self.arbitrator:
+            lane_based_splits = self.arbitrator.compute_lane_based_splits(
+                self.consolidated_network, self.diverge_node_info
+            )
+
+            # use detector-based splits where available, lane-based as fallback
+            for node_id in self.diverge_node_info:
+                if (
+                    node_id not in detector_based_splits
+                    and node_id in lane_based_splits
+                ):
+                    detector_based_splits[node_id] = lane_based_splits[node_id]
+                    print(f"  Using lane-based fallback for diverge node {node_id}")
+
+        return detector_based_splits
 
     def get_consolidated_network(
         self,
@@ -289,8 +368,8 @@ class SUMOPipeline:
         list[str],
         list[str],
         list[str],
-        dict[str, Callable[[float], dict[str, float]]],
         RoadParamsConfig,
+        dict[str, list[str]],
     ]:
         """Retrieve the consolidated macroscopic network and metadata.
 
@@ -304,9 +383,8 @@ class SUMOPipeline:
                 - origin_ids: List of origin node IDs in the network.
                 - onramp_ids: List of onramp node IDs in the network.
                 - destination_ids: List of destination node IDs in the network.
-                - splits: Dictionary mapping node IDs to their outgoing link split ratios
-                    as a time-varying function.
                 - road_params: Road parameters configuration used for the network.
+                - diverge_node_info: Dictionary mapping diverge node IDs to lists of SUMO edge IDs.
 
         Raises:
             ValueError: If consolidated network has not been created yet.
@@ -320,8 +398,8 @@ class SUMOPipeline:
             self.origin_ids is None
             or self.onramp_ids is None
             or self.destination_ids is None
-            or self.splits is None
             or self.road_params is None
+            or self.diverge_node_info is None
         ):
             raise ValueError("Network parameters have not been properly initialized.")
 
@@ -330,6 +408,6 @@ class SUMOPipeline:
             self.origin_ids,
             self.onramp_ids,
             self.destination_ids,
-            self.splits,
             self.road_params,
+            self.diverge_node_info,
         )

@@ -108,7 +108,7 @@ class DemandAggregator:
                     node_id = to_node
 
                 if node_id:
-                    # Store all variants
+                    # store all variants
                     for variant in det_id_variants:
                         self.detector_mapping[variant] = {
                             "node_id": node_id,
