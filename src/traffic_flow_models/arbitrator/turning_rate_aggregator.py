@@ -72,10 +72,18 @@ class TurningRateAggregator:
             if det_id is None or begin_str is None:
                 continue
 
+            #begin = float(begin_str)
+            #count = int(interval.get("nVehEntered", interval.get("nVehContrib", 0)))
+            #self.detector_intervals[det_id].append((begin, count))
+            #self.max_time = max(self.max_time, begin)
+
             begin = float(begin_str)
++           end_str = interval.get("end")
++           interval_end = float(end_str) if end_str is not None else begin
             count = int(interval.get("nVehEntered", interval.get("nVehContrib", 0)))
             self.detector_intervals[det_id].append((begin, count))
-            self.max_time = max(self.max_time, begin)
+-           self.max_time = max(self.max_time, begin)
++           self.max_time = max(self.max_time, interval_end)
 
     def classify_and_map(self) -> None:
         """Map detector IDs to diverge nodes and edges from CSV specification.
