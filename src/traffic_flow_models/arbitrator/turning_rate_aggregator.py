@@ -72,10 +72,10 @@ class TurningRateAggregator:
             if det_id is None or begin_str is None:
                 continue
 
-            #begin = float(begin_str)
-            #count = int(interval.get("nVehEntered", interval.get("nVehContrib", 0)))
-            #self.detector_intervals[det_id].append((begin, count))
-            #self.max_time = max(self.max_time, begin)
+            # begin = float(begin_str)
+            # count = int(interval.get("nVehEntered", interval.get("nVehContrib", 0)))
+            # self.detector_intervals[det_id].append((begin, count))
+            # self.max_time = max(self.max_time, begin)
 
             begin = float(begin_str)
             end_str = interval.get("end")
