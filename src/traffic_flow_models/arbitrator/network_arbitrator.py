@@ -56,6 +56,7 @@ class NetworkArbitrator:
     Attributes:
         path: Path to the SUMO network XML file.
         target_cell_length: Target length for macroscopic link cells in kilometers (default: 0.3).
+        min_link_length: Minimum acceptable link length in kilometers for CFL stability.
         graph: NetworkX MultiDiGraph representing the road network.
         roundabouts: List of roundabout node sequences.
         found_types: Set of road types discovered in the network.
@@ -71,6 +72,7 @@ class NetworkArbitrator:
         road_params_config_path: str,
         target_cell_length: float = 0.3,
         hwy_filter: Union[list[Tuple[str, str]], None] = None,
+        min_link_length: Union[float, None] = None,
     ):
         """Initialize the network arbitrator.
 
@@ -82,9 +84,14 @@ class NetworkArbitrator:
             hwy_filter: Optional hierarchical list of road type groups for filtering.
                 If None, uses default hierarchy: motorway > trunk > primary > secondary > tertiary.
                 Format: [["motorway", "motorway_link"], ["trunk", "trunk_link"], ...]
+            min_link_length: Minimum acceptable link length in kilometers for CFL stability.
+                If specified, links shorter than this threshold are either stretched (if > 50% of minimum)
+                or fused by contracting their nodes (if <= 50% of minimum). If None, no short link
+                handling is performed. Should be set based on max_free_flow_speed * dt + margin.
         """
         self.path: str = net_xml_path
         self.target_cell_length: float = target_cell_length
+        self.min_link_length: Union[float, None] = min_link_length
         self.graph: nx.MultiDiGraph = nx.MultiDiGraph()
         self.roundabouts: list[list[str]] = []
         self.found_types: set[str] = set()
@@ -204,8 +211,8 @@ class NetworkArbitrator:
         """Execute the complete network arbitration pipeline.
 
         Orchestrates the full workflow: parsing SUMO XML, eliminating roundabouts,
-        filtering by road type, merging serial edges, and instantiating the macroscopic
-        network with appropriate parameters.
+        filtering by road type, merging serial edges, handling short links for CFL
+        stability, and instantiating the macroscopic network with appropriate parameters.
 
         Returns:
             A tuple containing:
@@ -236,7 +243,10 @@ class NetworkArbitrator:
         # Step 4: Merge serial edges to simplify the network while preserving junctions
         self.merge_serial_edges()
 
-        # Step 5: Instantiate macroscopic network objects and assign parameters based on road types
+        # Step 5: Handle short links to ensure CFL stability
+        self.handle_short_links()
+
+        # Step 6: Instantiate macroscopic network objects and assign parameters based on road types
         (
             macroscopic_network,
             origin_ids,
@@ -513,6 +523,119 @@ class NetworkArbitrator:
 
             if not merged:
                 break
+
+    def handle_short_links(self) -> None:
+        """Handle links shorter than the minimum required length for CFL stability.
+
+        Links are processed using a dual-strategy approach:
+        - Links with length > 50% of minimum: stretched to min_link_length
+        - Links with length <= 50% of minimum: removed by contracting nodes
+
+        This ensures CFL condition compliance while preserving meaningful network
+        segments and removing negligible connectors. The 50% threshold balances
+        preservation of network structure against removal of problematic segments.
+
+        The method processes the shortest link at a time and re-evaluates after each
+        operation to prevent cascading contractions of adjacent short links. This
+        greedy approach ensures links are only merged when truly necessary.
+        """
+        if self.min_link_length is None:
+            raise ValueError(
+                "Minimum link length must be specified for short link handling."
+            )
+
+        all_stretched_links = []
+        all_fused_links = []
+        threshold = 0.5 * self.min_link_length
+        max_iterations = 1000
+        iteration = 0
+
+        while iteration < max_iterations:
+            iteration += 1
+
+            # identify all short links
+            short_links = []
+            for u, v, key, data in list(
+                self.graph.edges(keys=True, data=True)
+            ):  # use list() to avoid modification during iteration
+                length = data.get("length", 0)
+                if length < self.min_link_length:
+                    short_links.append((length, u, v, key, data))
+
+            # if no short links found, we're done
+            if not short_links:
+                break
+
+            # sort by length to process the shortest first
+            short_links.sort(key=lambda x: x[0])
+
+            # process only the shortest link
+            length, u, v, key, data = short_links[0]
+            link_id = data.get("id", f"{u}->{v}")
+
+            if length > threshold:
+                # stretch the link to minimum length
+                old_length = data["length"]
+                data["length"] = self.min_link_length
+                all_stretched_links.append((link_id, old_length, self.min_link_length))
+            else:
+                # fuse the link by contracting nodes
+                all_fused_links.append((link_id, length))
+
+                # remove the edge first
+                if self.graph.has_edge(u, v, key):
+                    self.graph.remove_edge(u, v, key)
+
+                # contract nodes: merge v into u
+                if self.graph.has_node(u) and self.graph.has_node(v) and u != v:
+                    # update coordinates to midpoint
+                    if u in self.node_coordinates and v in self.node_coordinates:
+                        u_coord = self.node_coordinates[u]
+                        v_coord = self.node_coordinates[v]
+                        self.node_coordinates[u] = (
+                            (u_coord[0] + v_coord[0]) / 2,
+                            (u_coord[1] + v_coord[1]) / 2,
+                        )
+                        if v in self.node_coordinates:
+                            del self.node_coordinates[v]
+
+                    # contract v into u (merge nodes)
+                    try:
+                        self.graph = nx.contracted_nodes(
+                            self.graph, u, v, self_loops=False
+                        )
+                    except nx.NetworkXError:
+                        # node might have been contracted already
+                        warnings.warn(
+                            f"Failed to contract nodes {u} and {v} for link {link_id}. Nodes may have been modified already."
+                        )
+                        pass
+
+        # log statistics
+        if all_stretched_links or all_fused_links:
+            print("-" * 60)
+            print("Short Link Handling:")
+            print(
+                f"  Minimum link length threshold: {self.min_link_length:.3f} km (50% threshold: {threshold:.3f} km)"
+            )
+            print(f"  Iterations: {iteration}")
+
+            if all_stretched_links:
+                print(f"  Stretched links: {len(all_stretched_links)}")
+                for link_id, old_len, new_len in all_stretched_links[:5]:
+                    print(
+                        f"    - {link_id}: {old_len:.3f} km → {new_len:.3f} km (stretched)"
+                    )
+                if len(all_stretched_links) > 5:
+                    print(f"    ... and {len(all_stretched_links) - 5} more")
+
+            if all_fused_links:
+                print(f"  Fused links (nodes contracted): {len(all_fused_links)}")
+                for link_id, old_len in all_fused_links[:5]:
+                    print(f"    - {link_id}: {old_len:.3f} km (fused)")
+                if len(all_fused_links) > 5:
+                    print(f"    ... and {len(all_fused_links) - 5} more")
+            print("-" * 60)
 
     def instantiate_network(
         self,
