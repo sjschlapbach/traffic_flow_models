@@ -67,22 +67,25 @@ class TurningRateAggregator:
         for interval in root.findall("interval"):
             det_id = interval.get("id")
             begin_str = interval.get("begin")
+            end_str = interval.get("end")
 
             # skip malformed entries
-            if det_id is None or begin_str is None:
+            if det_id is None or begin_str is None or end_str is None:
+                warnings.warn(
+                    f"Skipping malformed interval entry in detector output: {ET.tostring(interval, encoding='unicode')}"
+                )
                 continue
 
-            # begin = float(begin_str)
-            # count = int(interval.get("nVehEntered", interval.get("nVehContrib", 0)))
-            # self.detector_intervals[det_id].append((begin, count))
-            # self.max_time = max(self.max_time, begin)
+            interval_start = float(begin_str)
+            interval_end = float(end_str) if end_str is not None else interval_start
 
-            begin = float(begin_str)
-            end_str = interval.get("end")
-            interval_end = float(end_str) if end_str is not None else begin
+            if interval_end < interval_start:
+                raise ValueError(
+                    f"Invalid measurement data for detector {det_id}: end time {interval_end} is less than begin time {interval_start}."
+                )
+
             count = int(interval.get("nVehEntered", interval.get("nVehContrib", 0)))
-            self.detector_intervals[det_id].append((begin, count))
-            self.max_time = max(self.max_time, begin)
+            self.detector_intervals[det_id].append((interval_start, count))
             self.max_time = max(self.max_time, interval_end)
 
     def classify_and_map(self) -> None:
