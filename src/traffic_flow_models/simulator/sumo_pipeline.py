@@ -5,7 +5,7 @@ import shutil
 import osmnx as ox
 from functools import wraps
 import matplotlib.pyplot as plt
-from typing import Optional, Tuple, Callable
+from typing import Optional, Tuple, Callable, Union
 from traffic_flow_models.arbitrator.loop_detector_generator import LoopDetectorGenerator
 from traffic_flow_models.arbitrator.turning_rate_aggregator import TurningRateAggregator
 from traffic_flow_models.arbitrator.network_arbitrator import (
@@ -194,6 +194,7 @@ class SUMOPipeline:
 
     def create_consolidated_network(
         self,
+        min_link_length: float,
     ) -> Tuple[
         Network,
         list[str],
@@ -206,8 +207,13 @@ class SUMOPipeline:
 
         Instantiates a NetworkArbitrator to convert the SUMO microscopic network
         into a consolidated macroscopic network. The arbitration process includes
-        filtering roads, merging serial edges, handling roundabouts, and
-        assigning appropriate parameters.
+        filtering roads, merging serial edges, handling roundabouts, handling short
+        links for CFL stability, and assigning appropriate parameters.
+
+        Args:
+            min_link_length: Minimum acceptable link length in kilometers for CFL stability.
+                If specified, links shorter than this threshold are either stretched (if > 50% of minimum)
+                or fused by contracting their nodes (if <= 50% of minimum).
 
         Returns:
             A tuple containing:
@@ -221,6 +227,7 @@ class SUMOPipeline:
         self.arbitrator = NetworkArbitrator(
             net_xml_path=os.path.normpath(self.net_file),
             road_params_config_path=self.road_params_config_path,
+            min_link_length=min_link_length,
         )
         (
             self.consolidated_network,
