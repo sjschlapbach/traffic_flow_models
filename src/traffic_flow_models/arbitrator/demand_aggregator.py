@@ -118,7 +118,8 @@ class DemandAggregator:
                     # fallback for any other types
                     warnings.warn(
                         f"Unrecognized detector type '{det_type}' for detector '{det_id}'. "
-                        "Defaulting to using 'to_node' as node_id."
+                        "Defaulting to using 'to_node' as node_id.",
+                        stacklevel=2,
                     )
                     node_id = to_node
 

@@ -359,7 +359,8 @@ class NetworkArbitrator:
 
             if length_km <= 0 or speed_kmh <= 0:
                 warnings.warn(
-                    f"Edge {edge.get('id')} has non-positive length or speed. Skipping."
+                    f"Edge {edge.get('id')} has non-positive length or speed. Skipping.",
+                    stacklevel=2,
                 )
                 continue
 
@@ -608,7 +609,8 @@ class NetworkArbitrator:
                     except nx.NetworkXError:
                         # node might have been contracted already
                         warnings.warn(
-                            f"Failed to contract nodes {u} and {v} for link {link_id}. Nodes may have been modified already."
+                            f"Failed to contract nodes {u} and {v} for link {link_id}. Nodes may have been modified already.",
+                            stacklevel=2,
                         )
                         pass
 

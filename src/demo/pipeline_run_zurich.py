@@ -22,12 +22,19 @@ if __name__ == "__main__":
         action="store_true",
         help="Generate video visualization of simulation results",
     )
+    args.add_argument(
+        "--vehicle-demand",
+        type=int,
+        help="Vehicle demand for the Zurich scenario (default: 20000)",
+    )
     parsed_args = args.parse_args()
 
     # scenario definitions
     name = "zurich"
     location = "Zurich, Switzerland"
-    vehicle_demand = 20000
+    vehicle_demand = (
+        parsed_args.vehicle_demand if parsed_args.vehicle_demand is not None else 20000
+    )
 
     # general macroscopic simulation settings
     dt = 10.0 / 3600
@@ -95,8 +102,8 @@ if __name__ == "__main__":
     splits = pipeline.compute_splits(window_size_minutes=2.0)
 
     # TODO: replace these, once they can be obtained from data
-    destination_density_bc = {dest_id: lambda t: 10.0 for dest_id in destination_ids}
-    destination_flow_bc = {dest_id: lambda t: 6000.0 for dest_id in destination_ids}
+    destination_density_bc = {dest_id: lambda _t: 10.0 for dest_id in destination_ids}
+    destination_flow_bc = {dest_id: lambda _t: 6000.0 for dest_id in destination_ids}
 
     # initialize the results directory
     timestamp = datetime.now().strftime("simulation_results_%Y-%m-%d_%H%M%S")

@@ -322,7 +322,8 @@ class METANET:
             # parameter vector already in system format
             warnings.warn(
                 "Expected 6 parameters for global alpha configuration, but got "
-                f"{len(param_vec)}. Assuming parameter vector is already in system format."
+                f"{len(param_vec)}. Assuming parameter vector is already in system format.",
+                stacklevel=2,
             )
             return param_vec
 
