@@ -1,5 +1,6 @@
 import argparse
 import os
+from datetime import datetime
 
 from traffic_flow_models import (
     CTM,
@@ -16,17 +17,23 @@ if __name__ == "__main__":
         action="store_true",
         help="Disable plotting of results (useful for CI or headless environments)",
     )
+    args.add_argument(
+        "--generate-video",
+        action="store_true",
+        help="Generate video visualization of simulation results",
+    )
     parsed_args = args.parse_args()
 
     # scenario definitions
     name = "zurich"
     location = "Zurich, Switzerland"
-    vehicle_demand = 2000
+    vehicle_demand = 20000
 
     # general macroscopic simulation settings
     dt = 10.0 / 3600
     duration = 5000.0 / 3600
     plot_enabled = not parsed_args.no_plot
+    generate_video = parsed_args.generate_video
     preferred_cell_size = 0.5  # km
 
     # compute minimum link length for CFL stability
@@ -47,7 +54,7 @@ if __name__ == "__main__":
     pipeline.fetch_OSM()
     pipeline.convert_to_sumo()
     pipeline.create_consolidated_network(min_link_length=min_link_length)
-    detector_file, spec_file = pipeline.generate_detectors()
+    detector_def_file, detector_output_file, spec_file = pipeline.generate_detectors()
     pipeline.generate_demand(vehicle_count=vehicle_demand)
     (
         network,
@@ -88,8 +95,13 @@ if __name__ == "__main__":
     splits = pipeline.compute_splits(window_size_minutes=2.0)
 
     # TODO: replace these, once they can be obtained from data
-    destination_density_bc = {dest_id: lambda t: 0.1 for dest_id in destination_ids}
-    destination_flow_bc = {dest_id: lambda t: 0.1 for dest_id in destination_ids}
+    destination_density_bc = {dest_id: lambda t: 10.0 for dest_id in destination_ids}
+    destination_flow_bc = {dest_id: lambda t: 6000.0 for dest_id in destination_ids}
+
+    # initialize the results directory
+    timestamp = datetime.now().strftime("simulation_results_%Y-%m-%d_%H%M%S")
+    results_dir = f"results/{timestamp}"
+    os.makedirs(results_dir, exist_ok=True)
 
     # plot the network
     network.plot(save_path="results/zurich/network.png", show=plot_enabled)
@@ -108,6 +120,7 @@ if __name__ == "__main__":
         destination_flow_bc=destination_flow_bc,
         plot_results=True,
         show_plots=plot_enabled,
+        results_dir=results_dir,
     )
 
     # compute performance metrics and illustrate them
@@ -119,3 +132,15 @@ if __name__ == "__main__":
     print(f"Total VKT: {VKT:.2f} veh-km")
     print(f"Total VHT: {VHT:.2f} veh-h")
     print(f"Overall Average Speed: {avg_speed:.2f} km/h")
+
+    # generate video visualization if requested
+    if generate_video:
+        video_path = os.path.join(results_dir, "simulation.avi")
+        print(f"\nGenerating video visualization...")
+        sim.visualize(
+            results_filepath=os.path.join(results_dir, "simulation_results.json"),
+            output_filepath=video_path,
+            fps=30,
+            subsampling=1,
+        )
+        print(f"Video saved to: {video_path}")

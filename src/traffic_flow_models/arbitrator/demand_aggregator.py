@@ -1,4 +1,5 @@
 import csv
+import warnings
 import xml.etree.ElementTree as ET
 import networkx as nx
 from collections import defaultdict
@@ -102,11 +103,23 @@ class DemandAggregator:
                 from_node = row["from"].strip().strip('"').strip("'")
                 to_node = row["to"].strip().strip('"').strip("'")
 
-                if "onramp" in det_type or "origin" in det_type:
+                # match detector types based on spec CSV values:
+                # 'inflow', 'outflow', 'ramp_inflow', 'ramp_outflow'
+                if "inflow" in det_type:
+                    # traffic entering the backbone network
                     node_id = to_node
-                elif "offramp" in det_type or "destination" in det_type:
+                elif "outflow" in det_type:
+                    # traffic leaving the backbone network
                     node_id = from_node
+                elif "turning_rate" in det_type:
+                    # turning rate detectors should be ignored for demand aggregation
+                    continue
                 else:
+                    # fallback for any other types
+                    warnings.warn(
+                        f"Unrecognized detector type '{det_type}' for detector '{det_id}'. "
+                        "Defaulting to using 'to_node' as node_id."
+                    )
                     node_id = to_node
 
                 if node_id:
