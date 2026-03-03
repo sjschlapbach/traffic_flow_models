@@ -72,7 +72,8 @@ class TurningRateAggregator:
             # skip malformed entries
             if det_id is None or begin_str is None or end_str is None:
                 warnings.warn(
-                    f"Skipping malformed interval entry in detector output: {ET.tostring(interval, encoding='unicode')}"
+                    f"Skipping malformed interval entry in detector output: {ET.tostring(interval, encoding='unicode')}",
+                    stacklevel=2,
                 )
                 continue
 
@@ -184,7 +185,8 @@ class TurningRateAggregator:
                 # skip this node - will fall back to lane-based splits
                 warnings.warn(
                     f"No vehicles detected at diverge node {diverge_node_id}. "
-                    "Falling back to lane-based splits for this node."
+                    "Falling back to lane-based splits for this node.",
+                    stacklevel=2,
                 )
                 continue
 

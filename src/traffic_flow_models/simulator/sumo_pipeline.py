@@ -38,7 +38,8 @@ class SUMOPipeline:
         output_dir: Directory where output files are stored.
         osm_file: Path to the downloaded OSM file.
         net_file: Path to the SUMO network file.
-        detector_file: Path to the SUMO loop detectors file.
+        detector_file: Path to the SUMO loop detector definition file.
+        detector_output_file: Path to the SUMO detector output file (written by SUMO).
         rou_file: Path to the SUMO route file.
         consolidated_network: Network object representing the macroscopic network.
         arbitrator: NetworkArbitrator instance used for network conversion.
@@ -70,6 +71,7 @@ class SUMOPipeline:
         self.osm_file: str = os.path.join(self.output_dir, f"{name}.osm")
         self.net_file: str = os.path.join(self.output_dir, f"{name}.net.xml")
         self.detector_file: str = os.path.join(self.output_dir, f"{name}detectors.xml")
+        self.detector_output_file: Optional[str] = None  # Set by generate_detectors()
         self.rou_file: str = os.path.join(self.output_dir, f"{name}.rou.xml")
 
         self.detector_spec_path: str = os.path.join(
@@ -247,7 +249,7 @@ class SUMOPipeline:
             self.diverge_node_info,
         )
 
-    def generate_detectors(self) -> Tuple[str, str]:
+    def generate_detectors(self) -> Tuple[str, str, str]:
         """Generate loop detectors at network interface points.
 
         Creates loop detectors at the boundaries between the macroscopic network
@@ -260,7 +262,8 @@ class SUMOPipeline:
 
         Returns:
             A tuple containing:
-                - detector_file: Path to the generated SUMO detector XML file.
+                - detector_file: Path to the generated SUMO detector definition XML file.
+                - detector_output_file: Path to the detector output XML file (where SUMO writes data).
                 - detector_spec_path: Path to the detector specification CSV file.
 
         Raises:
@@ -292,9 +295,11 @@ class SUMOPipeline:
                 self.diverge_node_info if self.diverge_node_info is not None else {}
             ),
         )
-        self.detector_file, self.detector_spec_path = generator.generate()
+        self.detector_file, self.detector_output_file, self.detector_spec_path = (
+            generator.generate()
+        )
 
-        return self.detector_file, self.detector_spec_path
+        return self.detector_file, self.detector_output_file, self.detector_spec_path
 
     def compute_splits(
         self, window_size_minutes: float = 2.0

@@ -408,7 +408,8 @@ class Simulation:
 
                             elif init_flow.shape[0] != 1:
                                 warnings.warn(
-                                    f"Initial flow array for link {link.id} (type: {type(link)}) has incorrect length. Using first value for origin / onramp flow."
+                                    f"Initial flow array for link {link.id} (type: {type(link)}) has incorrect length. Using first value for origin / onramp flow.",
+                                    stacklevel=2,
                                 )
                                 link_flows_dict[link.id] = np.full(1, init_flow[0])
 
@@ -452,7 +453,8 @@ class Simulation:
 
                             elif init_flow.shape[0] != num_cells:
                                 warnings.warn(
-                                    f"Initial flow array for motorway link {link.id} has incorrect length. Using first value for all cells instead."
+                                    f"Initial flow array for motorway link {link.id} has incorrect length. Using first value for all cells instead.",
+                                    stacklevel=2,
                                 )
                                 link_flows_dict[link.id] = np.full(
                                     num_cells, init_flow[0]
@@ -475,7 +477,8 @@ class Simulation:
 
                             if init_density.shape[0] != num_cells:
                                 warnings.warn(
-                                    f"Initial density array for motorway link {link.id} has incorrect length. Using first value for all cells instead."
+                                    f"Initial density array for motorway link {link.id} has incorrect length. Using first value for all cells instead.",
+                                    stacklevel=2,
                                 )
                                 link_densities_dict[link.id] = np.full(
                                     num_cells, init_density[0]
@@ -500,7 +503,8 @@ class Simulation:
 
                             elif init_speed.shape[0] != num_cells:
                                 warnings.warn(
-                                    f"Initial speed array for motorway link {link.id} has incorrect length. Using first value for all cells instead."
+                                    f"Initial speed array for motorway link {link.id} has incorrect length. Using first value for all cells instead.",
+                                    stacklevel=2,
                                 )
                                 link_speeds_dict[link.id] = np.full(
                                     num_cells, init_speed[0]
@@ -530,7 +534,8 @@ class Simulation:
 
                         if dest_id not in destination_density_bc:
                             warnings.warn(
-                                f"Destination density boundary condition function for destination {dest_id} (connected to offramp {link.id}) not provided. Assuming downstream free flow conditions (zero density)."
+                                f"Destination density boundary condition function for destination {dest_id} (connected to offramp {link.id}) not provided. Assuming downstream free flow conditions (zero density).",
+                                stacklevel=2,
                             )
                             # capture dest_id to avoid late-binding (if lambda ever uses it)
                             destination_density_bc_dict[dest_id] = (
@@ -555,7 +560,8 @@ class Simulation:
 
                             elif init_flow.shape[0] != 1:
                                 warnings.warn(
-                                    f"Initial flow array for offramp {link.id} has incorrect length. Using first value instead."
+                                    f"Initial flow array for offramp {link.id} has incorrect length. Using first value instead.",
+                                    stacklevel=2,
                                 )
                                 link_flows_dict[link.id] = np.full(1, init_flow[0])
 
@@ -585,7 +591,8 @@ class Simulation:
 
                     if link.id not in destination_density_bc:
                         warnings.warn(
-                            f"Destination density boundary condition function for destination {link.id} (connected to offramp {link.id}) not provided. Assuming downstream free flow conditions (zero density)."
+                            f"Destination density boundary condition function for destination {link.id} (connected to offramp {link.id}) not provided. Assuming downstream free flow conditions (zero density).",
+                            stacklevel=2,
                         )
                         # capture link.id to avoid late-binding (if lambda ever uses it)
                         destination_density_bc_dict[link.id] = (
@@ -606,7 +613,8 @@ class Simulation:
 
                             elif init_flow.shape[0] != 1:
                                 warnings.warn(
-                                    f"Initial flow array for destination {link.id} has incorrect length. Using first value instead."
+                                    f"Initial flow array for destination {link.id} has incorrect length. Using first value instead.",
+                                    stacklevel=2,
                                 )
                                 link_flows_dict[link.id] = np.full(1, init_flow[0])
 

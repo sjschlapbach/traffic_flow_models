@@ -180,7 +180,7 @@ class Node:
         """
         self._validate_link_type(link, self._allowed_incoming_types())
         if link in self.incoming:
-            warnings.warn("Link already present in incoming links.")
+            warnings.warn("Link already present in incoming links.", stacklevel=2)
             return
 
         # add the link to the incoming list
@@ -198,7 +198,7 @@ class Node:
         """
         self._validate_link_type(link, self._allowed_outgoing_types())
         if link in self.outgoing:
-            warnings.warn("Link already present in outgoing links.")
+            warnings.warn("Link already present in outgoing links.", stacklevel=2)
             return
 
         # add the link to the outgoing list
@@ -242,7 +242,7 @@ class Node:
                 self.incoming.remove(link)
                 return
 
-        warnings.warn("No incoming link with id found to remove.")
+        warnings.warn("No incoming link with id found to remove.", stacklevel=2)
 
     def remove_outgoing_by_id(self, id: str) -> None:
         """Remove the first outgoing link matching the given `id`.
@@ -259,7 +259,7 @@ class Node:
                 self.outgoing.remove(link)
                 return
 
-        warnings.warn("No outgoing link with id found to remove.")
+        warnings.warn("No outgoing link with id found to remove.", stacklevel=2)
 
     def set_incoming(self, links: Iterable[Any]) -> None:
         """
@@ -274,7 +274,9 @@ class Node:
             if l not in new_list:
                 new_list.append(l)
             else:
-                warnings.warn("Duplicate link found in incoming links; ignoring.")
+                warnings.warn(
+                    "Duplicate link found in incoming links; ignoring.", stacklevel=2
+                )
 
         old_incoming = list(self.incoming)
         self.incoming = new_list
@@ -300,7 +302,9 @@ class Node:
             if l not in new_list:
                 new_list.append(l)
             else:
-                warnings.warn("Duplicate link found in outgoing links; ignoring.")
+                warnings.warn(
+                    "Duplicate link found in outgoing links; ignoring.", stacklevel=2
+                )
 
         old_outgoing = list(self.outgoing)
         self.outgoing = new_list

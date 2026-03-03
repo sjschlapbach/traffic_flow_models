@@ -345,7 +345,7 @@ class LoopDetectorGenerator:
 
         return output_file
 
-    def generate(self) -> Tuple[str, str]:
+    def generate(self) -> Tuple[str, str, str]:
         """Execute the complete detector generation pipeline.
 
         Orchestrates the full workflow: finding interface edges, finding turning
@@ -354,7 +354,8 @@ class LoopDetectorGenerator:
 
         Returns:
             A tuple containing:
-                - detector_xml: Path to the generated detector XML file.
+                - detector_xml: Path to the generated detector definition XML file.
+                - output_xml: Path to the detector output XML file (where SUMO writes results).
                 - detector_csv: Path to the generated specification CSV file.
         """
         inflow_count, outflow_count = self.find_interface_edges()
@@ -368,5 +369,6 @@ class LoopDetectorGenerator:
 
         detector_xml = self.write_detector_xml()
         detector_csv = self.write_detector_spec_csv()
+        output_xml = f"{self.output_dir}/{self.output_xml_filename}"
 
-        return detector_xml, detector_csv
+        return detector_xml, output_xml, detector_csv
