@@ -33,7 +33,8 @@ class LoopDetectorGenerator:
         onramp_ids: list[str],
         destination_ids: list[str],
         output_dir: str,
-        detection_freq: int = 900,
+        diverge_node_info: dict[str, list[str]],
+        detection_freq: int = 15,
         detector_filename: str = "detector.xml",
         spec_filename: str = "_detectors_spec.csv",
         output_xml_filename: str = "detectors_output.xml",
@@ -46,7 +47,8 @@ class LoopDetectorGenerator:
             onramp_ids: List of onramp node IDs in the network.
             destination_ids: List of destination node IDs in the network.
             output_dir: Directory where output files will be written.
-            detection_freq: Measurement frequency in seconds (default: 900).
+            diverge_node_info: Dictionary mapping diverge node IDs to lists of SUMO edge IDs.
+            detection_freq: Measurement frequency in seconds (default: 15).
             detector_filename: Output detector XML filename (default: "detector.xml").
             spec_filename: Output specification CSV filename (default: "_detectors_spec.csv").
             output_xml_filename: Detector output XML filename (default: "detectors_output.xml").
@@ -57,6 +59,7 @@ class LoopDetectorGenerator:
         self.onramp_ids: list[str] = onramp_ids
         self.destination_ids: list[str] = destination_ids
         self.output_dir: str = output_dir
+        self.diverge_node_info: dict[str, list[str]] = diverge_node_info or {}
         self.detection_freq: int = detection_freq
         self.detector_filename: str = detector_filename
         self.spec_filename: str = spec_filename
@@ -194,6 +197,76 @@ class LoopDetectorGenerator:
                     )
         return inflow_count, outflow_count
 
+    def find_turning_rate_edges(self) -> int:
+        """Find and place detectors at diverge nodes for turning rate measurement.
+
+        Identifies edges at diverge nodes (nodes with multiple outgoing edges) and
+        places detectors at the start of each outgoing edge to measure the number
+        of vehicles choosing each path. This data is used to compute time-varying
+        turning rates that reflect actual traffic distribution.
+
+        Returns:
+            Number of turning rate detectors created.
+        """
+        if not self.diverge_node_info:
+            return 0
+
+        tree = ET.parse(self.sumo_network_path)
+        root = tree.getroot()
+        turning_rate_count = 0
+
+        # iterate through each diverge node and its outgoing edges
+        for diverge_node_id, edge_ids in self.diverge_node_info.items():
+            for edge_id in edge_ids:
+                # find the edge in the SUMO network
+                edge = None
+                for e in root.findall("edge"):
+                    if e.get("id") == edge_id and e.get("function") != "internal":
+                        edge = e
+                        break
+
+                if edge is None:
+                    continue
+
+                from_node = edge.get("from")
+                to_node = edge.get("to")
+
+                # place detector on each lane of this edge
+                lanes = edge.findall("lane")
+                for lane_idx, lane in enumerate(lanes):
+                    lane_id = lane.get("id")
+                    length_str = lane.get("length")
+                    if length_str is None:
+                        continue
+                    lane_length = float(length_str)
+
+                    # skip very short lanes
+                    if lane_length < 10:
+                        print(
+                            f"  Skipping short lane {lane_id} (length={lane_length}m)"
+                        )
+                        continue
+
+                    # place detector near start of edge (5m from start)
+                    detector_pos = min(5.0, lane_length * 0.1)
+
+                    self.edge_detectors.append(
+                        {
+                            "edge_id": edge_id,
+                            "lane_id": lane_id,
+                            "lane_index": lane_idx,
+                            "position": detector_pos,
+                            "node_id": diverge_node_id,
+                            "type": "turning_rate",
+                            "from_node": from_node,
+                            "to_node": to_node,
+                            "diverge_node_id": diverge_node_id,
+                        }
+                    )
+                    turning_rate_count += 1
+
+        return turning_rate_count
+
     def write_detector_xml(self) -> str:
         """Write SUMO loop detector configuration XML file.
 
@@ -209,7 +282,8 @@ class LoopDetectorGenerator:
         root = ET.Element("additional")
 
         for det in self.edge_detectors:
-            det_id = f"detector_{det['edge_id']}_{det['lane_index']}"
+            det_type = det.get("type", "interface").replace("_", "")
+            det_id = f"detector_{det_type}_{det['edge_id']}_{det['lane_index']}"
 
             detector = ET.SubElement(root, "inductionLoop")
             detector.set("id", det_id)
@@ -247,12 +321,15 @@ class LoopDetectorGenerator:
                     "to",
                     "edge_id",
                     "backbone_node",
+                    "diverge_node_id",
                 ],
             )
             writer.writeheader()
 
             for det in self.edge_detectors:
-                det_id = f"detector_{det['edge_id']}_{det['lane_index']}"
+                # include type in detector ID to avoid conflicts between interface and turning rate detectors
+                det_type = det.get("type", "interface").replace("_", "")
+                det_id = f"detector_{det_type}_{det['edge_id']}_{det['lane_index']}"
 
                 writer.writerow(
                     {
@@ -262,6 +339,7 @@ class LoopDetectorGenerator:
                         "to": det["to_node"],
                         "edge_id": det["edge_id"],
                         "backbone_node": det["node_id"],
+                        "diverge_node_id": det.get("diverge_node_id", ""),
                     }
                 )
 
@@ -270,16 +348,24 @@ class LoopDetectorGenerator:
     def generate(self) -> Tuple[str, str]:
         """Execute the complete detector generation pipeline.
 
-        Orchestrates the full workflow: finding interface edges, generating
-        detector configurations, and writing both the SUMO XML file and
-        the specification CSV file.
+        Orchestrates the full workflow: finding interface edges, finding turning
+        rate edges at diverge nodes, generating detector configurations, and writing
+        both the SUMO XML file and the specification CSV file.
 
         Returns:
             A tuple containing:
                 - detector_xml: Path to the generated detector XML file.
                 - detector_csv: Path to the generated specification CSV file.
         """
-        self.find_interface_edges()
+        inflow_count, outflow_count = self.find_interface_edges()
+        turning_rate_count = self.find_turning_rate_edges()
+
+        print(f"Detector placement summary:")
+        print(f"  Inflow detectors: {inflow_count}")
+        print(f"  Outflow detectors: {outflow_count}")
+        print(f"  Turning rate detectors: {turning_rate_count}")
+        print(f"  Total detectors: {len(self.edge_detectors)}")
+
         detector_xml = self.write_detector_xml()
         detector_csv = self.write_detector_spec_csv()
 

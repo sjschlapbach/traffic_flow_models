@@ -71,7 +71,9 @@ class DemandAggregator:
             begin = float(begin_str)
             count = int(interval.get("nVehEntered", interval.get("nVehContrib", 0)))
             self.detector_intervals[det_id].append((begin, count))
-            self.max_time = max(self.max_time, begin)
+            self.max_time = max(
+                self.max_time, begin
+            )  # TODO: remove the code where self.max_time is set if it is not used anywhere afterwards -> try implementing the same window-based smoothing approach as for the turning rate aggregation?
 
     def classify_and_map(self) -> None:
         """Map detector IDs to node IDs from CSV specification.
@@ -108,7 +110,7 @@ class DemandAggregator:
                     node_id = to_node
 
                 if node_id:
-                    # Store all variants
+                    # store all variants
                     for variant in det_id_variants:
                         self.detector_mapping[variant] = {
                             "node_id": node_id,

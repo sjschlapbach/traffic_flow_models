@@ -205,8 +205,8 @@ class NetworkArbitrator:
         list[str],
         list[str],
         list[str],
-        dict[str, Callable[[float], dict[str, float]]],
         RoadParamsConfig,
+        dict[str, list[str]],
     ]:
         """Execute the complete network arbitration pipeline.
 
@@ -220,9 +220,10 @@ class NetworkArbitrator:
                 - origin_ids: List of origin node IDs in the network.
                 - onramp_ids: List of onramp node IDs in the network.
                 - destination_ids: List of destination node IDs in the network.
-                - splits: Dictionary mapping node IDs to their outgoing link split ratios
-                    as time-dependent callable functions.
                 - road_params: Road parameters configuration used for the network.
+                - diverge_node_info: Dictionary mapping diverge node IDs to lists of SUMO edge IDs
+                    for their outgoing motorway links. Use this to compute turning rates from
+                    detector data via TurningRateAggregator.
 
         Raises:
             ValueError: If no edges are found after parsing or if no matching road types exist.
@@ -252,7 +253,7 @@ class NetworkArbitrator:
             origin_ids,
             onramp_ids,
             destination_ids,
-            splits,
+            diverge_node_info,
         ) = self.instantiate_network()
         self._log_network_statistics(macroscopic_network)
 
@@ -261,8 +262,8 @@ class NetworkArbitrator:
             origin_ids,
             onramp_ids,
             destination_ids,
-            splits,
             self.road_params,
+            diverge_node_info,
         )
 
     def parse_sumo_xml(self) -> None:
@@ -644,7 +645,7 @@ class NetworkArbitrator:
         list[str],
         list[str],
         list[str],
-        dict[str, Callable[[float], dict[str, float]]],
+        dict[str, list[str]],
     ]:
         """Create macroscopic network objects from the processed graph.
 
@@ -659,7 +660,11 @@ class NetworkArbitrator:
         - Divides each link into cells based on target_cell_length
         - Identifies network entry points (origins) and exit points (destinations)
         - Detects onramps (nodes with multiple incoming motorway links)
-        - Computes split ratios at diverge points based on lane counts
+        - Identifies diverge nodes and tracks their outgoing SUMO edge IDs
+
+        Note: Split ratios (turning rates) should be computed from detector data using
+        TurningRateAggregator. Use compute_lane_based_splits() for fallback when
+        detector data is unavailable.
 
         Returns:
             A tuple containing:
@@ -667,12 +672,15 @@ class NetworkArbitrator:
                 - origin_ids: List of origin node IDs in the network.
                 - onramp_ids: List of onramp node IDs in the network.
                 - destination_ids: List of destination node IDs in the network.
-                - splits: Dictionary mapping node IDs to their outgoing link split ratios
-                    as time-dependent callable functions.
+                - diverge_node_info: Dictionary mapping diverge node IDs to lists of SUMO edge IDs
+                    for their outgoing motorway links.
         """
 
         macro_nodes = {}
         total_cells = 0
+
+        # track diverge node information (node ID -> SUMO edge IDs)
+        diverge_node_info: dict[str, list[str]] = {}
 
         for nid in self.graph.nodes():
             n_obj = Node(id=str(nid))
@@ -704,6 +712,11 @@ class NetworkArbitrator:
             # connect link to nodes
             macro_nodes[u].add_outgoing(link)
             macro_nodes[v].add_incoming(link)
+
+            # track SUMO edge ID for this link's origin node (for turning rate detection)
+            if str(u) not in diverge_node_info:
+                diverge_node_info[str(u)] = []
+            diverge_node_info[str(u)].append(str(data["id"]))
 
             # TODO: remove the creation of cells here if they are not used for the data aggregation and calibration later on -> partitioning performed automatically during simulation
             num_cells = max(1, math.ceil(data["length"] / self.target_cell_length))
@@ -742,29 +755,12 @@ class NetworkArbitrator:
             >= 2
         ]
 
-        # TODO: splits should not be computed based on the number of lanes but on the actual traffic distribution observed from the micro simulation
-        # TODO: additionally, turning rates should be time-dependent callable functions (like demand)
-        splits: dict[str, Callable[[float], dict[str, float]]] = {}
-        for nid, node_obj in macro_nodes.items():
-            outgoing_links = [
-                link for link in node_obj.outgoing if isinstance(link, MotorwayLink)
-            ]
-
-            if len(outgoing_links) >= 2:
-                total_lanes = sum(link.lanes for link in outgoing_links)
-                # splits[str(nid)] = {
-                #     link.id: link.lanes / total_lanes for link in outgoing_links
-                # }
-                splits[str(nid)] = lambda t, ol=outgoing_links, tl=total_lanes: {
-                    link.id: link.lanes / tl for link in ol
-                }
-
         return (
             Network(nodes=list(macro_nodes.values())),
             origin_ids,
             onramp_ids,
             destination_ids,
-            splits,
+            diverge_node_info,
         )
 
     def _log_network_statistics(self, network: Network) -> None:
@@ -815,3 +811,45 @@ class NetworkArbitrator:
         print(f"  Destinations: {num_destinations}")
         print(f"  Total network length: {total_length:.2f} km")
         print("=" * 60)
+
+    def compute_lane_based_splits(
+        self, network: Network, diverge_node_info: dict[str, list[str]]
+    ) -> dict[str, Callable[[float], dict[str, float]]]:
+        """Compute lane-based split ratios for nodes as fallback.
+
+        This method provides simple lane-proportional splits when detector data
+        is unavailable. The splits are time-invariant and based on the ratio of
+        lanes on each outgoing link. For nodes with a single outgoing link,
+        returns a constant 1.0 (100% of traffic uses that link).
+
+        Args:
+            network: Network object containing all nodes and links.
+            diverge_node_info: Dictionary mapping node IDs to lists of SUMO edge IDs.
+
+        Returns:
+            Dictionary mapping node IDs to time-invariant split functions.
+            Each function returns a dictionary mapping link IDs to their lane-based fractions.
+        """
+        splits: dict[str, Callable[[float], dict[str, float]]] = {}
+
+        for node in network:
+            node_id = node.id
+            if node_id not in diverge_node_info:
+                continue
+
+            outgoing_links = [
+                link for link in node.outgoing if isinstance(link, MotorwayLink)
+            ]
+
+            if len(outgoing_links) == 1:
+                # single outgoing link: turning rate = 1.0
+                splits[node_id] = lambda t, ol=outgoing_links: {ol[0].id: 1.0}
+            elif len(outgoing_links) >= 2:
+                # multiple outgoing links: use lane-proportional splits
+                total_lanes = sum(link.lanes for link in outgoing_links)
+                # create time-invariant split function based on lane proportions
+                splits[node_id] = lambda t, ol=outgoing_links, tl=total_lanes: {
+                    link.id: link.lanes / tl for link in ol
+                }
+
+        return splits
