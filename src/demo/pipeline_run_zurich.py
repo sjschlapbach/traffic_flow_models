@@ -27,6 +27,13 @@ if __name__ == "__main__":
     dt = 10.0 / 3600
     duration = 5000.0 / 3600
     plot_enabled = not parsed_args.no_plot
+    preferred_cell_size = 0.5  # km
+
+    # compute minimum link length for CFL stability
+    # must account for both CFL condition (vf * dt) and preferred cell size
+    max_free_flow_speed = 120.0  # km/h
+    cfl_minimum = max_free_flow_speed * dt  # CFL condition: cell_length >= vf * dt
+    min_link_length = max(cfl_minimum, preferred_cell_size) + 0.01  # km
 
     # path to road parameters configuration
     road_params_config_path = os.path.join(
@@ -39,7 +46,7 @@ if __name__ == "__main__":
     )
     pipeline.fetch_OSM()
     pipeline.convert_to_sumo()
-    pipeline.create_consolidated_network()
+    pipeline.create_consolidated_network(min_link_length=min_link_length)
     detector_file, spec_file = pipeline.generate_detectors()
     pipeline.generate_demand(vehicle_count=vehicle_demand)
     (
@@ -85,7 +92,7 @@ if __name__ == "__main__":
     time, states, disturbances = sim.run(
         duration=duration,
         dt=dt,
-        preferred_cell_size=0.5,
+        preferred_cell_size=preferred_cell_size,
         origin_demands=origin_demands,
         onramp_demands=onramp_demands,
         turning_rates=splits,
