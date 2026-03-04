@@ -83,12 +83,9 @@ if __name__ == "__main__":
     sim.write_config()
     sim.run_simulation()
 
-    # get the path to the detector output file (written by SUMO)
-    detector_output_path = os.path.join(pipeline.output_dir, "detectors_output.xml")
-
     # aggregate demands from detector data
     demand_generator = DemandAggregator(
-        detector_output_path=detector_output_path, detector_spec_path=spec_file
+        detector_output_path=detector_output_file, detector_spec_path=spec_file
     )
     origin_demands, onramp_demands = demand_generator.run(
         origin_ids=origin_ids,
@@ -143,7 +140,7 @@ if __name__ == "__main__":
     # generate video visualization if requested
     if generate_video:
         video_path = os.path.join(results_dir, "simulation.avi")
-        print(f"\nGenerating video visualization...")
+        print("\nGenerating video visualization...")
         sim.visualize(
             results_filepath=os.path.join(results_dir, "simulation_results.json"),
             output_filepath=video_path,
