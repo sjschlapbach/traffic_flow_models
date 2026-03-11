@@ -10,6 +10,7 @@ from traffic_flow_models.network.motorway_link import MotorwayLink
 from traffic_flow_models.network.origin import Origin
 from traffic_flow_models.network.destination import Destination
 from traffic_flow_models.network.network import Network
+from traffic_flow_models.network.onramp import Onramp
 
 
 class RoadTypeParams(TypedDict):
@@ -736,6 +737,39 @@ class NetworkArbitrator:
                 dest = Destination(id=f"dest_{nid}", origin_node_id=str(nid))
                 node_obj.add_outgoing(dest)
 
+        # A merge node (1 outgoing, 2+ incoming MotorwayLinks) → the non-mainline incoming = Onramp
+
+        for nid, node_obj in macro_nodes.items():
+            in_mwl = [l for l in node_obj.incoming if isinstance(l, MotorwayLink)]
+            out_mwl = [l for l in node_obj.outgoing if isinstance(l, MotorwayLink)]
+
+            # --- MERGE NODE: reclassify the shortest incoming link at a node as Onramp ---
+            if len(in_mwl) >= 2 and len(out_mwl) == 1:
+                # heuristic: the ramp is the shortest incoming motorway link
+                ramp_link = min(in_mwl, key=lambda l: l.length)
+                origin_nid = ramp_link.origin_node_id
+
+                onramp = Onramp(
+                    id=f"onramp_{ramp_link.id}",
+                    length=ramp_link.length,
+                    lanes=ramp_link.lanes,
+                    lane_capacity=ramp_link.lane_capacity,
+                    free_flow_speed=ramp_link.free_flow_speed,
+                    jam_density=ramp_link.jam_density,
+                    origin_node_id=origin_nid,
+                    destination_node_id=str(nid),
+                )
+
+                # swap out the MotorwayLink for the Onramp in both nodes
+                node_obj.incoming.remove(ramp_link)
+                node_obj.incoming.append(onramp)
+                if origin_nid and origin_nid in macro_nodes:
+                    src_node = macro_nodes[origin_nid]
+                    src_node.outgoing.remove(ramp_link)
+                    src_node.outgoing.append(onramp)
+
+
+
         origin_ids: list[str] = [
             node_obj.incoming[0].id
             for node_obj in macro_nodes.values()
@@ -752,7 +786,7 @@ class NetworkArbitrator:
             f"onramp_{nid}"
             for nid, node_obj in macro_nodes.items()
             if len(
-                [link for link in node_obj.incoming if isinstance(link, MotorwayLink)]
+                [link for link in node_obj.incoming if isinstance(link, Onramp)]
             )
             >= 2
         ]
