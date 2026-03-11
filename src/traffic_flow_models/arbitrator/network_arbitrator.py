@@ -751,12 +751,10 @@ class NetworkArbitrator:
 
                 onramp = Onramp(
                     id=f"onramp_{ramp_link.id}",
-                    length=ramp_link.length,
                     lanes=ramp_link.lanes,
                     lane_capacity=ramp_link.lane_capacity,
                     free_flow_speed=ramp_link.free_flow_speed,
                     jam_density=ramp_link.jam_density,
-                    origin_node_id=origin_nid,
                     destination_node_id=str(nid),
                 )
 
@@ -767,8 +765,6 @@ class NetworkArbitrator:
                     src_node = macro_nodes[origin_nid]
                     src_node.outgoing.remove(ramp_link)
                     src_node.outgoing.append(onramp)
-
-
 
         origin_ids: list[str] = [
             node_obj.incoming[0].id
@@ -785,9 +781,7 @@ class NetworkArbitrator:
         onramp_ids: list[str] = [
             f"onramp_{nid}"
             for nid, node_obj in macro_nodes.items()
-            if len(
-                [link for link in node_obj.incoming if isinstance(link, Onramp)]
-            )
+            if len([link for link in node_obj.incoming if isinstance(link, Onramp)])
             >= 2
         ]
 
