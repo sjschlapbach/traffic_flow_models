@@ -748,14 +748,8 @@ class NetworkArbitrator:
             if node_obj.outgoing and isinstance(node_obj.outgoing[0], Destination)
         ]
 
-        onramp_ids: list[str] = [
-            f"onramp_{nid}"
-            for nid, node_obj in macro_nodes.items()
-            if len(
-                [link for link in node_obj.incoming if isinstance(link, MotorwayLink)]
-            )
-            >= 2
-        ]
+        # TODO: Extract this information from the corresponding OSM road category
+        onramp_ids: list[str] = []
 
         return (
             Network(nodes=list(macro_nodes.values())),

@@ -15,8 +15,9 @@ class DemandAggregator:
 
     This class processes loop detector outputs from SUMO simulations and aggregates
     them spatially and temporally to produce demand functions suitable for macroscopic
-    entry points (origins and onramps). The aggregation follows the network topology
-    to capture all upstream demand feeding into each macroscopic model interface point.
+    entry points (origins; ramp inflows are mapped to additional origins). The aggregation
+    follows the network topology to capture all upstream demand feeding into each
+    macroscopic model interface point.
 
     Uses a rolling window approach for temporal aggregation to smooth demand functions
     while preserving time-varying behavior.
@@ -169,10 +170,8 @@ class DemandAggregator:
         origin_ids: list[str],
         onramp_ids: list[str],
         sumo_network_path: str,
-    ) -> Tuple[
-        dict[str, Callable[[float], float]], dict[str, Callable[[float], float]]
-    ]:
-        """Aggregate all detector data from roads feeding into macroscopic model entry points.
+    ) -> dict[str, Callable[[float], float]]:
+        """Aggregate detector data feeding into macroscopic entry points.
 
         Identifies all network nodes upstream of each macroscopic model origin
         and onramp, aggregates their detector counts, and produces time-dependent
@@ -186,16 +185,16 @@ class DemandAggregator:
                 topology analysis.
 
         Returns:
-            A tuple containing:
-                - origin_demands: Dictionary mapping origin IDs to demand functions.
-                - onramp_demands: Dictionary mapping onramp IDs to demand functions.
+            origin_demands: Dictionary mapping origin IDs to demand functions. Onramp
+                inflows are converted into additional origins (prefixed with
+                "origin_onramp_").
         """
         graph = self._build_network_graph(sumo_network_path)
 
         origin_node_ids = [oid.replace("origin_", "") for oid in origin_ids]
         onramp_node_ids = [oid.replace("onramp_", "") for oid in onramp_ids]
 
-        origin_demands = {}
+        origin_demands: dict[str, Callable[[float], float]] = {}
 
         for origin_node in origin_node_ids:
             upstream_nodes = self._find_upstream_nodes(graph, origin_node)
@@ -204,14 +203,12 @@ class DemandAggregator:
             origin_id = f"origin_{origin_node}"
             origin_demands[origin_id] = self._make_demand_function(aggregated_bins)
 
-        onramp_demands = {}
-
         for onramp_node in onramp_node_ids:
             upstream_nodes = self._find_upstream_nodes(graph, onramp_node)
             aggregated_bins = self._aggregate_demand(upstream_nodes)
 
-            onramp_id = f"onramp_{onramp_node}"
-            onramp_demands[onramp_id] = self._make_demand_function(aggregated_bins)
+            ramp_origin_id = f"origin_onramp_{onramp_node}"
+            origin_demands[ramp_origin_id] = self._make_demand_function(aggregated_bins)
 
         all_detector_vehicles = sum(
             sum(count for _, count in intervals)
@@ -221,8 +218,8 @@ class DemandAggregator:
         print("AGGREGATION SUMMARY:")
         print(f"  Total detector nodes: {len(self.node_intervals)}")
         print(f"  Total detector vehicles: {all_detector_vehicles}")
-        print(f"  Network entry points: {len(origin_demands) + len(onramp_demands)}")
-        return origin_demands, onramp_demands
+        print(f"  Network entry points (origins incl. ramps): {len(origin_demands)}")
+        return origin_demands
 
     def _build_network_graph(self, sumo_network_path: str) -> nx.DiGraph:
         """Build directed graph from SUMO network XML.
@@ -332,9 +329,7 @@ class DemandAggregator:
         origin_ids: list[str],
         onramp_ids: list[str],
         sumo_network_path: str,
-    ) -> Tuple[
-        dict[str, Callable[[float], float]], dict[str, Callable[[float], float]]
-    ]:
+    ) -> dict[str, Callable[[float], float]]:
         """Execute the complete demand aggregation pipeline.
 
         Orchestrates the full workflow: parsing detector outputs, mapping
@@ -347,9 +342,7 @@ class DemandAggregator:
             sumo_network_path: Path to the SUMO network XML file.
 
         Returns:
-            A tuple containing:
-                - origin_demands: Dictionary mapping origin IDs to demand functions.
-                - onramp_demands: Dictionary mapping onramp IDs to demand functions.
+            origin_demands: Dictionary mapping origin IDs to demand functions.
 
         Raises:
             ValueError: If sumo_network_path is not provided.
