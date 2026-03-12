@@ -197,6 +197,16 @@ class LoopDetectorGenerator:
                     )
         return inflow_count, outflow_count
 
+    def add_detectors_backbone_network(self) -> Tuple[int, int]:
+        
+        tree = ET.parse(self.sumo_network_path)
+        root = tree.getroot()
+
+        backbone = _extract_backbone_nodes()
+
+        return #lane_count, count
+
+
     def find_turning_rate_edges(self) -> int:
         """Find and place detectors at diverge nodes for turning rate measurement.
 
