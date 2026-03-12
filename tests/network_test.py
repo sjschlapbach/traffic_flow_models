@@ -212,7 +212,7 @@ class TestNetwork:
         with pytest.raises(ValueError):
             net.validate()
 
-    def test_validate_onramp_without_origin_passes(self):
+    def test_validate_onramp_without_origin_fails(self):
         # create mainline and an onramp feeding into it (no Origin present)
         main = MotorwayLink(
             length=1.0, lanes=1, lane_capacity=1500, free_flow_speed=80, jam_density=140
@@ -224,8 +224,9 @@ class TestNetwork:
         node_downstream = Node(id="down", incoming=[main], outgoing=[dest])
         net = Network(nodes=[node_upstream, node_downstream])
 
-        # should not raise: network contains an onramp (counts as origin-type link) and a destination
-        net.validate()
+        # should raise: networks require an explicit origin, onramps no longer count
+        with pytest.raises(ValueError, match="origin link"):
+            net.validate()
 
     def test_validate_requires_origin_or_onramp_raises(self):
         # network with only motorway links and a destination but no Origin/Onramp
@@ -746,7 +747,6 @@ class TestNetwork:
 
         # prepare disturbance dictionaries
         origin_demand_dict = {origin.id: 600.0}
-        onramp_demand_dict = {}
         turning_rate_dict = {
             node1.id: {main.id: 1.0},  # node1: all traffic to main
             node2.id: {dest.id: 1.0},  # node2: all traffic to dest
@@ -757,7 +757,6 @@ class TestNetwork:
         # pack to disturbance vector
         d = net.network_dict_to_disturbance_vec(
             origin_demand_dict,
-            onramp_demand_dict,
             turning_rate_dict,
             flow_boundary_condition_dict=flow_destination_bc,
             density_boundary_condition_dict=density_destination_bc,
@@ -795,7 +794,6 @@ class TestNetwork:
         # unpack
         (
             origin_demands,
-            onramp_demands,
             turning_rates,
             flow_boundary_conditions,
             density_boundary_conditions,
@@ -803,7 +801,6 @@ class TestNetwork:
 
         # verify dictionaries
         assert origin.id in origin_demands
-        assert len(onramp_demands) == 0
         assert node1.id in turning_rates
         assert node2.id in turning_rates
         assert dest.id in flow_boundary_conditions
@@ -844,7 +841,6 @@ class TestNetwork:
 
         # original disturbance dictionaries
         origin_demand_dict_orig = {origin.id: 600.0}
-        onramp_demand_dict_orig = {onramp.id: 150.0}
         turning_rate_dict_orig = {
             node1.id: {main1.id: 1.0},
             node2.id: {main2.id: 0.8, offramp.id: 0.2},
@@ -856,7 +852,6 @@ class TestNetwork:
         # round trip: dict -> vec -> dict
         d = net.network_dict_to_disturbance_vec(
             origin_demand_dict_orig,
-            onramp_demand_dict_orig,
             turning_rate_dict_orig,
             flow_destination_bc_orig,
             density_destination_bc_orig,
@@ -864,7 +859,6 @@ class TestNetwork:
 
         (
             origin_demands,
-            onramp_demands,
             turning_rates,
             flow_boundary_conditions,
             density_boundary_conditions,
@@ -872,7 +866,6 @@ class TestNetwork:
 
         # verify all values match
         assert origin_demands[origin.id] == origin_demand_dict_orig[origin.id]
-        assert onramp_demands[onramp.id] == onramp_demand_dict_orig[onramp.id]
 
         for node_id in turning_rate_dict_orig:
             for link_id in turning_rate_dict_orig[node_id]:
@@ -1282,7 +1275,6 @@ class TestNetwork:
 
         # create disturbance dictionaries with split ratios at diverge node
         origin_demand_dict = {origin.id: 600.0}
-        onramp_demand_dict = {}
         turning_rate_dict = {
             node1.id: {link1.id: 1.0},
             node2.id: {link2.id: 1.0},
@@ -1295,7 +1287,6 @@ class TestNetwork:
         # test packing
         d = net.network_dict_to_disturbance_vec(
             origin_demand_dict,
-            onramp_demand_dict,
             turning_rate_dict,
             flow_boundary_condition_dict=flow_destination_bc,
             density_boundary_condition_dict=density_destination_bc,
@@ -1304,7 +1295,6 @@ class TestNetwork:
         # test round-trip
         (
             origin_demands,
-            onramp_demands,
             turning_rates,
             flow_boundary_conditions,
             density_boundary_conditions,
@@ -1312,7 +1302,6 @@ class TestNetwork:
 
         # verify values preserved
         assert origin_demands[origin.id] == origin_demand_dict[origin.id]
-        assert len(onramp_demands) == 0
 
         for node_id in turning_rate_dict:
             assert node_id in turning_rates
@@ -1659,7 +1648,6 @@ class TestNetwork:
             duration=0.1,
             dt=0.01,
             origin_demands={origin.id: lambda t: 1000.0},
-            onramp_demands={},
             turning_rates={},
             destination_flow_bc={dest.id: lambda t: 0.0},
             destination_density_bc={dest.id: lambda t: 0.0},
@@ -1708,7 +1696,6 @@ class TestNetwork:
             duration=0.1,
             dt=0.01,
             origin_demands={origin.id: lambda t: 1000.0},
-            onramp_demands={},
             turning_rates={},
             destination_flow_bc={dest.id: lambda t: 0.0},
             destination_density_bc={dest.id: lambda t: 0.0},
@@ -1760,7 +1747,6 @@ class TestNetwork:
             duration=duration,
             dt=dt,
             origin_demands={origin.id: lambda t: 1000.0},
-            onramp_demands={},
             turning_rates={},
             destination_flow_bc={dest.id: lambda t: 0.0},
             destination_density_bc={dest.id: lambda t: 0.0},
@@ -1891,7 +1877,6 @@ class TestNetwork:
             duration=0.05,
             dt=0.01,
             origin_demands={origin1.id: lambda t: 1000.0},
-            onramp_demands={},
             turning_rates={},
             destination_flow_bc={dest1.id: lambda t: 0.0},
             destination_density_bc={dest1.id: lambda t: 0.0},
@@ -1930,6 +1915,7 @@ class TestNetwork:
 
         # create complex network
         origin = Origin()
+        ramp_origin = Origin()
         main1 = MotorwayLink(
             length=3.0,
             lanes=3,
@@ -1954,11 +1940,12 @@ class TestNetwork:
         dest_main = Destination()
 
         node1 = Node(id="n1", incoming=[origin], outgoing=[main1])
+        node_ramp = Node(id="n_ramp", incoming=[ramp_origin], outgoing=[onramp])
         node2 = Node(id="n2", incoming=[main1, onramp], outgoing=[main2])
         node3 = Node(id="n3", incoming=[main2], outgoing=[offramp, dest_main])
 
         # Note: Offramps connect to destinations via their destination property
-        net = Network(nodes=[node1, node2, node3])
+        net = Network(nodes=[node1, node_ramp, node2, node3])
         offramp.destination = dest_offramp
 
         # simulate
@@ -1967,8 +1954,10 @@ class TestNetwork:
         time_array, state_history, disturbance_history = sim.run(
             duration=0.05,
             dt=0.01,
-            origin_demands={origin.id: lambda t: 2000.0},
-            onramp_demands={onramp.id: lambda t: 500.0},
+            origin_demands={
+                origin.id: lambda t: 2000.0,
+                ramp_origin.id: lambda t: 500.0,
+            },
             turning_rates={"n3": lambda t: {offramp.id: 0.3, dest_main.id: 0.7}},
             destination_flow_bc={
                 dest_offramp.id: lambda t: 0.0,
@@ -2000,7 +1989,6 @@ class TestNetwork:
 
             # check disturbance data
             assert origin.id in data["disturbance_time_series"]["origin_demands"]
-            assert onramp.id in data["disturbance_time_series"]["onramp_demands"]
             assert "n3" in data["disturbance_time_series"]["turning_rates"]
 
             # load and verify
@@ -2036,7 +2024,6 @@ class TestNetwork:
             duration=0.02,
             dt=0.01,
             origin_demands={origin.id: lambda t: 1000.0},
-            onramp_demands={},
             turning_rates={},
             destination_flow_bc={dest.id: lambda t: 0.0},
             destination_density_bc={dest.id: lambda t: 0.0},
@@ -2090,7 +2077,6 @@ class TestNetwork:
             duration=0.03,
             dt=0.01,
             origin_demands={origin_id: lambda t: 1500.0},
-            onramp_demands={},
             turning_rates={},
             destination_flow_bc={dest_id: lambda t: 0.0},
             destination_density_bc={dest_id: lambda t: 0.0},
@@ -2137,7 +2123,6 @@ class TestNetwork:
             duration=0.5,  # longer duration
             dt=0.01,
             origin_demands={origin.id: lambda t: 1000.0 + 500.0 * t},  # time-varying
-            onramp_demands={},
             turning_rates={},
             destination_flow_bc={dest.id: lambda t: 0.0},
             destination_density_bc={dest.id: lambda t: 0.0},
@@ -2191,7 +2176,6 @@ class TestNetwork:
             duration=0.02,
             dt=0.01,
             origin_demands={origin.id: lambda t: 1000.0},
-            onramp_demands={},
             turning_rates={},
             destination_flow_bc={dest.id: lambda t: 0.0},
             destination_density_bc={dest.id: lambda t: 0.0},
@@ -2235,7 +2219,6 @@ class TestNetwork:
 
         # valid disturbance data
         origin_demands = {origin.id: 1000.0}
-        onramp_demands = {}
         turning_rates = {
             "n1": {main.id: 1.0},
             "n2": {dest.id: 1.0},
@@ -2246,7 +2229,6 @@ class TestNetwork:
         # should not raise
         net._validate_disturbance_history_numerical(
             origin_demands=origin_demands,
-            onramp_demands=onramp_demands,
             turning_rates=turning_rates,
             flow_boundary_conditions=flow_bc,
             density_boundary_conditions=density_bc,
@@ -2269,7 +2251,6 @@ class TestNetwork:
 
         # invalid origin demands (string instead of number)
         origin_demands = {origin.id: "invalid"}
-        onramp_demands = {}
         turning_rates = {"n1": {main.id: 1.0}, "n2": {dest.id: 1.0}}
         flow_bc = {dest.id: 0.0}
         density_bc = {dest.id: 0.0}
@@ -2277,40 +2258,6 @@ class TestNetwork:
         with pytest.raises(ValueError, match="Non-numerical values found"):
             net._validate_disturbance_history_numerical(
                 origin_demands=origin_demands,  # type: ignore (intentional error for testing)
-                onramp_demands=onramp_demands,
-                turning_rates=turning_rates,
-                flow_boundary_conditions=flow_bc,
-                density_boundary_conditions=density_bc,
-            )
-
-    def test_validate_disturbance_history_numerical_rejects_non_numerical_onramp_demands(
-        self,
-    ):
-        """Test that validate_disturbance_history_numerical rejects non-numerical onramp demands."""
-        # create network with onramp
-        main = MotorwayLink(
-            length=1.0, lanes=2, lane_capacity=1500, free_flow_speed=80, jam_density=140
-        )
-        onramp = Onramp(
-            lanes=1, lane_capacity=1500, free_flow_speed=80, jam_density=140
-        )
-        dest = Destination()
-
-        node1 = Node(id="n1", incoming=[onramp], outgoing=[main])
-        node2 = Node(id="n2", incoming=[main], outgoing=[dest])
-        net = Network(nodes=[node1, node2])
-
-        # invalid onramp demands
-        origin_demands = {}
-        onramp_demands = {onramp.id: [1000.0]}  # list instead of scalar
-        turning_rates = {"n1": {main.id: 1.0}, "n2": {dest.id: 1.0}}
-        flow_bc = {dest.id: 0.0}
-        density_bc = {dest.id: 0.0}
-
-        with pytest.raises(ValueError, match="Non-numerical values found"):
-            net._validate_disturbance_history_numerical(
-                origin_demands=origin_demands,
-                onramp_demands=onramp_demands,  # type: ignore (intentional error for testing)
                 turning_rates=turning_rates,
                 flow_boundary_conditions=flow_bc,
                 density_boundary_conditions=density_bc,
@@ -2333,7 +2280,6 @@ class TestNetwork:
 
         # invalid turning rates (not a dict for node)
         origin_demands = {origin.id: 1000.0}
-        onramp_demands = {}
         turning_rates = {"n1": 1.0, "n2": {dest.id: 1.0}}  # scalar instead of dict
         flow_bc = {dest.id: 0.0}
         density_bc = {dest.id: 0.0}
@@ -2341,7 +2287,6 @@ class TestNetwork:
         with pytest.raises(ValueError, match="must be a dictionary"):
             net._validate_disturbance_history_numerical(
                 origin_demands=origin_demands,
-                onramp_demands=onramp_demands,
                 turning_rates=turning_rates,
                 flow_boundary_conditions=flow_bc,
                 density_boundary_conditions=density_bc,
@@ -2364,7 +2309,6 @@ class TestNetwork:
 
         # invalid turning rate values (string instead of number)
         origin_demands = {origin.id: 1000.0}
-        onramp_demands = {}
         turning_rates = {"n1": {main.id: "invalid"}, "n2": {dest.id: 1.0}}
         flow_bc = {dest.id: 0.0}
         density_bc = {dest.id: 0.0}
@@ -2374,7 +2318,6 @@ class TestNetwork:
         ):
             net._validate_disturbance_history_numerical(
                 origin_demands=origin_demands,
-                onramp_demands=onramp_demands,
                 turning_rates=turning_rates,
                 flow_boundary_conditions=flow_bc,
                 density_boundary_conditions=density_bc,
@@ -2395,7 +2338,6 @@ class TestNetwork:
 
         # invalid flow boundary conditions
         origin_demands = {origin.id: 1000.0}
-        onramp_demands = {}
         turning_rates = {"n1": {main.id: 1.0}, "n2": {dest.id: 1.0}}
         flow_bc = {dest.id: None}  # None instead of number
         density_bc = {dest.id: 0.0}
@@ -2403,7 +2345,6 @@ class TestNetwork:
         with pytest.raises(ValueError, match="Non-numerical values found"):
             net._validate_disturbance_history_numerical(
                 origin_demands=origin_demands,
-                onramp_demands=onramp_demands,
                 turning_rates=turning_rates,
                 flow_boundary_conditions=flow_bc,  # type: ignore (intentional error for testing)
                 density_boundary_conditions=density_bc,
@@ -2426,7 +2367,6 @@ class TestNetwork:
 
         # invalid density boundary conditions
         origin_demands = {origin.id: 1000.0}
-        onramp_demands = {}
         turning_rates = {"n1": {main.id: 1.0}, "n2": {dest.id: 1.0}}
         flow_bc = {dest.id: 0.0}
         density_bc = {dest.id: {"invalid": "dict"}}  # dict instead of number
@@ -2434,7 +2374,6 @@ class TestNetwork:
         with pytest.raises(ValueError, match="Non-numerical values found"):
             net._validate_disturbance_history_numerical(
                 origin_demands=origin_demands,
-                onramp_demands=onramp_demands,
                 turning_rates=turning_rates,
                 flow_boundary_conditions=flow_bc,
                 density_boundary_conditions=density_bc,  # type: ignore (intentional error for testing)
@@ -2462,7 +2401,6 @@ class TestNetwork:
             duration=0.02,
             dt=0.01,
             origin_demands={origin.id: lambda t: 1000.0},
-            onramp_demands={},
             turning_rates={},
             destination_flow_bc={dest.id: lambda t: 0.0},
             destination_density_bc={dest.id: lambda t: 0.0},

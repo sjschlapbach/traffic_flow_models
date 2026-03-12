@@ -160,12 +160,11 @@ class TestVisualization:
         # create simulation with very short duration
         model = CTM()
         sim = Simulation(net, model)
-        _, _, _ = sim.run(
+        sim.run(
             duration=0.03,  # very short
             dt=0.01,
             preferred_cell_size=0.5,
             origin_demands={origin.id: lambda t: 1000.0},
-            onramp_demands={},
             turning_rates={},
             destination_flow_bc={dest.id: lambda t: 6000.0},
             destination_density_bc={dest.id: lambda t: 0.0},
@@ -218,12 +217,11 @@ class TestVisualization:
 
         model = CTM()
         sim = Simulation(net, model)
-        time_array, state_history, disturbance_history = sim.run(
+        sim.run(
             duration=0.03,
             dt=0.01,
             preferred_cell_size=0.5,
             origin_demands={origin.id: lambda t: 1000.0},
-            onramp_demands={},
             turning_rates={},
             destination_flow_bc={dest.id: lambda t: 6000.0},
             destination_density_bc={dest.id: lambda t: 0.0},
@@ -273,12 +271,11 @@ class TestVisualization:
 
         model = CTM()
         sim = Simulation(net, model)
-        time_array, state_history, disturbance_history = sim.run(
+        sim.run(
             duration=0.03,
             dt=0.01,
             preferred_cell_size=0.5,
             origin_demands={origin.id: lambda t: 1000.0},
-            onramp_demands={},
             turning_rates={},
             destination_flow_bc={dest.id: lambda t: 6000.0},
             destination_density_bc={dest.id: lambda t: 0.0},
@@ -327,6 +324,7 @@ class TestVisualization:
         )
 
         origin = Origin(id="o1")
+        ramp_origin = Origin(id="o_on")
         dest = Destination(id="d1")
         onramp = Onramp(
             id="on1",
@@ -346,17 +344,19 @@ class TestVisualization:
 
         # separate nodes for onramp and offramp to satisfy validation rules
         node1 = Node(id="n1", incoming=[origin], outgoing=[main1])
+        node_ramp = Node(id="n_ramp", incoming=[ramp_origin], outgoing=[onramp])
         node2 = Node(id="n2", incoming=[main1, onramp], outgoing=[main2])
         node3 = Node(id="n3", incoming=[main2], outgoing=[main3, offramp])
         node4 = Node(id="n4", incoming=[main3], outgoing=[dest])
 
         # set positions
         node1.set_position(0.0, 0.0)
+        node_ramp.set_position(0.5, -0.5)
         node2.set_position(1.0, 0.0)
         node3.set_position(2.0, 0.0)
         node4.set_position(3.0, 0.0)
 
-        net = Network(nodes=[node1, node2, node3, node4])
+        net = Network(nodes=[node2, node1, node_ramp, node3, node4])
         net.validate()
 
         # partition links
@@ -367,12 +367,14 @@ class TestVisualization:
 
         model = CTM()
         sim = Simulation(net, model)
-        time_array, state_history, disturbance_history = sim.run(
+        sim.run(
             duration=0.03,
             dt=0.01,
             preferred_cell_size=0.5,
-            origin_demands={origin.id: lambda t: 1000.0},
-            onramp_demands={onramp.id: lambda t: 500.0},
+            origin_demands={
+                origin.id: lambda t: 1000.0,
+                ramp_origin.id: lambda t: 500.0,
+            },
             turning_rates={node3.id: lambda t: {offramp.id: 0.2, main3.id: 0.8}},
             destination_flow_bc={
                 dest.id: lambda t: 6000.0,

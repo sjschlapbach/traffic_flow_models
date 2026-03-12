@@ -83,7 +83,6 @@ class TestCTM:
             duration=dt,
             dt=dt,
             origin_demands={origin.id: mainline_demand},
-            onramp_demands={},
             initial_flows={
                 link.id: initial_flow,
                 origin.id: mainline_demand(0),
@@ -135,14 +134,16 @@ class TestCTM:
         # get actual number of cells
         num_cells = len(link)
         origin = Origin()
+        ramp_origin = Origin()
         onramp = Onramp(
             lanes=1, lane_capacity=1000, free_flow_speed=60, jam_density=100
         )
         destination = Destination()
 
-        node1 = Node(incoming=[origin, onramp], outgoing=[link])
-        node2 = Node(incoming=[link], outgoing=[destination])
-        network = Network(nodes=[node1, node2])
+        node_main = Node(incoming=[origin], outgoing=[link])
+        node_ramp = Node(incoming=[ramp_origin], outgoing=[onramp])
+        node_merge = Node(incoming=[link, onramp], outgoing=[destination])
+        network = Network(nodes=[node_main, node_ramp, node_merge])
 
         model = CTM()
 
@@ -159,12 +160,15 @@ class TestCTM:
         _, states, _ = sim.run(
             duration=dt * 2,
             dt=dt,
-            origin_demands={origin.id: mainline_demand},
-            onramp_demands={onramp.id: onramp_demand},
+            origin_demands={
+                origin.id: mainline_demand,
+                ramp_origin.id: onramp_demand,
+            },
             initial_flows={
                 link.id: initial_flow,
                 onramp.id: 0.0,
                 origin.id: mainline_demand(0),
+                ramp_origin.id: onramp_demand(0),
                 destination.id: 0.0,
             },
             initial_densities={
@@ -238,7 +242,6 @@ class TestCTM:
             duration=dt * 2,
             dt=dt,
             origin_demands={origin.id: mainline_demand},
-            onramp_demands={},
             initial_flows={
                 link.id: initial_flow,
                 offramp.id: 0.0,
@@ -376,7 +379,6 @@ class TestCTM:
             duration=dt * 5,
             dt=dt,
             origin_demands={origin.id: high_demand},
-            onramp_demands={},
             initial_flows={
                 link.id: initial_flow,
                 origin.id: high_demand(0),
