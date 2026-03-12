@@ -687,7 +687,6 @@ class Simulation:
             dtype=np.float64,
         )
 
-        # TODO: CONTINUE UPDATES FROM HERE ONWARDS
         # run the simulation and store the results
         for t in range(len(time_array) - 1):
             time = time_array[t]

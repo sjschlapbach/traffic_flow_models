@@ -556,7 +556,6 @@ class CTM:
 
     # endregion
 
-    # TODO: CONTINUE UPDATES FROM HERE ONWARDS
     def network_update_function(
         self,
         network: "Network",
