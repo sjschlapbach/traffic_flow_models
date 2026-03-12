@@ -745,7 +745,6 @@ class NetworkArbitrator:
 
             # --- MERGE NODE: reclassify the shortest incoming link at a node as Onramp ---
             if len(in_mwl) >= 2 and len(out_mwl) == 1:
-                # heuristic: the ramp is the shortest incoming motorway link
                 ramp_link = min(in_mwl, key=lambda l: l.length)
                 origin_nid = ramp_link.origin_node_id
 
@@ -757,15 +756,15 @@ class NetworkArbitrator:
                     jam_density=ramp_link.rho_jam,
                     destination_node_id=str(nid),
                 )
-                onramp.origin_node_id = origin_nid
 
-                # swap out the MotorwayLink for the Onramp in both nodes
-                node_obj.incoming.remove(ramp_link)
-                node_obj.incoming.append(onramp)
+                # swap out the MotorwayLink for the Onramp in both nodes using proper node methods
+                node_obj.remove_incoming_by_id(ramp_link.id)
+                node_obj.add_incoming(onramp)
+
                 if origin_nid and origin_nid in macro_nodes:
                     src_node = macro_nodes[origin_nid]
-                    src_node.outgoing.remove(ramp_link)
-                    src_node.outgoing.append(onramp)
+                    src_node.remove_outgoing_by_id(ramp_link.id)
+                    src_node.add_outgoing(onramp)
 
         origin_ids: list[str] = [
             node_obj.incoming[0].id
