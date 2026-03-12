@@ -5,6 +5,10 @@ import networkx as nx
 from collections import defaultdict
 from typing import Callable, Tuple
 
+from traffic_flow_models.arbitrator.aggregation_helpers import (
+    make_single_stream_rolling_window_aggregator,
+)
+
 
 class DemandAggregator:
     """Aggregate microscopic SUMO detector data into macroscopic demand functions.
@@ -14,13 +18,16 @@ class DemandAggregator:
     entry points (origins and onramps). The aggregation follows the network topology
     to capture all upstream demand feeding into each macroscopic model interface point.
 
+    Uses a rolling window approach for temporal aggregation to smooth demand functions
+    while preserving time-varying behavior.
+
     Attributes:
         detector_output_path: Path to SUMO detector output XML file.
         detector_spec_path: Path to detector specification CSV file.
-        time_period_sec: Aggregation time period in seconds.
+        window_size_sec: Rolling window size in seconds for temporal aggregation.
         detector_intervals: Raw detector readings indexed by detector ID.
         detector_mapping: Maps detector IDs to node IDs and types.
-        node_counts: Aggregated vehicle counts per node and time bin.
+        node_intervals: Raw interval data per node (not binned).
         max_time: Maximum simulation time observed in detector data.
     """
 
@@ -28,26 +35,28 @@ class DemandAggregator:
         self,
         detector_output_path: str,
         detector_spec_path: str,
-        time_period_minutes: int = 15,
+        window_size_minutes: float = 2.0,
     ):
         """Initialize the demand aggregator.
 
         Args:
             detector_output_path: Path to the SUMO detector output XML file.
             detector_spec_path: Path to the detector specification CSV file.
-            time_period_minutes: Time period for aggregation in minutes (default: 15).
+            window_size_minutes: Rolling window size in minutes (default: 2.0).
+                At query time t, vehicle counts from [t - window/2, t + window/2] are aggregated.
         """
 
         self.detector_output_path: str = detector_output_path
         self.detector_spec_path: str = detector_spec_path
-        self.time_period_sec: int = time_period_minutes * 60
+        self.window_size_sec: float = window_size_minutes * 60
 
         self.detector_intervals: defaultdict[str, list[Tuple[float, int]]] = (
             defaultdict(list)
         )
         self.detector_mapping: dict[str, dict[str, str]] = {}
-        self.node_counts: defaultdict[str, defaultdict[int, int]] = defaultdict(
-            lambda: defaultdict(int)
+        # store raw intervals per node, not binned counts
+        self.node_intervals: defaultdict[str, list[Tuple[float, int]]] = defaultdict(
+            list
         )
         self.max_time: float = 0.0
 
@@ -72,9 +81,7 @@ class DemandAggregator:
             begin = float(begin_str)
             count = int(interval.get("nVehEntered", interval.get("nVehContrib", 0)))
             self.detector_intervals[det_id].append((begin, count))
-            self.max_time = max(
-                self.max_time, begin
-            )  # TODO: remove the code where self.max_time is set if it is not used anywhere afterwards -> try implementing the same window-based smoothing approach as for the turning rate aggregation?
+            self.max_time = max(self.max_time, begin)
 
     def classify_and_map(self) -> None:
         """Map detector IDs to node IDs from CSV specification.
@@ -132,16 +139,18 @@ class DemandAggregator:
                         }
 
     def aggregate_spatially(self) -> None:
-        """Aggregate lane-level detector counts into node-level counts.
+        """Aggregate lane-level detector counts into node-level intervals.
 
         Sums vehicle counts from all lane detectors at the same network node
-        and organizes them into time bins. This spatial aggregation consolidates
-        multi-lane detector data into single node-level measurements suitable
-        for macroscopic modeling.
-
-        The aggregation respects the time period specified during initialization
-        and creates discrete time bins for temporal aggregation.
+        and stores them as raw intervals (not binned). This spatial aggregation
+        consolidates multi-lane detector data into single node-level measurements
+        suitable for rolling window temporal aggregation.
         """
+        # group intervals by node and timestamp
+        node_time_counts: defaultdict[str, defaultdict[float, int]] = defaultdict(
+            lambda: defaultdict(int)
+        )
+
         for det_id, intervals in self.detector_intervals.items():
             if det_id not in self.detector_mapping:
                 continue
@@ -149,8 +158,11 @@ class DemandAggregator:
             node_id = self.detector_mapping[det_id]["node_id"]
 
             for begin, count in intervals:
-                time_bin = int(begin / self.time_period_sec)
-                self.node_counts[node_id][time_bin] += count
+                node_time_counts[node_id][begin] += count
+
+        # convert to list of tuples per node
+        for node_id, time_counts in node_time_counts.items():
+            self.node_intervals[node_id] = sorted(time_counts.items())
 
     def aggregate_urban_inflows(
         self,
@@ -202,11 +214,12 @@ class DemandAggregator:
             onramp_demands[onramp_id] = self._make_demand_function(aggregated_bins)
 
         all_detector_vehicles = sum(
-            sum(bins.values()) for bins in self.node_counts.values()
+            sum(count for _, count in intervals)
+            for intervals in self.node_intervals.values()
         )
 
         print("AGGREGATION SUMMARY:")
-        print(f"  Total detector nodes: {len(self.node_counts)}")
+        print(f"  Total detector nodes: {len(self.node_intervals)}")
         print(f"  Total detector vehicles: {all_detector_vehicles}")
         print(f"  Network entry points: {len(origin_demands) + len(onramp_demands)}")
         return origin_demands, onramp_demands
@@ -254,7 +267,7 @@ class DemandAggregator:
         """
         upstream_nodes = {target_node}
 
-        for node in self.node_counts.keys():
+        for node in self.node_intervals.keys():
             if node == target_node:
                 continue
 
@@ -267,52 +280,51 @@ class DemandAggregator:
 
         return upstream_nodes
 
-    def _aggregate_demand(self, node_set: set[str]) -> dict[int, int]:
+    def _aggregate_demand(self, node_set: set[str]) -> list[Tuple[float, int]]:
         """Aggregate vehicle counts from multiple nodes.
 
-        Sums vehicle counts across all nodes in the provided set for each
-        time bin. This produces a single time-varying demand profile that
-        captures the total traffic from multiple upstream measurement points.
+        Merges vehicle count intervals from all nodes in the provided set.
+        This produces a single time-varying demand profile that captures
+        the total traffic from multiple upstream measurement points.
 
         Args:
             node_set: Set of node IDs from which to aggregate demand.
 
         Returns:
-            Dictionary mapping time bins to aggregated vehicle counts.
+            List of (begin_time, count) tuples representing aggregated intervals.
         """
-        aggregated_bins = defaultdict(int)
+        # collect all intervals from the node set and sum by timestamp
+        time_counts: defaultdict[float, int] = defaultdict(int)
 
         for node in node_set:
-            if node in self.node_counts:
-                for time_bin, count in self.node_counts[node].items():
-                    aggregated_bins[time_bin] += count
+            if node in self.node_intervals:
+                for begin, count in self.node_intervals[node]:
+                    time_counts[begin] += count
 
-        return dict(aggregated_bins)
+        # return as sorted list of tuples
+        return sorted(time_counts.items())
 
     def _make_demand_function(
-        self, aggregated_bins: dict[int, int]
+        self, aggregated_intervals: list[Tuple[float, int]]
     ) -> Callable[[float], float]:
         """Create a demand function that returns veh/h for given time in hours.
 
         Constructs a callable function that converts aggregated vehicle count
-        data into a time-dependent demand rate in vehicles per hour. The
-        function performs linear interpolation within time bins and converts
-        counts to hourly rates.
+        data into a time-dependent demand rate in vehicles per hour using
+        rolling window aggregation. This produces smooth, continuous demand
+        functions instead of step-wise bin lookups.
 
         Args:
-            aggregated_bins: Dictionary mapping time bins to vehicle counts.
+            aggregated_intervals: List of (begin_time, count) tuples.
 
         Returns:
             A callable function that takes time in hours and returns demand
             in vehicles per hour.
         """
-        time_period_sec = self.time_period_sec
-        scale = 3600.0 / time_period_sec
-        return (
-            lambda time_hours: aggregated_bins.get(
-                int((time_hours * 3600) / time_period_sec), 0
-            )
-            * scale
+        return make_single_stream_rolling_window_aggregator(
+            intervals=aggregated_intervals,
+            window_size_sec=self.window_size_sec,
+            max_time=self.max_time,
         )
 
     def run(
