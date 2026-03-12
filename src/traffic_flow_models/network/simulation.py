@@ -1935,8 +1935,6 @@ class Simulation:
             is_origin = isinstance(link, Origin)
 
             # get demand and flow data
-            demand = None
-            queue = None
             if is_origin:
                 demand = origin_demands_over_time.get(
                     link_id, np.zeros(len(time_seconds) - 1)
