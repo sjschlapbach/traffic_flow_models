@@ -596,7 +596,7 @@ class Network:
             d: 1-D NumPy array or CasADi SX column vector containing the packed disturbances.
 
         Returns:
-            Tuple of five dictionaries: ``(origin_demands, turning_rates, flow_boundary_conditions, density_boundary_conditions)``.
+            Tuple of four dictionaries: ``(origin_demands, turning_rates, flow_boundary_conditions, density_boundary_conditions)``.
 
         Raises:
             ValueError: If the disturbance vector is too short for the network
