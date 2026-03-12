@@ -197,15 +197,77 @@ class LoopDetectorGenerator:
                     )
         return inflow_count, outflow_count
 
-    def add_detectors_backbone_network(self) -> Tuple[int, int]:
+    def add_detectors_backbone_network(self) -> int:
+        segment_detector_count = 0
+        detector_interval = 10.0  # meters
+
+        # Get backbone nodes (strip prefixes from origin/onramp/destination IDs)
+        backbone_nodes = self._extract_backbone_nodes(
+        self.origin_ids, 
+        self.onramp_ids, 
+        self.destination_ids)
+
+        # Identify ramp edges to exclude
+        ramp_edges = set()
+        for onramp_id in self.onramp_ids:
+            # Get the actual node ID (with prefix removed)
+            node_id = onramp_id.replace("onramp_", "")
+            node = self.net.getNode(node_id)
+            if node:
+                # Incoming edges to onramp are ramp edges
+                for edge in node.getIncoming():
+                    ramp_edges.add(edge.getID())
+                # Outgoing edges from onramp are ramp edges  
+                for edge in node.getOutgoing():
+                    ramp_edges.add(edge.getID())
         
-        tree = ET.parse(self.sumo_network_path)
-        root = tree.getroot()
+        # Iterate through all edges in the network
+        for edge in self.net.getEdges():
+            edge_id = edge.getID()
+            from_node_id = edge.getFromNode().getID()
+            to_node_id = edge.getToNode().getID()
+            
+            # Skip internal edges, ramps, and non-backbone edges
+            if (edge.isSpecial() or 
+                edge_id in ramp_edges or
+                from_node_id not in backbone_nodes or 
+                to_node_id not in backbone_nodes):
+                continue
 
-        backbone = _extract_backbone_nodes()
+        # Get edge length
+        edge_length = edge.getLength()
+        
+        # Calculate detector positions (0m, 10m, 20m, ...)
+        positions = []
+        current_pos = 0.0
+        while current_pos <= edge_length:
+            positions.append(current_pos)
+            current_pos += detector_interval
 
-        return #lane_count, count
+        # Place detector on each lane at each position
+        num_lanes = edge.getLaneNumber()
+        for lane_index in range(num_lanes):
+            lane_id = f"{edge_id}_{lane_index}"
+            
+            for position in positions:
+                # Store detector information
+                self.edge_detectors.append({
+                    'edge_id': edge_id,
+                    'lane_id': lane_id,
+                    'lane_index': lane_index,
+                    'position': position,
+                    'type': 'backbone_segment',
+                    'from_node': from_node_id,
+                    'to_node': to_node_id,
+                    'node_id': None,  # Not associated with single backbone node
+                })
 
+                segment_detector_count += 1
+        
+
+        return segment_detector_count
+    
+    
 
     def find_turning_rate_edges(self) -> int:
         """Find and place detectors at diverge nodes for turning rate measurement.
@@ -370,11 +432,13 @@ class LoopDetectorGenerator:
         """
         inflow_count, outflow_count = self.find_interface_edges()
         turning_rate_count = self.find_turning_rate_edges()
+        backbone_detector_count = self.add_detectors_backbone_network()
 
         print(f"Detector placement summary:")
         print(f"  Inflow detectors: {inflow_count}")
         print(f"  Outflow detectors: {outflow_count}")
         print(f"  Turning rate detectors: {turning_rate_count}")
+        print(f"  Backbone detectors: {backbone_detector_count}")
         print(f"  Total detectors: {len(self.edge_detectors)}")
 
         detector_xml = self.write_detector_xml()
