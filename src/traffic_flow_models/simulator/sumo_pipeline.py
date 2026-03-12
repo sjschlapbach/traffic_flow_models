@@ -5,7 +5,7 @@ import shutil
 import osmnx as ox
 from functools import wraps
 import matplotlib.pyplot as plt
-from typing import Optional, Tuple, Callable, Union
+from typing import Optional, Tuple, Callable
 from traffic_flow_models.arbitrator.loop_detector_generator import LoopDetectorGenerator
 from traffic_flow_models.arbitrator.turning_rate_aggregator import TurningRateAggregator
 from traffic_flow_models.arbitrator.network_arbitrator import (

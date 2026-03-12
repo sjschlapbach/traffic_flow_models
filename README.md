@@ -4,7 +4,7 @@
 [![Python Testing](https://github.com/sjschlapbach/traffic_flow_models/actions/workflows/python_testing.yml/badge.svg)](https://github.com/sjschlapbach/traffic_flow_models/actions/workflows/python_testing.yml)
 [![Package Build](https://github.com/sjschlapbach/traffic_flow_models/actions/workflows/build.yml/badge.svg)](https://github.com/sjschlapbach/traffic_flow_models/actions/workflows/build.yml)
 [![Demo Scripts](https://github.com/sjschlapbach/traffic_flow_models/actions/workflows/demo_scripts.yml/badge.svg)](https://github.com/sjschlapbach/traffic_flow_models/actions/workflows/demo_scripts.yml)
-[![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](LICENSE)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 A Python library for simulating and analyzing macroscopic traffic flow on highway networks. This package implements two widely-used traffic flow models—**Cell Transmission Model (CTM)** and **METANET**—along with network infrastructure components, ramp metering controllers (ALINEA), and visualization tools.
 
