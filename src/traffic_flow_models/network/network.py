@@ -348,21 +348,19 @@ class Network:
     def network_dict_to_disturbance_vec(
         self,
         origin_demand_dict: dict[str, float],
-        onramp_demand_dict: dict[str, float],
         turning_rate_dict: dict[str, dict[str, float]],
         flow_boundary_condition_dict: dict[str, float],
         density_boundary_condition_dict: dict[str, float],
     ):
-        """Pack origin/onramp demands and node turning rates into a vector.
+        """Pack origin demands and node turning rates into a vector.
 
         The disturbance vector contains all exogenous inputs required by the
-        simulator: origin demands, onramp demands and per-node turning rates
-        for outgoing links. The function iterates nodes in the network and
-        concatenates the values in a deterministic order.
+        simulator: origin demands and per-node turning rates for outgoing
+        links. The function iterates nodes in the network and concatenates
+        the values in a deterministic order.
 
         Args:
             origin_demand_dict: Mapping origin id -> scalar demand (veh/h).
-            onramp_demand_dict: Mapping onramp id -> scalar demand (veh/h).
             turning_rate_dict: Mapping node id -> mapping outgoing link id -> turn rate.
             flow_boundary_condition_dict: Mapping destination id -> downstream flow (veh/h).
             density_boundary_condition_dict: Mapping destination id -> downstream density (veh/km/lane).
@@ -376,7 +374,7 @@ class Network:
         """
 
         # "disturbance" variables = network inflows and turning rates
-        # structure: [ origin_demands | onramp_demands | turning_rates ]
+        # structure: [ origin_demands | turning_rates ]
         d = np.array([], dtype=np.float64)
 
         for node in self.list_nodes():
@@ -402,16 +400,8 @@ class Network:
 
             # set values for incoming links (onramps or origins)
             for link in node.incoming:
-                if isinstance(link, Onramp):
-                    if link.id in onramp_demand_dict:
-                        d = np.concatenate((d, np.array([onramp_demand_dict[link.id]])))
-                    else:
-                        raise ValueError(
-                            f"Demand for onramp {link.id} must be provided."
-                        )
-
                 # initialize origins (queues only)
-                elif isinstance(link, Origin):
+                if isinstance(link, Origin):
                     if link.id in origin_demand_dict:
                         d = np.concatenate((d, np.array([origin_demand_dict[link.id]])))
                     else:
@@ -584,7 +574,6 @@ class Network:
         d: NDArray[np.float64] | casadi.SX,
     ) -> Tuple[
         dict[str, float | casadi.SX],
-        dict[str, float | casadi.SX],
         dict[str, dict[str, float | casadi.SX]],
         dict[str, float | casadi.SX],
         dict[str, float | casadi.SX],
@@ -595,7 +584,6 @@ class Network:
         Accepts a NumPy 1-D array or a CasADi SX column vector and returns
         four dictionaries keyed by ids:
         - ``origin_demands``: mapping origin id -> scalar demand (veh/time)
-        - ``onramp_demands``: mapping onramp id -> scalar demand (veh/time)
         - ``turning_rates``: mapping node id -> (outgoing link id -> rate)
         - ``flow_boundary_conditions``: mapping destination id -> downstream flow
         - ``density_boundary_conditions``: mapping destination id -> downstream density
@@ -608,7 +596,7 @@ class Network:
             d: 1-D NumPy array or CasADi SX column vector containing the packed disturbances.
 
         Returns:
-            Tuple of five dictionaries: ``(origin_demands, onramp_demands, turning_rates, flow_boundary_conditions, density_boundary_conditions)``.
+            Tuple of five dictionaries: ``(origin_demands, turning_rates, flow_boundary_conditions, density_boundary_conditions)``.
 
         Raises:
             ValueError: If the disturbance vector is too short for the network
@@ -617,7 +605,6 @@ class Network:
 
         # initialize the structure dictionary containers for the disturbance vector
         origin_demands = dict[str, float | casadi.SX]()
-        onramp_demands = dict[str, float | casadi.SX]()
         turning_rates = dict[str, dict[str, float | casadi.SX]]()
         flow_boundary_conditions = dict[str, float | casadi.SX]()
         density_boundary_conditions = dict[str, float | casadi.SX]()
@@ -642,17 +629,8 @@ class Network:
 
             # split up the state vector entries corresponding to incoming link data (onramps and origins only)
             for link in node.incoming:
-                if isinstance(link, Onramp):
-                    if i_disturbance + 1 > disturbance_size:
-                        raise ValueError(
-                            "Disturbance vector too short to extract all onramp demands."
-                        )
-
-                    onramp_demands[link.id] = d[i_disturbance]
-                    i_disturbance += 1
-
                 # initialize origins (queues only)
-                elif isinstance(link, Origin):
+                if isinstance(link, Origin):
 
                     if i_disturbance + 1 > disturbance_size:
                         raise ValueError(
@@ -706,7 +684,6 @@ class Network:
 
         return (
             origin_demands,
-            onramp_demands,
             turning_rates,
             flow_boundary_conditions,
             density_boundary_conditions,
@@ -721,10 +698,11 @@ class Network:
         Validate network structure according to class requirements.
 
         Requirements validated:
-            - Each network must have at least one origin link or onramp
+            - Each network must have at least one origin link
             - Each network must have at least one destination
             - Each offramp needs to be connected to a destination
-            - A node connected to an origin may only have one outgoing link (motorway link)
+            - A node connected to an origin may only have one outgoing link (motorway link or onramp)
+            - Each onramp needs to be connected to an origin through a node upstream
             - Each node needs to have at least one incoming and one outgoing link
             - All nodes in the network must be connected through links
 
@@ -743,8 +721,8 @@ class Network:
 
             node.validate()
 
-        # ensure that the network has at least one origin / onramp and one destination
-        has_origin_or_onramp = False
+        # ensure that the network has at least one origin and one destination
+        has_origin = False
         has_destination = False
 
         # collect all destination instances present in network (to check offramp targets)
@@ -752,8 +730,8 @@ class Network:
 
         for node in self.list_nodes():
             for link in list(node.incoming) + list(node.outgoing):
-                if isinstance(link, (Origin, Onramp)):
-                    has_origin_or_onramp = True
+                if isinstance(link, Origin):
+                    has_origin = True
                 if isinstance(link, Destination):
                     has_destination = True
                     dests.add(link)
@@ -761,28 +739,50 @@ class Network:
                     has_destination = True
                     dests.add(link.destination)
 
-        if not has_origin_or_onramp:
-            raise ValueError("Network must contain at least one origin or onramp link.")
+        if not has_origin:
+            raise ValueError("Network must contain at least one origin link.")
 
         if not has_destination:
             raise ValueError("Network must contain at least one destination.")
 
-        # check that every node connected to an origin or onramp only has a single motorway
-        # link as an outgoing link to ensure the correct computation of boundary constraints
+        # check that every node connected to an origin or onramp only has a onramp link
+        # (for origins) or single motorway link (for origins or onramps) as an outgoing
+        # link to ensure the correct computation of boundary constraints
         for node in self.list_nodes():
-            incoming_inflows = [
-                link
-                for link in node.incoming
-                if (isinstance(link, Origin) or isinstance(link, Onramp))
-            ]
+            incoming_origin = any(isinstance(link, Origin) for link in node.incoming)
+            incoming_onramp = any(isinstance(link, Onramp) for link in node.incoming)
 
-            if len(incoming_inflows) > 0 and (
-                len(node.outgoing) != 1
-                or not isinstance(node.outgoing[0], MotorwayLink)
-            ):
-                raise ValueError(
-                    f"Node {node.id} connected to an origin or onramp must have exactly one outgoing motorway link."
-                )
+            # for origin nodes, verify that there is only an origin incoming link
+            # and at most one outgoing link (motorway link or onramp)
+            if incoming_origin:
+                if len(node.incoming) != 1:
+                    raise ValueError(
+                        f"Node {node.id} has an origin incoming link but multiple incoming links."
+                    )
+
+                if len(node.outgoing) > 1:
+                    raise ValueError(
+                        f"Node {node.id} has an origin incoming link but multiple outgoing links."
+                    )
+
+                outgoing_link = node.outgoing[0]
+                if not isinstance(outgoing_link, (MotorwayLink, Onramp)):
+                    raise ValueError(
+                        f"Node {node.id} has an origin incoming link but its outgoing link is not a motorway link or onramp."
+                    )
+
+            # for onramp nodes, verify that there is only one outgoing motorway link
+            if incoming_onramp:
+                if len(node.outgoing) != 1:
+                    raise ValueError(
+                        f"Node {node.id} has an onramp incoming link but multiple outgoing links."
+                    )
+
+                outgoing_link = node.outgoing[0]
+                if not isinstance(outgoing_link, MotorwayLink):
+                    raise ValueError(
+                        f"Node {node.id} has an onramp incoming link but its outgoing link is not a motorway link."
+                    )
 
         # check that every offramp has a destination
         for node in self.list_nodes():
@@ -947,20 +947,18 @@ class Network:
     def _validate_disturbance_history_numerical(
         self,
         origin_demands: dict[str, float] | dict[str, casadi.SX],
-        onramp_demands: dict[str, float] | dict[str, casadi.SX],
         turning_rates: dict[str, dict[str, float]] | dict[str, dict[str, casadi.SX]],
         flow_boundary_conditions: dict[str, float] | dict[str, casadi.SX],
         density_boundary_conditions: dict[str, float] | dict[str, casadi.SX],
     ) -> None:
         """Validate that disturbance-history dictionaries contain numerical values.
 
-        This helper checks that the provided per-origin, per-onramp, per-node
+        This helper checks that the provided per-origin demands, per-node
         turning rate, and boundary condition dictionaries contain numeric scalar
         values. It raises a ValueError if any non-numerical entries are found.
 
         Args:
             origin_demands: Mapping origin id -> scalar demand value.
-            onramp_demands: Mapping onramp id -> scalar demand value.
             turning_rates: Mapping node id -> mapping outgoing link id -> turn rate.
             flow_boundary_conditions: Mapping destination id -> downstream flow.
             density_boundary_conditions: Mapping destination id -> downstream density.
@@ -973,10 +971,6 @@ class Network:
             not all(
                 isinstance(val, (float, np.floating, int, np.integer))
                 for val in origin_demands.values()
-            )
-            or not all(
-                isinstance(val, (float, np.floating, int, np.integer))
-                for val in onramp_demands.values()
             )
             or not all(
                 isinstance(val, (float, np.floating, int, np.integer))
@@ -1006,7 +1000,6 @@ class Network:
     def _validate_initial_conditions_numerical(
         self,
         origin_demands: dict[str, Callable[[float], float]],
-        onramp_demands: dict[str, Callable[[float], float]],
         turning_rates: dict[str, Callable[[float], dict[str, float]]],
         destination_flow_bc: dict[str, Callable[[float], float]],
         destination_density_bc: dict[str, Callable[[float], float]],
@@ -1024,7 +1017,6 @@ class Network:
 
         Args:
             origin_demands: Mapping origin id -> callable(time) -> demand.
-            onramp_demands: Mapping onramp id -> callable(time) -> demand.
             turning_rates: Mapping node id -> callable(time) -> dict[outgoing->rate].
             destination_flow_bc: Mapping destination id -> callable(time) -> flow.
             destination_density_bc: Mapping destination id -> callable(time) -> density.
@@ -1046,14 +1038,6 @@ class Network:
                     if link.id not in origin_demands:
                         raise ValueError(
                             f"Origin demand function for origin {link.id} not provided."
-                        )
-
-            # validate that onramp demands for each onramp are provided
-            for link in node.incoming:
-                if isinstance(link, Onramp):
-                    if link.id not in onramp_demands:
-                        raise ValueError(
-                            f"Onramp demand function for onramp {link.id} not provided."
                         )
 
             # validate that turning rates for each node are provided
@@ -1093,7 +1077,7 @@ class Network:
                         and link.id not in initial_densities
                     ):
                         raise ValueError(
-                            f"Initial density for link {link.id} not provided (required for onramp, offramp, motorway links)."
+                            f"Initial density for link {link.id} not provided (required for motorway links)."
                         )
 
             # validate that initial speeds are defined for all links if not None
@@ -1106,7 +1090,7 @@ class Network:
                         and link.id not in initial_speeds
                     ):
                         raise ValueError(
-                            f"Initial speed for link {link.id} not provided (required for onramp, offramp, motorway links)."
+                            f"Initial speed for link {link.id} not provided (required for motorway links)."
                         )
 
     # ! Network topology helpers
@@ -1289,6 +1273,7 @@ class Network:
                 "lane_capacity": link.Qc_lane,
                 "free_flow_speed": link.vf,
                 "jam_density": link.rho_jam,
+                "origin_node_id": link.origin_node_id,
                 "destination_node_id": link.destination_node_id,
             }
         if isinstance(link, Offramp):
@@ -1404,6 +1389,7 @@ class Network:
                     free_flow_speed=entry["free_flow_speed"],
                     jam_density=entry["jam_density"],
                     id=entry["id"],
+                    origin_node_id=entry["origin_node_id"],
                     destination_node_id=entry["destination_node_id"],
                 )
             elif l_type == "Offramp":
@@ -1519,7 +1505,7 @@ class Network:
                 )
 
             for link in node.incoming:
-                if isinstance(link, (Origin, Onramp)):
+                if isinstance(link, Origin):
                     src = f"SRC:{getattr(link, 'id', repr(link))}"
                     _ensure(src)
                     dst = node.id

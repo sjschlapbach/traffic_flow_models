@@ -71,6 +71,7 @@ def setup_network_ab() -> tuple[Network, dict]:
 
     # add origin, destination and onramp
     origin = Origin(id="origin")
+    origin_onr = Origin(id="origin_onr")
     destination = Destination(id="destination")
     onr = Onramp(
         id="onramp",
@@ -85,22 +86,26 @@ def setup_network_ab() -> tuple[Network, dict]:
     n0 = Node(id="n1", incoming=[origin], outgoing=[m1])
     n0.position = (0.0, 0.0)
 
+    nonr = Node(id="nonr", incoming=[origin_onr], outgoing=[onr])
+    nonr.position = (0.8, 0.1)
+
     n1 = Node(id="n2", incoming=[m1, onr], outgoing=[m2])
     n1.position = (1.0, 0.0)
 
     n2 = Node(id="n3", incoming=[m2], outgoing=[destination])
     n2.position = (3.0, 0.0)
 
-    net = Network(nodes=[n0, n1, n2])
+    net = Network(nodes=[n0, nonr, n1, n2])
 
     splits = {
         n0.id: {m1.id: 1.0},
+        nonr.id: {onr.id: 1.0},
         n1.id: {m2.id: 1.0},
         n2.id: {destination.id: 1.0},
     }
 
     metadata = {
-        "origin_ids": [origin.id],
+        "origin_ids": [origin.id, origin_onr.id],
         "onramp_ids": [onr.id],
         "motorway_ids": [m1.id, m2.id],
         "offramp_ids": [],
@@ -157,6 +162,7 @@ def setup_network_c() -> tuple[Network, dict]:
 
     # add origin, destination and onramp
     origin = Origin(id="origin")
+    origin_onr = Origin(id="origin_onr")
     destination = Destination(id="destination")
     onr = Onramp(
         id="onramp",
@@ -171,6 +177,9 @@ def setup_network_c() -> tuple[Network, dict]:
     n0 = Node(id="n0", incoming=[origin], outgoing=[m1])
     n0.position = (0.0, 0.0)
 
+    nonr = Node(id="nonr", incoming=[origin_onr], outgoing=[onr])
+    nonr.position = (0.8, 0.1)
+
     n1 = Node(id="n1", incoming=[m1, onr], outgoing=[m2])
     n1.position = (1.0, 0.0)
 
@@ -183,10 +192,11 @@ def setup_network_c() -> tuple[Network, dict]:
     n4 = Node(id="n4", incoming=[m4], outgoing=[destination])
     n4.position = (3.0, 0.0)
 
-    net = Network(nodes=[n0, n1, n2, n3, n4])
+    net = Network(nodes=[n0, nonr, n1, n2, n3, n4])
 
     splits = {
         n0.id: {m1.id: 1.0},
+        nonr.id: {onr.id: 1.0},
         n1.id: {m2.id: 1.0},
         n2.id: {m3.id: 1.0},
         n3.id: {m4.id: 1.0},
@@ -194,7 +204,7 @@ def setup_network_c() -> tuple[Network, dict]:
     }
 
     metadata = {
-        "origin_ids": [origin.id],
+        "origin_ids": [origin.id, origin_onr.id],
         "onramp_ids": [onr.id],
         "motorway_ids": [m1.id, m2.id, m3.id, m4.id],
         "offramp_ids": [],
@@ -251,6 +261,7 @@ def setup_network_d() -> tuple[Network, dict]:
 
     # add origin, destination, onramp and offramp
     origin = Origin(id="origin")
+    origin_onr = Origin(id="origin_onr")
     destination = Destination(id="destination")
     onr = Onramp(
         id="onramp",
@@ -273,6 +284,9 @@ def setup_network_d() -> tuple[Network, dict]:
     n0 = Node(id="n0", incoming=[origin], outgoing=[m1])
     n0.position = (0.0, 0.0)
 
+    nonr = Node(id="nonr", incoming=[origin_onr], outgoing=[onr])
+    nonr.position = (0.8, 0.1)
+
     n1 = Node(id="n1", incoming=[m1, onr], outgoing=[m2])
     n1.position = (1.0, 0.0)
 
@@ -282,18 +296,19 @@ def setup_network_d() -> tuple[Network, dict]:
     n3 = Node(id="n3", incoming=[m3], outgoing=[destination])
     n3.position = (3.5, 0.0)
 
-    net = Network(nodes=[n0, n1, n2, n3])
+    net = Network(nodes=[n0, nonr, n1, n2, n3])
 
     # splits at node2: motorway keeps 0.8, offramp 0.2
     splits = {
         n0.id: {m1.id: 1.0},
+        nonr.id: {onr.id: 1.0},
         n1.id: {m2.id: 1.0},
         n2.id: {m3.id: 0.8, offr.id: 0.2},
         n3.id: {destination.id: 1.0},
     }
 
     metadata = {
-        "origin_ids": [origin.id],
+        "origin_ids": [origin.id, origin_onr.id],
         "onramp_ids": [onr.id],
         "motorway_ids": [m1.id, m2.id, m3.id],
         "offramp_ids": [offr.id],

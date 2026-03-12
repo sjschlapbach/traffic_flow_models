@@ -164,20 +164,18 @@ class Simulation:
     def _validate_disturbance_history_numerical(
         self,
         origin_demands: dict[str, float] | dict[str, casadi.SX],
-        onramp_demands: dict[str, float] | dict[str, casadi.SX],
         turning_rates: dict[str, dict[str, float]] | dict[str, dict[str, casadi.SX]],
         flow_boundary_conditions: dict[str, float] | dict[str, casadi.SX],
         density_boundary_conditions: dict[str, float] | dict[str, casadi.SX],
     ) -> None:
         """Validate that disturbance-history dictionaries contain numerical values.
 
-        This helper checks that the provided per-origin, per-onramp, per-node
-        turning rate, and boundary condition dictionaries contain numeric scalar
+        This helper checks that the provided per-origin demand values, per-node
+        turning rates, and boundary condition dictionaries contain numeric scalar
         values. It raises a ValueError if any non-numerical entries are found.
 
         Args:
             origin_demands: Mapping origin id -> scalar demand value.
-            onramp_demands: Mapping onramp id -> scalar demand value.
             turning_rates: Mapping node id -> mapping outgoing link id -> turn rate.
             flow_boundary_conditions: Mapping destination id -> downstream flow.
             density_boundary_conditions: Mapping destination id -> downstream density.
@@ -190,10 +188,6 @@ class Simulation:
             not all(
                 isinstance(val, (float, np.floating, int, np.integer))
                 for val in origin_demands.values()
-            )
-            or not all(
-                isinstance(val, (float, np.floating, int, np.integer))
-                for val in onramp_demands.values()
             )
             or not all(
                 isinstance(val, (float, np.floating, int, np.integer))
@@ -223,7 +217,6 @@ class Simulation:
     def _validate_initial_conditions_numerical(
         self,
         origin_demands: dict[str, Callable[[float], float]],
-        onramp_demands: dict[str, Callable[[float], float]],
         turning_rates: dict[str, Callable[[float], dict[str, float]]],
         destination_flow_bc: dict[str, Callable[[float], float]],
         destination_density_bc: dict[str, Callable[[float], float]],
@@ -241,7 +234,6 @@ class Simulation:
 
         Args:
             origin_demands: Mapping origin id -> callable(time) -> demand.
-            onramp_demands: Mapping onramp id -> callable(time) -> demand.
             turning_rates: Mapping node id -> callable(time) -> dict[outgoing->rate].
             destination_flow_bc: Mapping destination id -> callable(time) -> flow.
             destination_density_bc: Mapping destination id -> callable(time) -> density.
@@ -263,14 +255,6 @@ class Simulation:
                     if link.id not in origin_demands:
                         raise ValueError(
                             f"Origin demand function for origin {link.id} not provided."
-                        )
-
-            # validate that onramp demands for each onramp are provided
-            for link in node.incoming:
-                if isinstance(link, Onramp):
-                    if link.id not in onramp_demands:
-                        raise ValueError(
-                            f"Onramp demand function for onramp {link.id} not provided."
                         )
 
             # validate that turning rates for each node are provided
@@ -310,7 +294,7 @@ class Simulation:
                         and link.id not in initial_densities
                     ):
                         raise ValueError(
-                            f"Initial density for link {link.id} not provided (required for onramp, offramp, motorway links)."
+                            f"Initial density for link {link.id} not provided (required for motorway links)."
                         )
 
             # validate that initial speeds are defined for all links if not None
@@ -323,7 +307,7 @@ class Simulation:
                         and link.id not in initial_speeds
                     ):
                         raise ValueError(
-                            f"Initial speed for link {link.id} not provided (required for onramp, offramp, motorway links)."
+                            f"Initial speed for link {link.id} not provided (required for motorway links)."
                         )
 
     # endregion
@@ -395,7 +379,7 @@ class Simulation:
             else:
                 turning_rates_dict[node.id] = turning_rates[node.id]
 
-            # initialize incoming links (only onramps - no motorway links / origins)
+            # initialize incoming links (only onramps or origins - no motorway links)
             for link in node.incoming:
                 if isinstance(link, Origin) or isinstance(link, Onramp):
                     if initial_flows is not None and link.id in initial_flows:
@@ -648,22 +632,19 @@ class Simulation:
         dt: float,
         x0: NDArray[np.float64],
         num_origins: int,
-        num_onramps: int,
         num_splits: int,
         num_destinations: int,
         origin_queues_dict: dict[str, float],
-        onramp_queues_dict: dict[str, float],
         turning_rates_dict: dict[str, Callable[[float], dict[str, float]]],
         destination_flow_bc_dict: dict[str, Callable[[float], float]],
         destination_density_bc_dict: dict[str, Callable[[float], float]],
         origin_demands: dict[str, Callable[[float], float]],
-        onramp_demands: dict[str, Callable[[float], float]],
     ):
         """Execute the discrete-time simulation loop for the network.
 
         Advances the system state using the provided CasADi `system` update
         function for the requested duration and time-step. It evaluates the
-        callable disturbance inputs (origin/onramp demands, turning rates and
+        callable disturbance inputs (origin demands, turning rates and
         boundary conditions) at each time step, forms the disturbance vector,
         calls the model update, and stores state and disturbance histories.
 
@@ -673,16 +654,13 @@ class Simulation:
             dt: Time-step for integration.
             x0: Initial packed state vector (NumPy array).
             num_origins: Number of origin queue entries in disturbance vector.
-            num_onramps: Number of onramp queue entries in disturbance vector.
             num_splits: Number of turning-rate scalars per time step.
             num_destinations: Number of destination boundary condition entries.
             origin_queues_dict: Mapping origin id -> initial queue (used to order disturbances).
-            onramp_queues_dict: Mapping onramp id -> initial queue (used to order disturbances).
             turning_rates_dict: Mapping node id -> callable(time) -> turning-rate dict.
             destination_flow_bc_dict: Mapping destination id -> callable(time) -> flow.
             destination_density_bc_dict: Mapping destination id -> callable(time) -> density.
             origin_demands: Mapping origin id -> callable(time) -> demand.
-            onramp_demands: Mapping onramp id -> callable(time) -> demand.
 
         Returns:
             Tuple `(time_array, state_history, disturbance_history)` where
@@ -703,26 +681,23 @@ class Simulation:
         state_history[:, 0] = x0
         disturbance_history: NDArray[np.float64] = np.zeros(
             (
-                num_origins + num_onramps + num_splits + 2 * num_destinations,
+                num_origins + num_splits + 2 * num_destinations,
                 len(time_array) - 1,
             ),
             dtype=np.float64,
         )
 
+        # TODO: CONTINUE UPDATES FROM HERE ONWARDS
         # run the simulation and store the results
         for t in range(len(time_array) - 1):
             time = time_array[t]
 
             # get the ids of all components that contribute to the disturbance vector
             origin_ids = origin_queues_dict.keys()
-            onramp_ids = onramp_queues_dict.keys()
 
             # evaluate the demand functions, turning rates and boundary conditions at the current time
             origin_demand_dict = {
                 origin_id: origin_demands[origin_id](time) for origin_id in origin_ids
-            }
-            onramp_demand_dict = {
-                onramp_id: onramp_demands[onramp_id](time) for onramp_id in onramp_ids
             }
             turning_rate_dict = {
                 node_id: turning_rates_dict[node_id](time)
@@ -740,7 +715,6 @@ class Simulation:
             # combine the values into the disturbance vector for the state update
             d = self.network.network_dict_to_disturbance_vec(
                 origin_demand_dict=origin_demand_dict,
-                onramp_demand_dict=onramp_demand_dict,
                 turning_rate_dict=turning_rate_dict,
                 flow_boundary_condition_dict=flow_boundary_condition_dict,
                 density_boundary_condition_dict=density_boundary_condition_dict,
@@ -782,7 +756,6 @@ class Simulation:
         duration: float,
         dt: float,
         origin_demands: dict[str, Callable[[float], float]],
-        onramp_demands: dict[str, Callable[[float], float]],
         turning_rates: dict[str, Callable[[float], dict[str, float]]],
         destination_flow_bc: dict[str, Callable[[float], float]],
         destination_density_bc: dict[str, Callable[[float], float]],
@@ -809,7 +782,6 @@ class Simulation:
             duration: Total simulation time (same units as demand functions, e.g. hours).
             dt: Simulation time step (same units as `duration`).
             origin_demands: Mapping origin id -> callable(time) -> demand (veh/h).
-            onramp_demands: Mapping onramp id -> callable(time) -> demand (veh/h).
             turning_rates: Mapping node id -> callable(time) -> dict[outgoing_link_id -> split rate].
             destination_flow_bc: Mapping destination id -> callable(time) -> downstream flow (veh/h/lane).
             destination_density_bc: Mapping destination id -> callable(time) -> downstream density (veh/km/lane).
@@ -836,7 +808,6 @@ class Simulation:
         # ! 1 - validate all inputs as required
         self._validate_initial_conditions_numerical(
             origin_demands=origin_demands,
-            onramp_demands=onramp_demands,
             turning_rates=turning_rates,
             destination_flow_bc=destination_flow_bc,
             destination_density_bc=destination_density_bc,
@@ -920,16 +891,13 @@ class Simulation:
             dt=dt,
             x0=cast(NDArray[np.float64], x0),
             num_origins=num_origins,
-            num_onramps=num_onramps,
             num_splits=num_splits,
             num_destinations=num_destinations,
             origin_queues_dict=origin_queues_dict,
-            onramp_queues_dict=onramp_queues_dict,
             turning_rates_dict=turning_rates_dict,
             destination_flow_bc_dict=destination_flow_bc_dict,
             destination_density_bc_dict=destination_density_bc_dict,
             origin_demands=origin_demands,
-            onramp_demands=onramp_demands,
         )
 
         # ! 6 - plotting of simulation results and saving to results directory
@@ -1071,7 +1039,6 @@ class Simulation:
         offramp_queues_time: dict[str, list] = {}
 
         origin_demands_time: dict[str, list] = {}
-        onramp_demands_time: dict[str, list] = {}
         turning_rates_time: dict[str, dict[str, list]] = {}
         flow_boundary_conditions_time: dict[str, list] = {}
         density_boundary_conditions_time: dict[str, list] = {}
@@ -1120,7 +1087,6 @@ class Simulation:
             for t in range(num_dist_timesteps):
                 (
                     origin_d_t,
-                    onramp_d_t,
                     turning_t,
                     boundary_flow_t,
                     boundary_density_t,
@@ -1131,8 +1097,6 @@ class Simulation:
                 if t == 0:
                     for k in origin_d_t.keys():
                         origin_demands_time[k] = []
-                    for k in onramp_d_t.keys():
-                        onramp_demands_time[k] = []
                     for node_id, inner in turning_t.items():
                         turning_rates_time[node_id] = {lk: [] for lk in inner.keys()}
                     for k in boundary_flow_t.keys():
@@ -1142,8 +1106,6 @@ class Simulation:
 
                 for k, v in origin_d_t.items():
                     origin_demands_time[k].append(float(np.asarray(v).tolist()))
-                for k, v in onramp_d_t.items():
-                    onramp_demands_time[k].append(float(np.asarray(v).tolist()))
 
                 for node_id, inner in turning_t.items():
                     for lk, rate in inner.items():
@@ -1248,7 +1210,6 @@ class Simulation:
             },
             "disturbance_time_series": {
                 "origin_demands": origin_demands_time,
-                "onramp_demands": onramp_demands_time,
                 "turning_rates": turning_rates_time,
                 "flow_boundary_conditions": flow_boundary_conditions_time,
                 "density_boundary_conditions": density_boundary_conditions_time,
@@ -1326,7 +1287,6 @@ class Simulation:
         # validate disturbance_time_series structure
         disturbance_required = [
             "origin_demands",
-            "onramp_demands",
             "turning_rates",
             "flow_boundary_conditions",
             "density_boundary_conditions",
@@ -1477,9 +1437,6 @@ class Simulation:
             origin_demands_t = {
                 k: float(v[t]) for k, v in disturbance_series["origin_demands"].items()
             }
-            onramp_demands_t = {
-                k: float(v[t]) for k, v in disturbance_series["onramp_demands"].items()
-            }
             turning_rates_t = {
                 node_id: {lk: float(rates[t]) for lk, rates in inner.items()}
                 for node_id, inner in disturbance_series["turning_rates"].items()
@@ -1497,7 +1454,6 @@ class Simulation:
             if t == 0:
                 network._validate_disturbance_history_numerical(
                     origin_demands=cast(dict[str, float], origin_demands_t),
-                    onramp_demands=cast(dict[str, float], onramp_demands_t),
                     turning_rates=cast(dict[str, dict[str, float]], turning_rates_t),
                     flow_boundary_conditions=cast(dict[str, float], flow_bc_t),
                     density_boundary_conditions=cast(dict[str, float], density_bc_t),
@@ -1505,7 +1461,6 @@ class Simulation:
 
             d_t = network.network_dict_to_disturbance_vec(
                 origin_demand_dict=origin_demands_t,
-                onramp_demand_dict=onramp_demands_t,
                 turning_rate_dict=turning_rates_t,
                 flow_boundary_condition_dict=flow_bc_t,
                 density_boundary_condition_dict=density_bc_t,
@@ -1705,26 +1660,41 @@ class Simulation:
             for offramp_id, val in offramp_queues_t.items():
                 offramp_queues_over_time[offramp_id][t] = float(val)
 
-        # extract demands from disturbance_history
+        # extract demands for origins from disturbance_history
         origin_demands_over_time = {}
-        onramp_demands_over_time = {}
-
         for t in range(num_timesteps - 1):
-            origin_demands_t, onramp_demands_t, _, _, _ = (
-                self.network.disturbance_vec_to_network_dict(disturbance_history[:, t])
+            origin_demands_t, _, _, _ = self.network.disturbance_vec_to_network_dict(
+                disturbance_history[:, t]
             )
 
             if t == 0:
                 for origin_id in origin_demands_t.keys():
                     origin_demands_over_time[origin_id] = np.zeros(num_timesteps - 1)
-                for onramp_id in onramp_demands_t.keys():
-                    onramp_demands_over_time[onramp_id] = np.zeros(num_timesteps - 1)
 
             for origin_id, val in origin_demands_t.items():
                 origin_demands_over_time[origin_id][t] = float(val)
 
-            for onramp_id, val in onramp_demands_t.items():
-                onramp_demands_over_time[onramp_id][t] = float(val)
+        # extract demands for onramps as the equal of the origins they are fed by
+        # delayed by one timestep due to the store-and-forward nature of the origin
+        onramp_demands_over_time = {}
+        for node in self.network.list_nodes():
+            for link in node.outgoing:
+                if isinstance(link, Onramp):
+                    # assume single origin feeding the onramp (system structure requirement)
+                    if not (
+                        len(node.incoming) == 1 and isinstance(node.incoming[0], Origin)
+                    ):
+                        raise ValueError(
+                            f"Onramp {link.id} must be fed by exactly one origin. Found: {[type(lk).__name__ for lk in node.incoming]}"
+                        )
+
+                    # iterate over the timesteps and set onramp demand equal to the flow of the origin link
+                    origin_id = node.incoming[0].id
+                    onramp_demands_over_time[link.id] = np.zeros(num_timesteps - 1)
+                    for t in range(1, num_timesteps - 1):
+                        onramp_demands_over_time[link.id][t] = flows_over_time[
+                            origin_id
+                        ][0, t - 1]
 
         # ===== PART 1: Per-Link Plots for MotorwayLinks =====
         print("  Creating per-link density/flow/speed plots...")
@@ -1740,8 +1710,8 @@ class Simulation:
                         save_dir=save_dir,
                     )
 
-        # ===== PART 2: Per-Node Inflow Plots (Origins & Onramps) =====
-        print("  Creating per-node inflow plots (origins & onramps)...")
+        # ===== PART 2: Per-Node Inflow Plots (Origins) =====
+        print("  Creating per-node inflow plots (origins)...")
         for node in self.network.list_nodes():
             inflow_components = [
                 link for link in node.incoming if isinstance(link, (Origin, Onramp))
@@ -1945,7 +1915,7 @@ class Simulation:
         onramp_demands_over_time: dict,
         save_dir: str,
     ) -> None:
-        """Create inflow plots (demand+flow and queue) for origins and onramps at a node."""
+        """Create inflow plots (demand+flow and queue) for origins at a node."""
         num_inflows = len(inflow_components)
         ncols = 2  # demand+flow, queue
         nrows = num_inflows
@@ -1966,6 +1936,8 @@ class Simulation:
             is_origin = isinstance(link, Origin)
 
             # get demand and flow data
+            demand = None
+            queue = None
             if is_origin:
                 demand = origin_demands_over_time.get(
                     link_id, np.zeros(len(time_seconds) - 1)
