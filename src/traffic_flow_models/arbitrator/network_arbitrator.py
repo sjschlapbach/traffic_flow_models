@@ -757,6 +757,7 @@ class NetworkArbitrator:
                     jam_density=ramp_link.rho_jam,
                     destination_node_id=str(nid),
                 )
+                onramp.origin_node_id = origin_nid
 
                 # swap out the MotorwayLink for the Onramp in both nodes
                 node_obj.incoming.remove(ramp_link)
