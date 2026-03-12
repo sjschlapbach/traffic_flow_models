@@ -105,7 +105,6 @@ def plot_calibration_comparison(
     duration: float,
     preferred_cell_size: float,
     origin_demands: dict[str, Callable[[float], float]],
-    onramp_demands: dict[str, Callable[[float], float]],
     turning_rates: dict[str, Callable[[float], dict[str, float]]],
     destination_flow_bc: dict[str, Callable[[float], float]],
     destination_density_bc: dict[str, Callable[[float], float]],
@@ -128,7 +127,6 @@ def plot_calibration_comparison(
         duration: Simulation duration
         preferred_cell_size: Preferred cell size
         origin_demands: Origin demand functions
-        onramp_demands: Onramp demand functions
         turning_rates: Turning rate functions
         destination_flow_bc: Destination flow boundary conditions
         destination_density_bc: Destination density boundary conditions
@@ -156,7 +154,6 @@ def plot_calibration_comparison(
         dt=dt,
         preferred_cell_size=preferred_cell_size,
         origin_demands=origin_demands,
-        onramp_demands=onramp_demands,
         turning_rates=turning_rates,
         destination_flow_bc=destination_flow_bc,
         destination_density_bc=destination_density_bc,
@@ -172,7 +169,6 @@ def plot_calibration_comparison(
         dt=dt,
         preferred_cell_size=preferred_cell_size,
         origin_demands=origin_demands,
-        onramp_demands=onramp_demands,
         turning_rates=turning_rates,
         destination_flow_bc=destination_flow_bc,
         destination_density_bc=destination_density_bc,
@@ -188,7 +184,6 @@ def plot_calibration_comparison(
         dt=dt,
         preferred_cell_size=preferred_cell_size,
         origin_demands=origin_demands,
-        onramp_demands=onramp_demands,
         turning_rates=turning_rates,
         destination_flow_bc=destination_flow_bc,
         destination_density_bc=destination_density_bc,
@@ -378,16 +373,12 @@ def run_calibration_experiment(
     print(f"Network: {len(network.list_nodes())} nodes")
 
     # build disturbance dictionaries expected by the new simulate signature
-    origin_ids = metadata.get("origin_ids", [])
-    onramp_ids = metadata.get("onramp_ids", [])
     destination_ids = metadata.get("destination_ids", [])
     splits = metadata.get("splits", {})
 
     origin_demands: dict[str, Callable[[float], float]] = {
-        oid: mainline_demand for oid in origin_ids
-    }
-    onramp_demands: dict[str, Callable[[float], float]] = {
-        rid: onramp_demand for rid in onramp_ids
+        "origin": mainline_demand,
+        "origin_onr": onramp_demand,
     }
     destination_flow_bc: dict[str, Callable[[float], float]] = {
         did: (lambda _: 6000.0) for did in destination_ids
@@ -416,7 +407,6 @@ def run_calibration_experiment(
         dt=dt,
         preferred_cell_size=preferred_cell_size,
         origin_demands=origin_demands,
-        onramp_demands=onramp_demands,
         turning_rates=turning_rates,
         destination_flow_bc=destination_flow_bc,
         destination_density_bc=destination_density_bc,
@@ -750,7 +740,6 @@ def run_calibration_experiment(
         duration=duration,
         preferred_cell_size=preferred_cell_size,
         origin_demands=origin_demands,
-        onramp_demands=onramp_demands,
         turning_rates=turning_rates,
         destination_flow_bc=destination_flow_bc,
         destination_density_bc=destination_density_bc,
@@ -798,7 +787,6 @@ def run_calibration_experiment(
             dt=dt,
             preferred_cell_size=preferred_cell_size,
             origin_demands=origin_demands,
-            onramp_demands=onramp_demands,
             turning_rates=turning_rates,
             destination_flow_bc=destination_flow_bc,
             destination_density_bc=destination_density_bc,
@@ -815,7 +803,6 @@ def run_calibration_experiment(
             dt=dt,
             preferred_cell_size=preferred_cell_size,
             origin_demands=origin_demands,
-            onramp_demands=onramp_demands,
             turning_rates=turning_rates,
             destination_flow_bc=destination_flow_bc,
             destination_density_bc=destination_density_bc,
@@ -832,7 +819,6 @@ def run_calibration_experiment(
             dt=dt,
             preferred_cell_size=preferred_cell_size,
             origin_demands=origin_demands,
-            onramp_demands=onramp_demands,
             turning_rates=turning_rates,
             destination_flow_bc=destination_flow_bc,
             destination_density_bc=destination_density_bc,
