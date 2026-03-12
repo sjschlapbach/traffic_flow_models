@@ -155,8 +155,9 @@ class TestNode:
         assert m2.destination_node_id == n.id
 
         # set_outgoing with invalid type should raise
+        origin = Origin()
         with pytest.raises(TypeError):
-            n.set_outgoing([o1])
+            n.set_outgoing([origin])
 
     def test_id_assignment(self):
         provided = "custom-id"

@@ -23,6 +23,7 @@ class Onramp:
         jam_density: float,
         id: str | None = None,
         controller: AlineaController | None = None,
+        origin_node_id: str | None = None,
         destination_node_id: str | None = None,
     ) -> None:
         """Initialize the Onramp parameters.
@@ -34,6 +35,7 @@ class Onramp:
             free_flow_speed: Free-flow speed in km/h.
             jam_density: Jam density in vehicles per km per lane.
             controller: Optional ramp metering controller.
+            origin_node_id: Optional ID of the upstream node.
             destination_node_id: Optional ID of the downstream node.
         """
 
@@ -58,4 +60,6 @@ class Onramp:
         self.vf: float = free_flow_speed  # in kilometers per hour
         self.rho_jam: float = jam_density  # in vehicles per kilometer per lane
         self.controller = controller  # optional ramp metering controller
+
+        self.origin_node_id: str | None = origin_node_id
         self.destination_node_id: str | None = destination_node_id

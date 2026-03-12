@@ -75,15 +75,12 @@ if __name__ == "__main__":
 
     # build disturbance dictionaries expected by the new simulate signature
     origin_ids = metadata.get("origin_ids", [])
-    onramp_ids = metadata.get("onramp_ids", [])
     destination_ids = metadata.get("destination_ids", [])
     splits = metadata.get("splits", {})
 
     origin_demands: dict[str, Callable[[float], float]] = {
-        oid: mainline_demand for oid in origin_ids
-    }
-    onramp_demands: dict[str, Callable[[float], float]] = {
-        rid: onramp_demand for rid in onramp_ids
+        "origin": mainline_demand,
+        "origin_onr": onramp_demand,
     }
     destination_flow_bc: dict[str, Callable[[float], float]] = {
         did: (lambda _: 6000.0) for did in destination_ids
@@ -120,7 +117,6 @@ if __name__ == "__main__":
         dt=dt,
         preferred_cell_size=0.5,
         origin_demands=origin_demands,
-        onramp_demands=onramp_demands,
         turning_rates=turning_rates,
         destination_flow_bc=destination_flow_bc,
         destination_density_bc=destination_density_bc,

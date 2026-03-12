@@ -87,7 +87,7 @@ if __name__ == "__main__":
     demand_generator = DemandAggregator(
         detector_output_path=detector_output_file, detector_spec_path=spec_file
     )
-    origin_demands, onramp_demands = demand_generator.run(
+    origin_demands = demand_generator.run(
         origin_ids=origin_ids,
         onramp_ids=onramp_ids,
         sumo_network_path=pipeline.net_file,
@@ -118,7 +118,6 @@ if __name__ == "__main__":
         dt=dt,
         preferred_cell_size=preferred_cell_size,
         origin_demands=origin_demands,
-        onramp_demands=onramp_demands,
         turning_rates=splits,
         destination_density_bc=destination_density_bc,
         destination_flow_bc=destination_flow_bc,

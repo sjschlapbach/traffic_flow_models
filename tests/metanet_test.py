@@ -150,14 +150,16 @@ class TestMETANET:
         link.partition_link(preferred_cell_size=1.5, dt=dt)
 
         origin = Origin()
+        ramp_origin = Origin()
         onramp = Onramp(
             lanes=1, lane_capacity=1000, free_flow_speed=60, jam_density=100
         )
         destination = Destination()
 
-        node1 = Node(incoming=[origin, onramp], outgoing=[link])
-        node2 = Node(incoming=[link], outgoing=[destination])
-        network = Network(nodes=[node1, node2])
+        node_main = Node(incoming=[origin], outgoing=[link])
+        node_ramp = Node(incoming=[ramp_origin], outgoing=[onramp])
+        node_merge = Node(incoming=[link, onramp], outgoing=[destination])
+        network = Network(nodes=[node_main, node_ramp, node_merge])
 
         model = METANET()
         model_params: METANETParams = {
@@ -180,12 +182,15 @@ class TestMETANET:
         _, states, _ = sim.run(
             duration=dt,
             dt=dt,
-            origin_demands={origin.id: mainline_demand},
-            onramp_demands={onramp.id: onramp_demand},
+            origin_demands={
+                origin.id: mainline_demand,
+                ramp_origin.id: onramp_demand,
+            },
             initial_flows={
                 link.id: previous_flow,
                 onramp.id: 0.0,
                 origin.id: mainline_demand(0),
+                ramp_origin.id: onramp_demand(0),
                 destination.id: 0.0,
             },
             initial_densities={
@@ -388,7 +393,6 @@ class TestMETANET:
                 duration=dt,
                 dt=dt,
                 origin_demands={origin.id: mainline_demand},
-                onramp_demands={},
                 initial_flows={
                     link.id: init_flow_link,
                     link2.id: init_flow_link2,
@@ -611,7 +615,6 @@ class TestMETANET:
             duration=3 * dt,  # just 3 timesteps
             dt=dt,
             origin_demands={origin.id: mainline_demand},
-            onramp_demands={},
             initial_flows=initial_flow_dict,
             initial_densities=initial_density_dict,
             initial_speeds=initial_speed_dict,

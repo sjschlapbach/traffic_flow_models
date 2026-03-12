@@ -1,5 +1,5 @@
 import casadi
-from typing import TYPE_CHECKING, Tuple
+from typing import TYPE_CHECKING, Tuple, Union
 
 from .helpers import store_and_forward_update, update_queue, compute_node_outflows
 from traffic_flow_models.network import (
@@ -29,7 +29,7 @@ class CTM:
         - Motorway links are advanced using a first-order CTM-style
             density/flow update in `_update_motorway_link`.
         - Origins, onramps and offramps are represented with
-            store-and-forward logic (see `_compute_offramp_outflows`).
+            store-and-forward logic.
         - Split normalization, node-level supply checks and proportional
             flow reductions are handled in the node update logic.
 
@@ -152,10 +152,10 @@ class CTM:
     # region
     def _get_node_outflow_link(
         self,
-        node: "Node",
-        link: MotorwayLink,
+        network: "Network",
+        splits: dict[str, dict[str, casadi.SX]],
+        link: Union[MotorwayLink, Onramp],
         flows: dict[str, casadi.SX],
-        node_splits: dict[str, casadi.SX],
     ) -> casadi.SX:
         """Compute the portion of a node's outflow routed into a motorway link.
 
@@ -165,8 +165,10 @@ class CTM:
         ratio for `link.id`.
 
         Args:
-            node (Node): The node whose incoming contributions are considered.
-            link (MotorwayLink): The downstream motorway link receiving a
+            network (Network): The network containing the node and links.
+            splits (dict[str, dict[str, casadi.SX]]): Mapping from node id to
+                mapping of outgoing link id to split ratio (CasADi SX).
+            link (Union[MotorwayLink, Onramp]): The downstream link receiving a
                 portion of the node outflow.
             flows (dict[str, casadi.SX]): Mapping from link id to the
                 current-step flow vector (CasADi SX) for that link.
@@ -180,14 +182,30 @@ class CTM:
             ValueError: If no split ratio is defined for `link.id` in
                 `node_splits`.
         """
+        if link.origin_node_id is None:
+            raise ValueError(
+                f"Motorway link {link.id} does not have a well-defined origin node."
+            )
+
+        # compute the normalized node splits for the upstream node
+        upstream_node = network.get_node(link.origin_node_id)
+        if upstream_node is None:
+            raise ValueError(
+                f"Origin node {link.origin_node_id} of motorway link {link.id} not found in network."
+            )
+        node_splits = self._compute_normalized_splits(
+            node=upstream_node,
+            node_splits=splits[link.origin_node_id],
+        )
+
         # compute the outflow from the upstream node into this link
         inflow_sum: casadi.SX = casadi.sum(
-            casadi.vertcat(*[flows[inc.id][-1] for inc in node.incoming])
+            casadi.vertcat(*[flows[inc.id][-1] for inc in upstream_node.incoming])
         )
         node_split_link = node_splits[link.id]
         if node_split_link is None:
             raise ValueError(
-                f"No split ratio defined for outgoing link {link.id} at node {node.id}"
+                f"No split ratio defined for outgoing link {link.id} at node {upstream_node.id}"
             )
         node_outflow_link = (
             node_split_link * inflow_sum
@@ -267,7 +285,7 @@ class CTM:
 
         for i, cell in link.enumerate_cells():
             # compute the new density in the cell based on the flows at the previous timestep
-            # -> onramp and offramp flows do not need to be considered anymore -> handled through nodes
+            # -> onramp and offramp flows do not need to be considered -> handled through nodes
             if i == 0:
                 next_densities_list[i] = self._compute_next_density(
                     density=link_densities[i],
@@ -360,7 +378,9 @@ class CTM:
 
     def _compute_node_maximum_outflows(
         self,
+        network: "Network",
         node: "Node",
+        splits: dict[str, dict[str, casadi.SX]],
         densities: dict[str, casadi.SX],
         flows: dict[str, casadi.SX],
         node_splits: dict[str, casadi.SX],
@@ -379,8 +399,11 @@ class CTM:
         expression based on jam density and backward wave speed.
 
         Args:
+            network (Network): The network containing the node and links.
             node (Node): Node for which the maximum supported outflow is
                 computed.
+            splits (dict[str, dict[str, casadi.SX]]): Mapping from node id to
+                mapping of outgoing link id to split ratio (CasADi SX).
             densities (dict[str, casadi.SX]): Current-step densities for
                 links (mapping link id -> density vector, CasADi SX).
             flows (dict[str, casadi.SX]): Current-step flows for links
@@ -405,7 +428,14 @@ class CTM:
         """
         maximum_supported_node_outflow = casadi.SX(casadi.inf)
         for out in node.outgoing:
-            if isinstance(out, Destination):
+            if isinstance(out, Onramp):
+                # flows from origins through nodes to onramps should not be supply-restricted
+                # (onramps are assumed to have an infinite supply of space and a virtual queue)
+                # -> network validation makes sure that the corresponding node only has one incoming
+                #    link, which is the origin forwarding the demand function -> onramp demand
+                continue
+
+            elif isinstance(out, Destination):
                 # destinations only limit the node outflow through the given flow boundary condition
                 maximum_supported_node_outflow = casadi.fmin(
                     maximum_supported_node_outflow,
@@ -425,10 +455,10 @@ class CTM:
                 # motorway link as a basis for the computation of the first cell next-step
                 # density value (to be used as a supply restriction)
                 node_outflow_link = self._get_node_outflow_link(
-                    node=node,
+                    network=network,
+                    splits=splits,
                     link=out,
                     flows=flows,
-                    node_splits=node_splits,
                 )
 
                 # compute the next-step density of the first cell of the outgoing link
@@ -550,8 +580,8 @@ class CTM:
         State and disturbance vector layouts follow
         `Network.state_vec_to_network_dict` and
         `Network.disturbance_vec_to_network_dict`. The disturbance vector
-        contains origin demands, onramp demands, split ratios and boundary
-        condition entries in the ordering expected by the network helpers.
+        contains origin demands, split ratios and boundary condition entries
+        in the ordering expected by the network helpers.
 
         Args:
             network (Network): Network object containing links, nodes and
@@ -577,7 +607,7 @@ class CTM:
         # ! Set up variables for state update and cast types to be correct
         # set up state and disturbance vectors
         # state: flows, densities, speeds, origin, onramp
-        # disturbances: origin_demands, onramp_demands, offramp_split_ratios
+        # disturbances: origin_demands, offramp_split_ratios
         # CasADi type stubs are incorrect - sym() does accept string as first arg
         x = casadi.SX.sym(  # type: ignore
             "x",  # type: ignore
@@ -589,7 +619,7 @@ class CTM:
             + num_offramps,  # type: ignore
             1,  # type: ignore
         )
-        d = casadi.SX.sym("d", num_origins + num_onramps + num_splits + 2 * num_destinations, 1)  # type: ignore
+        d = casadi.SX.sym("d", num_origins + num_splits + 2 * num_destinations, 1)  # type: ignore
 
         # split up the state and disturbance vectors to obtain a dictionary for
         # efficient access of the relevant quantities during the state update
@@ -598,7 +628,6 @@ class CTM:
         )
         (
             origin_demands,
-            onramp_demands,
             splits,
             flow_boundary_conditions,
             density_boundary_conditions,
@@ -612,7 +641,6 @@ class CTM:
         onramp_queues = {k: casadi.SX(v) for k, v in onramp_queues.items()}
         offramp_queues = {k: casadi.SX(v) for k, v in offramp_queues.items()}
         origin_demands = {k: casadi.SX(v) for k, v in origin_demands.items()}
-        onramp_demands = {k: casadi.SX(v) for k, v in onramp_demands.items()}
         splits = {
             k: {kk: casadi.SX(vv) for kk, vv in v.items()} for k, v in splits.items()
         }
@@ -640,28 +668,12 @@ class CTM:
             total_node_inflow = casadi.SX(0)
             for inc in node.incoming:
                 if isinstance(inc, MotorwayLink):
-                    if inc.origin_node_id is None:
-                        raise ValueError(
-                            f"Motorway link {inc.id} does not have a well-defined origin node."
-                        )
-
-                    # compute the normalized node splits for the upstream node
-                    upstream_node = network.get_node(inc.origin_node_id)
-                    if upstream_node is None:
-                        raise ValueError(
-                            f"Origin node {inc.origin_node_id} of motorway link {inc.id} not found in network."
-                        )
-                    normalized_upstream_node_splits = self._compute_normalized_splits(
-                        node=upstream_node,
-                        node_splits=splits[inc.origin_node_id],
-                    )
-
-                    # compute outflow of the upstream node into this link
+                    # compute outflow of the upstream node directed into this motorway link
                     upstream_node_outflow_link = self._get_node_outflow_link(
-                        node=upstream_node,
+                        network=network,
+                        splits=splits,
                         link=inc,
                         flows=flows,
-                        node_splits=normalized_upstream_node_splits,
                     )
 
                     # step through the cells of the link and update the flows, densities and speeds accordingly
@@ -693,13 +705,24 @@ class CTM:
                         origin_queues[inc.id] / dt
                     )
                     total_node_inflow += next_flows[inc.id]
+
                 elif isinstance(inc, Onramp):
+                    # compute outflow of the upstream node directed into this motorway link
+                    upstream_node_outflow_link = self._get_node_outflow_link(
+                        network=network,
+                        splits=splits,
+                        link=inc,
+                        flows=flows,
+                    )
+
                     # onramps are also modeled as store-and-forward links (as origins), but additionally
                     # have a finite capacity, which needs to be taken into account when computing the
                     # desired flow / flow on the onramp without considering downstream supply of space restrictions
+                    # -> since onramps are indirectly connected to their demand through a node & origin, the
+                    #    inflow from the upstream node (unconstrained) represents the demand
                     next_flows[inc.id] = casadi.fmin(
                         inc.Qc,
-                        onramp_demands[inc.id] + (onramp_queues[inc.id] / dt),
+                        upstream_node_outflow_link + (onramp_queues[inc.id] / dt),
                     )
                     total_node_inflow += next_flows[inc.id]
                 else:
@@ -714,7 +737,9 @@ class CTM:
                 node=node, node_splits=splits[node.id]
             )
             maximum_supported_node_outflow = self._compute_node_maximum_outflows(
+                network=network,
                 node=node,
+                splits=splits,
                 densities=densities,
                 flows=flows,
                 node_splits=normalized_node_splits,
@@ -751,9 +776,19 @@ class CTM:
                             dt=dt,
                         )
                     else:
+                        # compute outflow of the upstream node directed into this motorway link
+                        onramp_inflow = self._get_node_outflow_link(
+                            network=network,
+                            splits=splits,
+                            link=inc,
+                            flows=flows,
+                        )
+
+                        # update the virtual queue of the onramp based on the difference between
+                        # the forwarded demand (through origin and node) and the allowed flow
                         next_onramp_queues[inc.id] = update_queue(
                             queue_length=onramp_queues[inc.id],
-                            demand=onramp_demands[inc.id],
+                            demand=onramp_inflow,
                             flow=next_flows[inc.id],
                             dt=dt,
                         )
@@ -812,6 +847,11 @@ class CTM:
                 elif isinstance(out, MotorwayLink):
                     # motorway links are processed at nodes where they are incoming
                     pass
+
+                elif isinstance(out, Onramp):
+                    # onramps are processed at nodes where they are incoming
+                    pass
+
                 else:
                     raise TypeError(f"Unknown outgoing link type: {type(out)}")
 
