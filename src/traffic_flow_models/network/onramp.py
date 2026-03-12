@@ -24,6 +24,7 @@ class Onramp:
         id: str | None = None,
         controller: AlineaController | None = None,
         destination_node_id: str | None = None,
+        origin_node_id: str | None = None,
     ) -> None:
         """Initialize the Onramp parameters.
 
@@ -59,3 +60,4 @@ class Onramp:
         self.rho_jam: float = jam_density  # in vehicles per kilometer per lane
         self.controller = controller  # optional ramp metering controller
         self.destination_node_id: str | None = destination_node_id
+        self.origin_node_id: str | None = origin_node_id
