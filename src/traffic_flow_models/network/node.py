@@ -62,7 +62,7 @@ class Node:
         """
         Return a tuple of allowed types for outgoing links.
         """
-        return (MotorwayLink, Offramp, Destination)
+        return (MotorwayLink, Offramp, Destination, Onramp)
 
     def _validate_link_type(self, link: Any, allowed_types: tuple) -> None:
         """
