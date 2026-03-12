@@ -689,6 +689,9 @@ class METANET:
         outgoing link the method selects an appropriate downstream density
         representation:
         - For a `MotorwayLink`: the density of its first cell is used.
+        - For an `Onramp`: the density is set to zero (free-flow conditions)
+          in order not to influence the inflow from the virtual upstream
+          origin onto the store-and-forward onramp link
         - For an `Offramp`: the connected destination's boundary condition
           is used (offramps do not carry internal density in the
           store-and-forward representation).
@@ -747,6 +750,13 @@ class METANET:
                 elif isinstance(out_link, Destination):
                     # destination link: density is provided as boundary condition
                     out_densities.append(density_boundary_conditions[out_link.id])
+
+                elif isinstance(out_link, Onramp):
+                    # onramps can only be linked as only outgoing link to a node
+                    raise ValueError(
+                        f"Onramp {out_link.id} cannot be an outgoing link at a node with multiple outgoing links."
+                    )
+
                 else:
                     raise TypeError(f"Unknown outgoing link type {type(out_link)}")
 
@@ -790,11 +800,22 @@ class METANET:
                 ]
                 node_downstream_jam_density = None  # no downstream jam density defined -> handling on calling level required
                 node_downstream_backward_wave_speed = None  # no downstream backward wave speed defined -> handling on calling level required
+
             elif isinstance(out_link, Destination):
                 # destination link: density is provided as boundary condition
                 node_downstream_density = density_boundary_conditions[out_link.id]
                 node_downstream_jam_density = None  # no downstream jam density defined -> handling on calling level required
                 node_downstream_backward_wave_speed = None  # no downstream backward wave speed defined -> handling on calling level required
+
+            elif isinstance(out_link, Onramp):
+                # for onramps no downstream supply of space restrictions should be imposed
+                # -> all inflow from the virtual upstream origin should be consumed
+                node_downstream_density = casadi.SX(
+                    0
+                )  # free-flow conditions downstream of the node
+                node_downstream_jam_density = None  # no downstream jam density defined -> handling on calling level required
+                node_downstream_backward_wave_speed = None  # no downstream backward wave speed defined -> handling on calling level required
+
             else:
                 raise TypeError(f"Unknown outgoing link type {type(out_link)}")
         else:
@@ -843,14 +864,14 @@ class METANET:
                 )
 
             # if only an origin is connected as an incoming link (and correspondingly only one outgoing
-            # motorway link is allowed), choose the free-flow speed of the outgoing motorway link
-            # for consistency (origin does not have free flow speed defined)
+            # motorway link or onramp is allowed), choose the free-flow speed of the outgoing motorway link
+            # or onramp for consistency (origin does not have free flow speed defined)
             else:
                 if (
                     len(node.incoming) != 1
                     or not isinstance(node.incoming[0], Origin)
                     or len(node.outgoing) != 1
-                    or not isinstance(node.outgoing[0], MotorwayLink)
+                    or not isinstance(node.outgoing[0], (MotorwayLink, Onramp))
                 ):
                     raise ValueError(
                         "Encountered node without expected types of input links (more than one Origin / more than one outgoing link for origin-linked node)."
@@ -1204,8 +1225,8 @@ class METANET:
         State and disturbance vector layouts follow
         `Network.state_vec_to_network_dict` and
         `Network.disturbance_vec_to_network_dict`. The disturbance vector
-        contains origin demands, onramp demands, split ratios and boundary
-        condition entries in the ordering expected by the network helpers.
+        contains origin demands, split ratios and boundary condition
+        entries in the ordering expected by the network helpers.
 
         Args:
             network (Network): Network object containing links, nodes and
@@ -1243,7 +1264,7 @@ class METANET:
         # ! Set up variables for state update and cast types to be correct
         # set up state and disturbance vectors
         # state: flows, densities, speeds, origin, onramp
-        # disturbances: origin_demands, onramp_demands, offramp_split_ratios
+        # disturbances: origin_demands, offramp_split_ratios
         # CasADi type stubs are incorrect - sym() does accept string as first arg
         x = casadi.SX.sym(  # type: ignore
             "x",  # type: ignore
@@ -1255,7 +1276,7 @@ class METANET:
             + num_offramps,  # type: ignore
             1,  # type: ignore
         )
-        d = casadi.SX.sym("d", num_origins + num_onramps + num_splits + 2 * num_destinations, 1)  # type: ignore
+        d = casadi.SX.sym("d", num_origins + num_splits + 2 * num_destinations, 1)  # type: ignore
 
         # split up the state and disturbance vectors to obtain a dictionary for
         # efficient access of the relevant quantities during the state update
@@ -1263,7 +1284,7 @@ class METANET:
             network.state_vec_to_network_dict(x=x)
         )
         # flow boundary conditions are not extracted for METANET, since they are not needed
-        origin_demands, onramp_demands, splits, _, density_boundary_conditions = (
+        origin_demands, splits, _, density_boundary_conditions = (
             network.disturbance_vec_to_network_dict(d=d)
         )
 
@@ -1275,7 +1296,6 @@ class METANET:
         onramp_queues = {k: casadi.SX(v) for k, v in onramp_queues.items()}
         offramp_queues = {k: casadi.SX(v) for k, v in offramp_queues.items()}
         origin_demands = {k: casadi.SX(v) for k, v in origin_demands.items()}
-        onramp_demands = {k: casadi.SX(v) for k, v in onramp_demands.items()}
         splits = {
             k: {kk: casadi.SX(vv) for kk, vv in v.items()} for k, v in splits.items()
         }
@@ -1332,6 +1352,26 @@ class METANET:
                     next_origin_queues[inc.id] = next_queue
 
                 elif isinstance(inc, Onramp):
+                    # for onramps, get the outflow of the upstream connected origin node as the inflow
+                    # (as validation, ensure that the upstream node is only connected to the origin and onramp)
+                    if inc.origin_node_id is None:
+                        raise ValueError(
+                            f"Onramp {inc.id} does not have an upstream origin node defined."
+                        )
+
+                    upstream_node = network.get_node(id=inc.origin_node_id)
+                    if (
+                        upstream_node is None
+                        or len(upstream_node.incoming) > 1
+                        or not isinstance(upstream_node.incoming[0], Origin)
+                    ):
+                        raise ValueError(
+                            f"Upstream node {inc.origin_node_id} of onramp {inc.id} is not connected to exactly one origin."
+                        )
+
+                    # get the origin outflow
+                    origin_outflow = flows[upstream_node.incoming[0].id]
+
                     # TODO: include possibility here for ramp metering controller (e.g. through ramp metering rate input)
                     next_inflow, next_queue = store_and_forward_update(
                         capacity=inc.Qc,
@@ -1346,7 +1386,7 @@ class METANET:
                             else casadi.inf
                         ),
                         density=node_virtual_downstream_density,
-                        demand=onramp_demands[inc.id],
+                        demand=origin_outflow,
                         queue=onramp_queues[inc.id],
                         dt=dt,
                     )
@@ -1370,7 +1410,11 @@ class METANET:
 
             for out in node.outgoing:
                 # ! 3) update the offramp flows (& density/speed) for destinations connected to this node
-                if isinstance(out, Destination):
+                if isinstance(out, Onramp):
+                    # onramp flows are updated when considered as an incoming link
+                    continue
+
+                elif isinstance(out, Destination):
                     # destinations are assumed to consume all incoming flow
                     # (only impact the mainstream through the density boundary condition)
                     # Note: the next-step flows are already used, since the destination is

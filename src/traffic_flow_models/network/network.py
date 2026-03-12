@@ -398,7 +398,7 @@ class Network:
             for link in node.outgoing:
                 d = np.concatenate((d, np.array([node_rates[link.id]])))
 
-            # set values for incoming links (onramps or origins)
+            # set values for incoming origins
             for link in node.incoming:
                 # initialize origins (queues only)
                 if isinstance(link, Origin):
