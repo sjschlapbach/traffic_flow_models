@@ -4,6 +4,10 @@ import xml.etree.ElementTree as ET
 from collections import defaultdict
 from typing import Callable, Mapping, Tuple
 
+from traffic_flow_models.arbitrator.aggregation_helpers import (
+    make_rolling_window_aggregator,
+)
+
 
 class TurningRateAggregator:
     """Aggregate microscopic SUMO detector data into macroscopic turning rate functions.
@@ -219,44 +223,12 @@ class TurningRateAggregator:
             mapping edge IDs to their split ratios (fractions between 0 and 1).
             Returns None if no vehicles were detected on any edge.
         """
-        window_size_sec = self.window_size_sec
-        max_time = self.max_time
-        edge_ids = list(link_intervals.keys())
-
-        def turning_rate_fn(time_hours: float) -> dict[str, float]:
-            query_time_sec = time_hours * 3600
-
-            # compute window bounds
-            window_start = query_time_sec - window_size_sec / 2
-            window_end = query_time_sec + window_size_sec / 2
-
-            # shift window if it goes beyond simulation horizon
-            if window_start < 0:
-                window_end = min(window_size_sec, max_time)
-                window_start = 0
-            elif window_end > max_time:
-                window_start = max(0, max_time - window_size_sec)
-                window_end = max_time
-
-            # aggregate counts for each edge within the window
-            edge_counts: dict[str, int] = {}
-            for eid in edge_ids:
-                count = 0
-                for begin, veh_count in link_intervals[eid]:
-                    if window_start <= begin < window_end:
-                        count += veh_count
-                edge_counts[eid] = count
-
-            total = sum(edge_counts.values())
-
-            if total == 0:
-                # no vehicles in this window - return equal splits
-                return {eid: 1.0 / len(edge_ids) for eid in edge_ids}
-
-            # compute fraction for each outgoing link
-            return {eid: edge_counts[eid] / total for eid in edge_ids}
-
-        return turning_rate_fn
+        return make_rolling_window_aggregator(
+            intervals=link_intervals,
+            window_size_sec=self.window_size_sec,
+            max_time=self.max_time,
+            aggregation_type="rate",
+        )
 
     def run(
         self,
