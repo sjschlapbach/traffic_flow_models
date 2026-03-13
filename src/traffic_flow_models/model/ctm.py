@@ -775,7 +775,11 @@ class CTM:
             )
 
             for inc in node.incoming:
-                if isinstance(inc, Origin) or isinstance(inc, Onramp):
+                if (
+                    isinstance(inc, Origin)
+                    or isinstance(inc, Onramp)
+                    or isinstance(inc, Offramp)
+                ):
                     # if necessary, reduce the computed flows proportionally to their desired values
                     next_flows[inc.id] = next_flows[inc.id] * reduction_factor
                     total_capped_inflow += next_flows[inc.id]
@@ -786,6 +790,23 @@ class CTM:
                         next_origin_queues[inc.id] = update_queue(
                             queue_length=origin_queues[inc.id],
                             demand=origin_demands[inc.id],
+                            flow=next_flows[inc.id],
+                            dt=dt,
+                        )
+                    elif isinstance(inc, Offramp):
+                        # compute outflow of the upstream node directed into this motorway link
+                        upstream_node_outflow_link = self._get_node_outflow_link(
+                            network=network,
+                            splits=splits,
+                            link=inc,
+                            flows=flows,
+                        )
+
+                        # update the virtual queue of the offramp based on the difference between
+                        # the forwarded demand and the allowed flow
+                        next_offramp_queues[inc.id] = update_queue(
+                            queue_length=offramp_queues[inc.id],
+                            demand=upstream_node_outflow_link,
                             flow=next_flows[inc.id],
                             dt=dt,
                         )
@@ -820,10 +841,6 @@ class CTM:
                         / (inc.lanes * next_densities[inc.id][-1]),
                         inc.vf,
                     )
-
-                elif isinstance(inc, Offramp):
-                    # offramps are processed as outgoing links
-                    continue
 
                 else:
                     raise TypeError(f"Unknown incoming link type: {type(inc)}")
