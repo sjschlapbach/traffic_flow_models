@@ -91,10 +91,10 @@ class TestNode:
     def test_type_validation_rejects_wrong_types(self):
         n = Node(id="n3")
 
-        # Offramp is not allowed as incoming
-        off = Offramp(lanes=1, lane_capacity=900, free_flow_speed=70, jam_density=140)
+        # Destination is not allowed as incoming
+        dest = Destination()
         with pytest.raises(TypeError):
-            n.add_incoming(off)
+            n.add_incoming(dest)
 
         # Origin not allowed as outgoing
         org = Origin()

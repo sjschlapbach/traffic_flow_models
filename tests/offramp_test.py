@@ -53,15 +53,19 @@ class TestOfframp:
             lane_capacity=1400,
             free_flow_speed=60,
             jam_density=120,
-            destination=dest,
         )
-        assert off.destination is dest
 
-        # origin_node_id should be unset until connected to a node
+        # origin_node_id/destination_node_id should be unset until connected to nodes
         assert getattr(off, "origin_node_id", None) is None
-        n = Node(id="n-off")
-        n.add_outgoing(off)
-        assert off.origin_node_id == n.id
+        assert getattr(off, "destination_node_id", None) is None
+
+        n_up = Node(id="n-up")
+        n_up.add_outgoing(off)
+        assert off.origin_node_id == n_up.id
+
+        n_down = Node(id="n-down", incoming=[off], outgoing=[dest])
+        assert off.destination_node_id == n_down.id
+        assert dest.origin_node_id == n_down.id
 
     def test_id_assignment_and_generation(self):
         # provided id is preserved

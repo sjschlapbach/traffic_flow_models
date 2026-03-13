@@ -217,13 +217,10 @@ class TestCTM:
         destination_offramp = Destination()
         destination_mainline = Destination()
 
-        # connect offramp to its destination
-        offramp.destination = destination_offramp
-
         node1 = Node(incoming=[origin], outgoing=[link])
         node2 = Node(incoming=[link], outgoing=[offramp, destination_mainline])
-        # Note: Offramps connect directly to their destinations, no intermediate node needed
-        network = Network(nodes=[node1, node2])
+        node_offr = Node(incoming=[offramp], outgoing=[destination_offramp])
+        network = Network(nodes=[node1, node2, node_offr])
 
         model = CTM()
 
@@ -258,7 +255,8 @@ class TestCTM:
                 node2.id: lambda t: {
                     offramp.id: offramp_split,
                     destination_mainline.id: mainline_split,
-                }
+                },
+                node_offr.id: lambda t: {destination_offramp.id: 1.0},
             },
             destination_flow_bc={
                 destination_offramp.id: lambda t: 6000.0,

@@ -73,26 +73,86 @@ class TestNetwork:
         # should not raise
         net.validate()
 
+    def test_validate_onramp_structure_passes(self):
+        """Origin must feed onramp through a node, onramp merges into motorway."""
+        origin_main = Origin()
+        origin_ramp = Origin()
+        onr = Onramp(lanes=1, lane_capacity=1800, free_flow_speed=90, jam_density=170)
+        main1 = MotorwayLink(
+            length=1.0,
+            lanes=2,
+            lane_capacity=1800,
+            free_flow_speed=100,
+            jam_density=150,
+        )
+        main2 = MotorwayLink(
+            length=1.0,
+            lanes=2,
+            lane_capacity=1800,
+            free_flow_speed=100,
+            jam_density=150,
+        )
+        dest = Destination()
+
+        n_origin = Node(id="n_origin", incoming=[origin_main], outgoing=[main1])
+        n_ramp = Node(id="n_ramp", incoming=[origin_ramp], outgoing=[onr])
+        n_merge = Node(id="n_merge", incoming=[main1, onr], outgoing=[main2])
+        n_dest = Node(id="n_dest", incoming=[main2], outgoing=[dest])
+
+        # start with merge node so connectivity check sees both sources
+        net = Network(nodes=[n_merge, n_origin, n_ramp, n_dest])
+
+        assert net.validate() is True
+
     def test_validate_offramp_without_destination_raises(self):
-        # create an offramp without destination
+        # create an offramp whose downstream node does not lead to a destination
         offr = Offramp(
             lanes=1,
             lane_capacity=2000,
             free_flow_speed=100,
             jam_density=180,
-            destination=None,
         )
         main = MotorwayLink(
             length=1.0, lanes=1, lane_capacity=1500, free_flow_speed=80, jam_density=140
         )
+        main_after_off = MotorwayLink(
+            length=1.0, lanes=1, lane_capacity=1500, free_flow_speed=80, jam_density=140
+        )
         origin = Origin()
+        dest_main = Destination()
+        dest_extra = Destination()
 
         node1 = Node(id="n1", incoming=[origin], outgoing=[main])
-        node2 = Node(id="n2", incoming=[main], outgoing=[offr])
-        net = Network(nodes=[node1, node2])
+        node2 = Node(id="n2", incoming=[main], outgoing=[offr, dest_main])
+        node_bad = Node(id="n_bad", incoming=[offr], outgoing=[main_after_off])
+        node3 = Node(id="n3", incoming=[main_after_off], outgoing=[dest_extra])
+
+        net = Network(nodes=[node1, node2, node_bad, node3])
 
         with pytest.raises(ValueError):
             net.validate()
+
+    def test_validate_offramp_structure_passes(self):
+        """Offramp must exit through a downstream node into a destination."""
+        origin = Origin()
+        main1 = MotorwayLink(
+            length=1.0, lanes=2, lane_capacity=1800, free_flow_speed=90, jam_density=150
+        )
+        main2 = MotorwayLink(
+            length=1.0, lanes=2, lane_capacity=1800, free_flow_speed=90, jam_density=150
+        )
+        offr = Offramp(lanes=1, lane_capacity=1200, free_flow_speed=70, jam_density=140)
+        dest_main = Destination()
+        dest_off = Destination()
+
+        n0 = Node(id="n0", incoming=[origin], outgoing=[main1])
+        n_split = Node(id="n_split", incoming=[main1], outgoing=[main2, offr])
+        n_off = Node(id="n_off", incoming=[offr], outgoing=[dest_off])
+        n_end = Node(id="n_end", incoming=[main2], outgoing=[dest_main])
+
+        net = Network(nodes=[n0, n_split, n_off, n_end])
+
+        assert net.validate() is True
 
     def test_validate_unconnected_component_raises(self):
         main = MotorwayLink(
@@ -151,14 +211,15 @@ class TestNetwork:
             lane_capacity=2000,
             free_flow_speed=100,
             jam_density=180,
-            destination=Destination(),
         )
+        dest_off = Destination()
 
         node1 = Node(
             id="n1", incoming=[origin], outgoing=[offramp]
         )  # Invalid: no motorway link
+        node_off = Node(id="n_off", incoming=[offramp], outgoing=[dest_off])
 
-        net = Network(nodes=[node1])
+        net = Network(nodes=[node1, node_off])
 
         with pytest.raises(ValueError):
             net.validate()
@@ -185,29 +246,6 @@ class TestNetwork:
         node3 = Node(id="n3", incoming=[main2], outgoing=[dest2])
 
         net = Network(nodes=[node1, node2, node3])
-
-        with pytest.raises(ValueError):
-            net.validate()
-
-    def test_vlalidate_onramp_no_motorway_outgoing_raises(self):
-        """Test that a node connected to an onramp must have at least one motorway link as outgoing."""
-        # create a node with Onramp incoming and no MotorwayLink outgoing (invalid)
-        onramp = Onramp(
-            lanes=1, lane_capacity=2000, free_flow_speed=100, jam_density=180
-        )
-        offramp = Offramp(
-            lanes=1,
-            lane_capacity=2000,
-            free_flow_speed=100,
-            jam_density=180,
-            destination=Destination(),
-        )
-
-        node1 = Node(
-            id="n1", incoming=[onramp], outgoing=[offramp]
-        )  # Invalid: no motorway link
-
-        net = Network(nodes=[node1])
 
         with pytest.raises(ValueError):
             net.validate()
@@ -357,10 +395,8 @@ class TestNetwork:
         )
         n = Node(id="bad")
 
-        # invalid incoming type (Offramp is not allowed as incoming)
-        n.incoming = [
-            Offramp(lanes=1, lane_capacity=1000, free_flow_speed=80, jam_density=140)
-        ]
+        # invalid incoming type (Destination is not allowed as incoming)
+        n.incoming = [Destination()]
         n.outgoing = [main]
         net = Network(nodes=[n])
 
@@ -582,13 +618,13 @@ class TestNetwork:
             lanes=1, lane_capacity=2000, free_flow_speed=100, jam_density=180
         )
         dest2 = Destination()
-        offramp.destination = dest2
 
         node1 = Node(id="n1", incoming=[origin], outgoing=[main1])
         node2 = Node(id="n2", incoming=[main1, onramp], outgoing=[main2, offramp])
         node3 = Node(id="n3", incoming=[main2], outgoing=[dest1])
+        node_off = Node(id="n_off", incoming=[offramp], outgoing=[dest2])
 
-        net = Network(nodes=[node1, node2, node3])
+        net = Network(nodes=[node1, node2, node3, node_off])
         partition_motorway_links(net)
 
         # prepare state dictionaries
@@ -602,6 +638,7 @@ class TestNetwork:
             main2.id: np.ones(num_cells_main2) * 900.0,
             offramp.id: np.array([100.0]),
             dest1.id: np.array([800.0]),
+            dest2.id: np.array([400.0]),
         }
         density_dict = {
             main1.id: np.ones(num_cells_main1) * 50.0,
@@ -638,8 +675,8 @@ class TestNetwork:
         # verify counts
         assert isinstance(x, np.ndarray)
         assert (
-            num_flows == 1 + 1 + num_cells_main1 + num_cells_main2 + 1 + 1
-        )  # all flows
+            num_flows == 1 + 1 + num_cells_main1 + num_cells_main2 + 1 + 2
+        )  # all flows (origin, onramp, mains, offramp, destinations)
         assert num_densities == num_cells_main1 + num_cells_main2
         assert num_speeds == num_cells_main1 + num_cells_main2
         assert num_origin == 1
@@ -665,13 +702,13 @@ class TestNetwork:
             lanes=1, lane_capacity=2000, free_flow_speed=100, jam_density=180
         )
         dest2 = Destination()
-        offramp.destination = dest2
 
         node1 = Node(id="n1", incoming=[origin], outgoing=[main1])
         node2 = Node(id="n2", incoming=[main1, onramp], outgoing=[main2, offramp])
         node3 = Node(id="n3", incoming=[main2], outgoing=[dest1])
+        node_off = Node(id="n_off", incoming=[offramp], outgoing=[dest2])
 
-        net = Network(nodes=[node1, node2, node3])
+        net = Network(nodes=[node1, node2, node3, node_off])
         partition_motorway_links(net)
 
         # original state
@@ -685,6 +722,7 @@ class TestNetwork:
             main2.id: np.random.rand(num_cells_main2) * 900.0,
             offramp.id: np.array([100.0]),
             dest1.id: np.array([800.0]),
+            dest2.id: np.array([600.0]),
         }
         density_dict_orig = {
             main1.id: np.random.rand(num_cells_main1) * 50.0,
@@ -831,13 +869,13 @@ class TestNetwork:
         )
         dest1 = Destination()
         dest2 = Destination()
-        offramp.destination = dest2
 
         node1 = Node(id="n1", incoming=[origin], outgoing=[main1])
         node2 = Node(id="n2", incoming=[main1, onramp], outgoing=[main2, offramp])
         node3 = Node(id="n3", incoming=[main2], outgoing=[dest1])
+        node_off = Node(id="n_off", incoming=[offramp], outgoing=[dest2])
 
-        net = Network(nodes=[node1, node2, node3])
+        net = Network(nodes=[node1, node2, node3, node_off])
 
         # original disturbance dictionaries
         origin_demand_dict_orig = {origin.id: 600.0}
@@ -845,6 +883,7 @@ class TestNetwork:
             node1.id: {main1.id: 1.0},
             node2.id: {main2.id: 0.8, offramp.id: 0.2},
             node3.id: {dest1.id: 1.0},
+            node_off.id: {dest2.id: 1.0},
         }
         flow_destination_bc_orig = {dest1.id: 1400.0, dest2.id: 1200.0}
         density_destination_bc_orig = {dest1.id: 30.0, dest2.id: 25.0}
@@ -984,13 +1023,13 @@ class TestNetwork:
             lanes=1, lane_capacity=2000, free_flow_speed=100, jam_density=180
         )
         dest = Destination()
-        offramp.destination = dest
 
         origin = Origin()
         node1 = Node(id="n1", incoming=[origin], outgoing=[main])
         node2 = Node(id="n2", incoming=[main], outgoing=[offramp])
+        node_off = Node(id="n_off", incoming=[offramp], outgoing=[dest])
 
-        net = Network(nodes=[node1, node2])
+        net = Network(nodes=[node1, node2, node_off])
         partition_motorway_links(net)
 
         # test lane drop to offramp
@@ -1011,7 +1050,6 @@ class TestNetwork:
         )
         dest1 = Destination()
         dest2 = Destination()
-        offramp.destination = dest2
 
         origin = Origin()
         node1 = Node(id="n1", incoming=[origin], outgoing=[main1])
@@ -1019,8 +1057,9 @@ class TestNetwork:
             id="n2", incoming=[main1], outgoing=[main2, offramp]
         )  # multiple outgoing
         node3 = Node(id="n3", incoming=[main2], outgoing=[dest1])
+        node_off = Node(id="n_off", incoming=[offramp], outgoing=[dest2])
 
-        net = Network(nodes=[node1, node2, node3])
+        net = Network(nodes=[node1, node2, node3, node_off])
         partition_motorway_links(net)
 
         # should return 0 because node2 has multiple outgoing links (diverge)
@@ -1136,7 +1175,6 @@ class TestNetwork:
             lanes=1, lane_capacity=2000, free_flow_speed=100, jam_density=180
         )
         dest = Destination()
-        offramp.destination = dest
 
         # Node1: Origin feeds into Link1
         node1 = Node(id="n1", incoming=[origin], outgoing=[link1])
@@ -1146,8 +1184,9 @@ class TestNetwork:
         node3 = Node(id="n3", incoming=[link2], outgoing=[link3, offramp])
         # Node4: Link3 continues to Link4
         node4 = Node(id="n4", incoming=[link3], outgoing=[link4])
+        node_off = Node(id="n_off", incoming=[offramp], outgoing=[dest])
 
-        net = Network(nodes=[node1, node2, node3, node4])
+        net = Network(nodes=[node1, node2, node3, node4, node_off])
 
         # validation should pass despite circular topology
         assert net.validate() is True
@@ -1173,14 +1212,14 @@ class TestNetwork:
             lanes=1, lane_capacity=2000, free_flow_speed=100, jam_density=180
         )
         dest = Destination()
-        offramp.destination = dest
 
         node1 = Node(id="n1", incoming=[origin], outgoing=[link1])
         node2 = Node(id="n2", incoming=[link1, link4], outgoing=[link2])
         node3 = Node(id="n3", incoming=[link2], outgoing=[link3, offramp])
         node4 = Node(id="n4", incoming=[link3], outgoing=[link4])
+        node_off = Node(id="n_off", incoming=[offramp], outgoing=[dest])
 
-        net = Network(nodes=[node1, node2, node3, node4])
+        net = Network(nodes=[node1, node2, node3, node4, node_off])
         partition_motorway_links(net)
 
         # create state dictionaries
@@ -1196,6 +1235,7 @@ class TestNetwork:
             link3.id: np.ones(num_cells_3) * 400.0,
             link4.id: np.ones(num_cells_4) * 400.0,
             offramp.id: np.array([50.0]),
+            dest.id: np.array([50.0]),
         }
         density_dict = {
             link1.id: np.ones(num_cells_1) * 30.0,
@@ -1264,14 +1304,14 @@ class TestNetwork:
             lanes=1, lane_capacity=2000, free_flow_speed=100, jam_density=180
         )
         dest = Destination()
-        offramp.destination = dest
 
         node1 = Node(id="n1", incoming=[origin], outgoing=[link1])
         node2 = Node(id="n2", incoming=[link1, link4], outgoing=[link2])
         node3 = Node(id="n3", incoming=[link2], outgoing=[link3, offramp])
         node4 = Node(id="n4", incoming=[link3], outgoing=[link4])
+        node_off = Node(id="n_off", incoming=[offramp], outgoing=[dest])
 
-        net = Network(nodes=[node1, node2, node3, node4])
+        net = Network(nodes=[node1, node2, node3, node4, node_off])
 
         # create disturbance dictionaries with split ratios at diverge node
         origin_demand_dict = {origin.id: 600.0}
@@ -1280,6 +1320,7 @@ class TestNetwork:
             node2.id: {link2.id: 1.0},
             node3.id: {link3.id: 0.9, offramp.id: 0.1},  # 90% continue, 10% exit
             node4.id: {link4.id: 1.0},
+            node_off.id: {dest.id: 1.0},
         }
         flow_destination_bc = {dest.id: 1400.0}
         density_destination_bc = {dest.id: 20.0}
@@ -1546,13 +1587,13 @@ class TestNetwork:
             id="offramp_1",
         )
         dest2 = Destination(id="dest_2")
-        offramp.destination = dest2
 
         node1 = Node(id="n1", incoming=[origin], outgoing=[main1])
         node2 = Node(id="n2", incoming=[main1, onramp], outgoing=[main2, offramp])
         node3 = Node(id="n3", incoming=[main2], outgoing=[dest1])
+        node_off = Node(id="n_off", incoming=[offramp], outgoing=[dest2])
 
-        net = Network(nodes=[node1, node2, node3])
+        net = Network(nodes=[node1, node2, node3, node_off])
 
         # save and load
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -1561,20 +1602,28 @@ class TestNetwork:
             loaded_net = Network.load_from_json(filepath)
 
             # verify network structure
-            assert len(loaded_net) == 3
+            assert len(loaded_net) == 4
             loaded_node1 = loaded_net.get_node("n1")
             loaded_node2 = loaded_net.get_node("n2")
             loaded_node3 = loaded_net.get_node("n3")
+            loaded_node_off = loaded_net.get_node("n_off")
 
             assert loaded_node1 is not None
             assert loaded_node2 is not None
             assert loaded_node3 is not None
+            assert loaded_node_off is not None
 
             # verify node1
             assert len(loaded_node1.incoming) == 1
             assert len(loaded_node1.outgoing) == 1
             assert isinstance(loaded_node1.incoming[0], Origin)
             assert isinstance(loaded_node1.outgoing[0], MotorwayLink)
+
+            # verify node_off (offramp to destination)
+            assert len(loaded_node_off.incoming) == 1
+            assert len(loaded_node_off.outgoing) == 1
+            assert isinstance(loaded_node_off.incoming[0], Offramp)
+            assert isinstance(loaded_node_off.outgoing[0], Destination)
 
             # verify node2 (has merge and diverge)
             assert len(loaded_node2.incoming) == 2
@@ -1943,10 +1992,9 @@ class TestNetwork:
         node_ramp = Node(id="n_ramp", incoming=[ramp_origin], outgoing=[onramp])
         node2 = Node(id="n2", incoming=[main1, onramp], outgoing=[main2])
         node3 = Node(id="n3", incoming=[main2], outgoing=[offramp, dest_main])
+        node_off = Node(id="n_off", incoming=[offramp], outgoing=[dest_offramp])
 
-        # Note: Offramps connect to destinations via their destination property
-        net = Network(nodes=[node1, node_ramp, node2, node3])
-        offramp.destination = dest_offramp
+        net = Network(nodes=[node1, node_ramp, node2, node3, node_off])
 
         # simulate
         model = CTM()
@@ -1958,7 +2006,10 @@ class TestNetwork:
                 origin.id: lambda t: 2000.0,
                 ramp_origin.id: lambda t: 500.0,
             },
-            turning_rates={"n3": lambda t: {offramp.id: 0.3, dest_main.id: 0.7}},
+            turning_rates={
+                "n3": lambda t: {offramp.id: 0.3, dest_main.id: 0.7},
+                "n_off": lambda t: {dest_offramp.id: 1.0},
+            },
             destination_flow_bc={
                 dest_offramp.id: lambda t: 0.0,
                 dest_main.id: lambda t: 0.0,
