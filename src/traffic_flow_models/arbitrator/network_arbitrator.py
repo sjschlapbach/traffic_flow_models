@@ -65,13 +65,14 @@ class NetworkArbitrator:
         hwy_filter: Hierarchical list of road type groups for filtering.
         road_params: Road parameters configuration loaded from JSON file.
     """
+    MOTORWAY_TYPES: Tuple[str, str] = ("motorway", "motorway_link")
 
     def __init__(
         self,
         net_xml_path: str,
         road_params_config_path: str,
         target_cell_length: float = 0.3,
-        hwy_filter: Union[list[Tuple[str, str]], None] = None,
+        #hwy_filter: Union[list[Tuple[str, str]], None] = None,
         min_link_length: Union[float, None] = None,
     ):
         """Initialize the network arbitrator.
@@ -100,17 +101,17 @@ class NetworkArbitrator:
 
         # set the hierarchical filter for road types, allowing for
         # flexible specification of type groups and priorities
-        self.hwy_filter: list[Tuple[str, str]] = (
-            hwy_filter
-            if hwy_filter is not None
-            else [
-                ("motorway", "motorway_link"),
-                ("trunk", "trunk_link"),
-                ("primary", "primary_link"),
-                ("secondary", "secondary_link"),
-                ("tertiary", "tertiary_link"),
-            ]
-        )
+        # self.hwy_filter: list[Tuple[str, str]] = (
+        #     hwy_filter
+        #     if hwy_filter is not None
+        #     else [
+        #         ("motorway", "motorway_link"),
+        #         ("trunk", "trunk_link"),
+        #         ("primary", "primary_link"),
+        #         ("secondary", "secondary_link"),
+        #         ("tertiary", "tertiary_link"),
+        #     ]
+        # )
 
         # load road parameters from config file
         self.road_params: RoadParamsConfig = self._load_road_params_from_json(
@@ -284,34 +285,40 @@ class NetworkArbitrator:
         root = tree.getroot()
 
         # extract all available road types in the network for filtering
-        available_types = set()
-        for edge in root.findall("edge"):
-            if edge.get("function") == "internal":
-                continue
-            edge_type = edge.get("type", "")
-            if edge_type:
-                available_types.add(edge_type)
+        # available_types = set()
+        # for edge in root.findall("edge"):
+        #     if edge.get("function") == "internal":
+        #         continue
+        #     edge_type = edge.get("type", "")
+        #     if edge_type:
+        #         available_types.add(edge_type)
 
-        # select highest priority level available
-        for priority_level in self.hwy_filter:
-            # check if ANY type from this priority exists
-            matching = [
-                t
-                for t in priority_level
-                if any(t in avail for avail in available_types)
-            ]
+        # # select highest priority level available
+        # for priority_level in self.hwy_filter:
+        #     # check if ANY type from this priority exists
+        #     matching = [
+        #         t
+        #         for t in priority_level
+        #         if any(t in avail for avail in available_types)
+        #     ]
 
-            if matching:
-                self.selected_types = priority_level
-                print(f"Selected road types: {self.selected_types}")
-                break
+        #     if matching:
+        #         self.selected_types = priority_level
+        #         print(f"Selected road types: {self.selected_types}")
+        #         break
 
-        if self.selected_types is None:
+        # if self.selected_types is None:
+        #     raise ValueError(
+        #         f"No matching road types found in SUMO network. "
+        #         f"Available types: {sorted(available_types)}, "
+        #         f"Filter priorities: {self.hwy_filter}"
+        #     )
+
+        if not any(t in self.found_types for t in NetworkArbitrator.MOTORWAY_TYPES):
             raise ValueError(
-                f"No matching road types found in SUMO network. "
-                f"Available types: {sorted(available_types)}, "
-                f"Filter priorities: {self.hwy_filter}"
+                f"No motorway edges found in network '{self.path}'."
             )
+        self.selected_types = NetworkArbitrator.MOTORWAY_TYPES
 
         # extract junction coordinates
         raw_coordinates = {}
