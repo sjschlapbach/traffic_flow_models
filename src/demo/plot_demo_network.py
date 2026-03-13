@@ -69,7 +69,7 @@ def build_and_plot_network():
     n3 = Node(incoming=[m3], outgoing=[destination_main])
     n3.position = (2.5, 0.0)
 
-    net = Network(nodes=[n0, n1, n2, n3])
+    net = Network(nodes=[n0, nonr, n1, n2, n3, noffr])
 
     return net
 
