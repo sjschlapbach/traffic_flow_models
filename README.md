@@ -27,56 +27,75 @@ pip install traffic-flow-models
 
 If you plan to use the pipeline components involving SUMO (e.g. for benchmarking highway networks of a specific city), please refer to the [SUMO installation guide](https://sumo.dlr.de/docs/Installing/index.html) for instructions on how to install SUMO on your system (not included in the package).
 
-For the pipeline to be fully functional, auxiliary command line commands such as `netconvert` and `sumo` need to be accessible from your system PATH. For installations on MacOS the SUMO installer might not set the SUMO_HOME environment variable automatically / correctly. We recommend checking manually that the variable is set to your library installation (something like `/Library/Frameworks/EclipseSUMO.framework/Versions/Current/EclipseSUMO/share/sumo`).
+For the pipeline to be fully functional, auxiliary command line commands such as `netconvert` and `sumo` need to be accessible from your system PATH. For installations on macOS the SUMO installer might not set the SUMO_HOME environment variable automatically / correctly. We recommend checking manually that the variable is set to your library installation (something like `/Library/Frameworks/EclipseSUMO.framework/Versions/Current/EclipseSUMO/share/sumo`).
 
 ## Usage Examples
 
 ### Creating a Network
 
-Networks are built using nodes that connect motorway links, onramps, offramps, origins, and destinations:
+Networks are built using nodes that connect motorway links, onramps, offramps, origins, and destinations. Onramps should be fed by their own origin via an upstream node, and every offramp should lead into a downstream node whose single outgoing link is a destination:
 
 ```python
 from traffic_flow_models import (
-    Network, Node, MotorwayLink, Onramp, Origin, Destination, Simulation
+    Network, Node, MotorwayLink, Onramp, Offramp, Origin, Destination
 )
 
-# Create network components
-origin = Origin(id="origin")
-destination = Destination(id="destination")
+# Create entry/exit points
+o_main = Origin(id="o_main")
+o_ramp = Origin(id="o_ramp")
+d_main = Destination(id="d_main")
+d_off = Destination(id="d_off")
 
-# Define motorway links
+# Define motorway and ramp links
 m1 = MotorwayLink(
-    id="m1", length=1.0, lanes=3, lane_capacity=2000,
+    id="m1", length=1.2, lanes=3, lane_capacity=2000,
     free_flow_speed=100, jam_density=180
 )
 m2 = MotorwayLink(
-    id="m2", length=2.0, lanes=3, lane_capacity=2000,
+    id="m2", length=1.0, lanes=3, lane_capacity=2000,
     free_flow_speed=100, jam_density=180
 )
-
-# Create onramp
-onramp = Onramp(
-    id="onramp", lanes=1, lane_capacity=2000,
+m3 = MotorwayLink(
+    id="m3", length=1.5, lanes=3, lane_capacity=2000,
     free_flow_speed=100, jam_density=180
 )
+r1 = Onramp(
+    id="r1", lanes=1, lane_capacity=1800,
+    free_flow_speed=90, jam_density=170
+)
+f1 = Offramp(
+    id="f1", lanes=1, lane_capacity=1500,
+    free_flow_speed=80, jam_density=160
+)
 
-# Connect components using nodes
-n0 = Node(id="n0", incoming=[origin], outgoing=[m1])
-n0.position = (0.0, 0.0)
+# Connect components using nodes (with positions for visualization)
+n_entry = Node(id="n_entry", incoming=[o_main], outgoing=[m1])
+n_entry.position = (0.0, 0.0)
 
-n1 = Node(id="n1", incoming=[m1, onramp], outgoing=[m2])
-n1.position = (1.0, 0.0)
+n_ramp = Node(id="n_ramp", incoming=[o_ramp], outgoing=[r1])
+n_ramp.position = (0.4, -0.1)
 
-n2 = Node(id="n2", incoming=[m2], outgoing=[destination])
-n2.position = (3.0, 0.0)
+n_merge = Node(id="n_merge", incoming=[m1, r1], outgoing=[m2])
+n_merge.position = (1.0, 0.0)
 
-# Build the network
-network = Network(nodes=[n0, n1, n2])
+n_split = Node(id="n_split", incoming=[m2], outgoing=[m3, f1])
+n_split.position = (2.0, 0.0)
+
+n_off = Node(id="n_off", incoming=[f1], outgoing=[d_off])
+n_off.position = (2.3, -0.2)
+
+n_exit = Node(id="n_exit", incoming=[m3], outgoing=[d_main])
+n_exit.position = (3.0, 0.0)
+
+# Build the network (place a junction first so the connectivity check sees every branch)
+network = Network(
+    nodes=[n_merge, n_entry, n_ramp, n_split, n_off, n_exit]
+)
 ```
 
 ### Running Simulations
 
-Simulations use dictionaries of time-dependent demand functions:
+Simulations use dictionaries of time-dependent demand functions. Ramp inflows are modeled as additional origins that feed their onramp through a node:
 
 ```python
 from traffic_flow_models import CTM, METANET, METANETParams, Simulation
@@ -84,28 +103,31 @@ from typing import Callable
 
 # Define demand functions
 def mainline_demand(t: float) -> float:
-    return 4000.0 if t < 1.0 else 3000.0
+    return 4200.0 if t < 0.8 else 3200.0
 
-def onramp_demand(t: float) -> float:
-    return 2000.0 if 0.25 < t < 0.75 else 500.0
+def ramp_demand(t: float) -> float:
+    return 1800.0 if 0.2 < t < 0.9 else 400.0
 
-# Map demands to network components
+# Map demands to network components (origins only)
 origin_demands: dict[str, Callable[[float], float]] = {
-    "origin": mainline_demand
-}
-onramp_demands: dict[str, Callable[[float], float]] = {
-    "onramp": onramp_demand
+    "o_main": mainline_demand,
+    "o_ramp": ramp_demand,
 }
 destination_flow_bc: dict[str, Callable[[float], float]] = {
-    "destination": lambda t: 6000.0
+    "d_main": lambda t: 7000.0,
+    "d_off": lambda t: 2000.0,
 }
 destination_density_bc: dict[str, Callable[[float], float]] = {
-    "destination": lambda t: 0.0
+    "d_main": lambda t: 0.0,
+    "d_off": lambda t: 0.0,
 }
 turning_rates: dict[str, Callable[[float], dict[str, float]]] = {
-    "n0": lambda t: {"m1": 1.0},
-    "n1": lambda t: {"m2": 1.0},
-    "n2": lambda t: {"destination": 1.0}
+    "n_entry": lambda t: {"m1": 1.0},
+    "n_ramp": lambda t: {"r1": 1.0},
+    "n_merge": lambda t: {"m2": 1.0},
+    "n_split": lambda t: {"m3": 0.8, "f1": 0.2},
+    "n_off": lambda t: {"d_off": 1.0},
+    "n_exit": lambda t: {"d_main": 1.0},
 }
 
 # CTM simulation
@@ -116,12 +138,11 @@ time, states, disturbances = sim.run(
     dt=10.0/3600,
     preferred_cell_size=0.5,
     origin_demands=origin_demands,
-    onramp_demands=onramp_demands,
     turning_rates=turning_rates,
     destination_flow_bc=destination_flow_bc,
     destination_density_bc=destination_density_bc,
     plot_results=True,
-    results_dir="results/ctm_run"
+    results_dir="results/ctm_run",
 )
 
 # METANET simulation with parameters
@@ -132,7 +153,7 @@ model_params: METANETParams = {
     "kappa": 10,
     "delta": 1.4,
     "phi": 10,
-    "alpha": 2
+    "alpha": 2,
 }
 
 sim = Simulation(network, metanet, model_params)
@@ -141,12 +162,11 @@ time, states, disturbances = sim.run(
     dt=10.0/3600,
     preferred_cell_size=0.5,
     origin_demands=origin_demands,
-    onramp_demands=onramp_demands,
     turning_rates=turning_rates,
     destination_flow_bc=destination_flow_bc,
     destination_density_bc=destination_density_bc,
     plot_results=True,
-    results_dir="results/metanet_run"
+    results_dir="results/metanet_run",
 )
 ```
 

@@ -795,7 +795,7 @@ class CTM:
                         )
                     elif isinstance(inc, Offramp):
                         # compute outflow of the upstream node directed into this motorway link
-                        upstream_node_outflow_link = self._get_node_outflow_link(
+                        offramp_inflow = self._get_node_outflow_link(
                             network=network,
                             splits=splits,
                             link=inc,
@@ -806,7 +806,7 @@ class CTM:
                         # the forwarded demand and the allowed flow
                         next_offramp_queues[inc.id] = update_queue(
                             queue_length=offramp_queues[inc.id],
-                            demand=upstream_node_outflow_link,
+                            demand=offramp_inflow,
                             flow=next_flows[inc.id],
                             dt=dt,
                         )
