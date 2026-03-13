@@ -22,8 +22,8 @@ class Offramp:
         free_flow_speed: float,
         jam_density: float,
         id: str | None = None,
-        destination: Destination | None = None,
         origin_node_id: str | None = None,
+        destination_node_id: str | None = None,
     ) -> None:
         """Initialize the Offramp parameters.
 
@@ -32,8 +32,9 @@ class Offramp:
             lane_capacity: Vehicles per hour per lane capacity.
             free_flow_speed: Free-flow speed in km/h.
             jam_density: Jam density in vehicles per km per lane.
-            destination: Optional `Destination` instance to link the offramp to.
             origin_node_id: Optional identifier for the origin node
+                to which this offramp is connected.
+            destination_node_id: Optional identifier for the destination node
                 to which this offramp is connected.
         """
 
@@ -57,5 +58,6 @@ class Offramp:
         self.Qc: float = lane_capacity * lanes  # total capacity in vehicles per hour
         self.vf: float = free_flow_speed  # in kilometers per hour
         self.rho_jam: float = jam_density  # in vehicles per kilometer per lane
-        self.destination: Destination | None = destination
+
         self.origin_node_id: str | None = origin_node_id
+        self.destination_node_id: str | None = destination_node_id

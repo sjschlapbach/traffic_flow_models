@@ -34,14 +34,6 @@ class Network:
     links. Additionally, it is responsible for validating the structure of a network
     before simulation and the initialization of all necessary parameters (including
     demands, split ratios, densities downstream of destinations, etc.).
-
-    Requirements:
-        - Each network must have at least one origin link or onramp
-        - Each network must have at least one destination
-        - Each offramp needs to be connected to a destination
-        - Each node needs to have at least one incoming and one outgoing link
-          (including origins and destinations beyond regular links)
-        - All nodes in the network must be connected through links (no unconnected components)
     """
 
     # ! Initialization and basic methods
@@ -313,11 +305,6 @@ class Network:
                             f"Initial queue for offramp {link.id} must be a scalar."
                         )
 
-                    # count destination connected to offramp for disturbance vector sizing
-                    # flows are not tracked explicitly for offramp destinations
-                    if link.destination is not None:
-                        num_destinations += 1
-
                 elif isinstance(link, Destination):
                     init_flow = flow_dict[link.id]
                     num_destinations += 1
@@ -428,36 +415,6 @@ class Network:
                     else:
                         raise ValueError(
                             f"Density boundary condition for destination {link.id} must be provided."
-                        )
-
-                if isinstance(link, Offramp):
-                    if link.destination is not None:
-                        dest_id = link.destination.id
-                        if dest_id in flow_boundary_condition_dict:
-                            d = np.concatenate(
-                                (d, np.array([flow_boundary_condition_dict[dest_id]]))
-                            )
-                        else:
-                            raise ValueError(
-                                f"Flow boundary condition for destination {dest_id} (connected to offramp {link.id}) must be provided."
-                            )
-
-                        if dest_id in density_boundary_condition_dict:
-                            d = np.concatenate(
-                                (
-                                    d,
-                                    np.array(
-                                        [density_boundary_condition_dict[dest_id]]
-                                    ),
-                                )
-                            )
-                        else:
-                            raise ValueError(
-                                f"Density boundary condition for destination {dest_id} (connected to offramp {link.id}) must be provided."
-                            )
-                    else:
-                        raise ValueError(
-                            f"Offramp {link.id} has no destination assigned."
                         )
 
         return d
@@ -658,30 +615,6 @@ class Network:
                     density_boundary_conditions[link.id] = d[i_disturbance]
                     i_disturbance += 1
 
-                if isinstance(link, Offramp):
-                    if link.destination is not None:
-                        if i_disturbance + 1 > disturbance_size:
-                            raise ValueError(
-                                "Disturbance vector too short to extract all destination flow boundary conditions."
-                            )
-
-                        flow_boundary_conditions[link.destination.id] = d[i_disturbance]
-                        i_disturbance += 1
-
-                        if i_disturbance + 1 > disturbance_size:
-                            raise ValueError(
-                                "Disturbance vector too short to extract all destination density boundary conditions."
-                            )
-
-                        density_boundary_conditions[link.destination.id] = d[
-                            i_disturbance
-                        ]
-                        i_disturbance += 1
-                    else:
-                        raise ValueError(
-                            f"Offramp {link.id} has no destination assigned."
-                        )
-
         return (
             origin_demands,
             turning_rates,
@@ -700,7 +633,7 @@ class Network:
         Requirements validated:
             - Each network must have at least one origin link
             - Each network must have at least one destination
-            - Each offramp needs to be connected to a destination
+            - Each offramp needs to be connected to a destination through a node
             - A node connected to an origin may only have one outgoing link (motorway link or onramp)
             - Each onramp needs to be connected to an origin through a node upstream
             - Each node needs to have at least one incoming and one outgoing link
@@ -735,9 +668,6 @@ class Network:
                 if isinstance(link, Destination):
                     has_destination = True
                     dests.add(link)
-                if isinstance(link, Offramp) and link.destination is not None:
-                    has_destination = True
-                    dests.add(link.destination)
 
         if not has_origin:
             raise ValueError("Network must contain at least one origin link.")
@@ -784,12 +714,21 @@ class Network:
                         f"Node {node.id} has an onramp incoming link but its outgoing link is not a motorway link."
                     )
 
-        # check that every offramp has a destination
+        # check that every offramp is connected to a node downstream that has a single destination as an outgoing link
         for node in self.list_nodes():
-            for link in list(node.incoming) + list(node.outgoing):
-                if isinstance(link, Offramp):
-                    if link.destination is None:
-                        raise ValueError("Offramp is not connected to a destination.")
+            if any(isinstance(link, Offramp) for link in node.incoming):
+                # nodes downstream of offramps should only be connected to the offramp (incoming) and a destination (outgoing)
+                if len(node.outgoing) != 1 or len(node.incoming) != 1:
+                    raise ValueError(
+                        f"Node {node.id} has an offramp incoming link but does not have exactly one incoming and one outgoing link."
+                    )
+
+                # check that the outgoing link is a destination
+                outgoing_link = node.outgoing[0]
+                if not isinstance(outgoing_link, Destination):
+                    raise ValueError(
+                        f"Node {node.id} has an offramp incoming link but its outgoing link is not a destination."
+                    )
 
         # connectivity: use two DFS passes (original and reversed edges)
         # build adjacency (directed) between nodes: A -> B if any link in A.outgoing is in B.incoming
@@ -1210,10 +1149,6 @@ class Network:
                             f.write(
                                 f"      Lanes: {link.lanes}, Capacity: {link.Qc} veh/h\n"
                             )
-                            if link.destination is not None:
-                                f.write(
-                                    f"      Connected Destination: {link.destination.id}\n"
-                                )
                         elif isinstance(link, Destination):
                             f.write("      (Network exit point)\n")
                 else:
@@ -1285,7 +1220,7 @@ class Network:
                 "free_flow_speed": link.vf,
                 "jam_density": link.rho_jam,
                 "origin_node_id": link.origin_node_id,
-                "destination_id": link.destination.id if link.destination else None,
+                "destination_node_id": link.destination_node_id,
             }
 
         raise TypeError(
@@ -1312,11 +1247,6 @@ class Network:
                 if getattr(link, "id", None) in links_map:
                     continue
                 links_map[link.id] = link
-
-                # also collect offramp destinations (not in node links)
-                if isinstance(link, Offramp) and link.destination is not None:
-                    if link.destination.id not in links_map:
-                        links_map[link.destination.id] = link.destination
 
         payload = {
             "nodes": [
@@ -1357,7 +1287,6 @@ class Network:
         links_by_id: dict[
             str, MotorwayLink | Origin | Onramp | Offramp | Destination
         ] = {}
-        pending_offramp_dest: list[tuple[Offramp, str | None]] = []
 
         for entry in links_data:
             l_type = entry.get("type")
@@ -1399,29 +1328,13 @@ class Network:
                     free_flow_speed=entry["free_flow_speed"],
                     jam_density=entry["jam_density"],
                     id=entry["id"],
-                    destination=None,
                     origin_node_id=entry["origin_node_id"],
+                    destination_node_id=entry["destination_node_id"],
                 )
-                pending_offramp_dest.append((link_obj, entry.get("destination_id")))
             else:
                 raise ValueError(f"Unknown link type in JSON: {l_type}")
 
             links_by_id[link_obj.id] = link_obj
-
-        # resolve offramp destinations now that all links exist
-        for offr, dest_id in pending_offramp_dest:
-            if dest_id is not None:
-                dest_link = links_by_id.get(dest_id)
-                if isinstance(dest_link, Destination):
-                    offr.destination = dest_link
-                else:
-                    raise ValueError(
-                        f"Offramp {offr.id} references destination ID {dest_id} which is not a valid Destination link."
-                    )
-            else:
-                raise ValueError(
-                    f"Offramp {offr.id} does not have a destination_id specified in the JSON."
-                )
 
         nodes: list[Node] = []
         for node_entry in nodes_data:

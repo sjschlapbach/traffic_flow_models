@@ -263,6 +263,7 @@ def setup_network_d() -> tuple[Network, dict]:
     origin = Origin(id="origin")
     origin_onr = Origin(id="origin_onr")
     destination = Destination(id="destination")
+    destination_offr = Destination(id="destination_offr")
     onr = Onramp(
         id="onramp",
         lanes=1,
@@ -277,7 +278,6 @@ def setup_network_d() -> tuple[Network, dict]:
         lane_capacity=2000,
         free_flow_speed=100,
         jam_density=180,
-        destination=destination,
     )
 
     # connect the links through nodes and build the network structure
@@ -293,10 +293,13 @@ def setup_network_d() -> tuple[Network, dict]:
     n2 = Node(id="n2", incoming=[m2], outgoing=[m3, offr])
     n2.position = (2.0, 0.0)
 
+    noffr = Node(id="noffr", incoming=[offr], outgoing=[destination_offr])
+    noffr.position = (2.2, -0.1)
+
     n3 = Node(id="n3", incoming=[m3], outgoing=[destination])
     n3.position = (3.5, 0.0)
 
-    net = Network(nodes=[n0, nonr, n1, n2, n3])
+    net = Network(nodes=[n0, nonr, n1, n2, n3, noffr])
 
     # splits at node2: motorway keeps 0.8, offramp 0.2
     splits = {
@@ -305,6 +308,7 @@ def setup_network_d() -> tuple[Network, dict]:
         n1.id: {m2.id: 1.0},
         n2.id: {m3.id: 0.8, offr.id: 0.2},
         n3.id: {destination.id: 1.0},
+        noffr.id: {destination_offr.id: 1.0},
     }
 
     metadata = {
@@ -312,7 +316,7 @@ def setup_network_d() -> tuple[Network, dict]:
         "onramp_ids": [onr.id],
         "motorway_ids": [m1.id, m2.id, m3.id],
         "offramp_ids": [offr.id],
-        "destination_ids": [destination.id],
+        "destination_ids": [destination.id, destination_offr.id],
         "splits": splits,
     }
 

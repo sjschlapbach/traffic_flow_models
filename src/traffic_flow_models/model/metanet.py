@@ -737,15 +737,10 @@ class METANET:
 
                 elif isinstance(out_link, Offramp):
                     # offramp link: the store-and-forward model does not model density / speed on offramps
-                    # -> directly use the boundary condition of the connected destination as downstream density
-                    if out_link.destination is None:
-                        raise ValueError(
-                            f"Offramp {out_link.id} does not have a destination defined."
-                        )
-
-                    out_densities.append(
-                        density_boundary_conditions[out_link.destination.id]
-                    )
+                    # -> free flow conditions are assumed for traffic entering this link from the mainline
+                    # -> if the boundary condition is too restrictive, a virtual queue will form on the offramp
+                    # (no density is defined for the offramp in the case of multiple outgoing links)
+                    continue
 
                 elif isinstance(out_link, Destination):
                     # destination link: density is provided as boundary condition
@@ -760,10 +755,15 @@ class METANET:
                 else:
                     raise TypeError(f"Unknown outgoing link type {type(out_link)}")
 
-            # combine the different downstream densities (e.g., weighted average)
-            numer = casadi.sum(casadi.vertcat(*[d**2 for d in out_densities]))
-            denom = casadi.sum(casadi.vertcat(*out_densities))
-            node_downstream_density = casadi.if_else(denom == 0, 0, numer / denom)
+            if len(out_densities) == 0:
+                # if only offramps were present as outgoing links at the
+                # current node, assume downstream free flow conditions
+                node_downstream_density = casadi.SX(0)
+            else:
+                # combine the different downstream densities (e.g., weighted average)
+                numer = casadi.sum(casadi.vertcat(*[d**2 for d in out_densities]))
+                denom = casadi.sum(casadi.vertcat(*out_densities))
+                node_downstream_density = casadi.if_else(denom == 0, 0, numer / denom)
 
             # for multiple outgoing links, the virtual downstream jam density
             # and backward wave speed are not well-defined
@@ -789,15 +789,9 @@ class METANET:
 
             elif isinstance(out_link, Offramp):
                 # offramp link: the store-and-forward model does not model density / speed on offramps
-                # -> directly use the boundary condition of the connected destination as downstream density
-                if out_link.destination is None:
-                    raise ValueError(
-                        f"Offramp {out_link.id} does not have a destination defined."
-                    )
-
-                node_downstream_density = density_boundary_conditions[
-                    out_link.destination.id
-                ]
+                # -> free flow conditions are assumed for traffic entering this link from the mainline
+                # -> if the boundary condition is too restrictive, a virtual queue will form on the offramp
+                node_downstream_density = casadi.SX(10.0)
                 node_downstream_jam_density = None  # no downstream jam density defined -> handling on calling level required
                 node_downstream_backward_wave_speed = None  # no downstream backward wave speed defined -> handling on calling level required
 
@@ -863,6 +857,11 @@ class METANET:
                     min(inc.vf for inc in node.incoming if isinstance(inc, Onramp))
                 )
 
+            # for incoming offramps, assume free flow speed -> outflow to destination should
+            # not be restricted through upstream effects -> accept all discharged flow from the offramp
+            elif len(node.incoming) == 1 and isinstance(node.incoming[0], Offramp):
+                node_upstream_speed = casadi.SX(node.incoming[0].vf)
+
             # if only an origin is connected as an incoming link (and correspondingly only one outgoing
             # motorway link or onramp is allowed), choose the free-flow speed of the outgoing motorway link
             # or onramp for consistency (origin does not have free flow speed defined)
@@ -913,7 +912,7 @@ class METANET:
         offramp: Offramp,
         node_outflows: dict[str, casadi.SX],
         offramp_queues: dict[str, casadi.SX],
-        density_boundary_conditions: dict[str, casadi.SX],
+        density_boundary_condition: casadi.SX,
         dt: float,
     ) -> Tuple[casadi.SX, casadi.SX]:
         """Compute offramp outflow and update the offramp store-and-forward queue.
@@ -932,8 +931,8 @@ class METANET:
                 to the desired outflow at the node (CasADi SX).
             offramp_queues (dict[str, casadi.SX]): Current queue lengths on
                 offramps (CasADi SX).
-            density_boundary_conditions (dict[str, casadi.SX]): Mapping of destination
-                id to boundary density (CasADi SX) used as downstream density.
+            density_boundary_condition (casadi.SX): Downstream virtual density
+                constraint of the connected destination (vehicles / length / lane)
             dt (float): Simulation timestep.
 
         Returns:
@@ -945,15 +944,9 @@ class METANET:
         Raises:
             ValueError: If the `offramp` does not have a `destination` defined.
         """
-        if offramp.destination is None:
-            raise ValueError(
-                f"Offramp {offramp.id} does not have a destination defined."
-            )
-
         mainline_outflow = node_outflows[
             offramp.id
         ]  # desired offramp flow based on splits = flow onto offramp (queue on offramp itself)
-        offramp_demand = mainline_outflow + offramp_queues[offramp.id] / dt
 
         # update the offramp flow and queue based on the store-and-forward model
         next_outflow, next_queue = store_and_forward_update(
@@ -967,8 +960,8 @@ class METANET:
                 jam_density=offramp.rho_jam,
                 free_flow_speed=offramp.vf,
             ),
-            density=density_boundary_conditions[offramp.destination.id],
-            demand=offramp_demand,
+            density=density_boundary_condition,
+            demand=mainline_outflow,  # (additional demand from queue added automatically)
             queue=offramp_queues[offramp.id],
             dt=dt,
         )
@@ -1427,6 +1420,27 @@ class METANET:
                     next_flows[out.id] = next_node_outflows[out.id]
 
                 elif isinstance(out, Offramp):
+                    # fetch the node downstream of the offramp and the connected destination
+                    # in order to identify the correct downstream density boundary condition
+                    if out.destination_node_id is None:
+                        raise ValueError(
+                            f"Offramp {out.id} does not have a well-defined destination node."
+                        )
+                    offramp_downstream_node = network.get_node(out.destination_node_id)
+                    if offramp_downstream_node is None:
+                        raise ValueError(
+                            f"Offramp {out.id} has invalid destination node id {out.destination_node_id}."
+                        )
+                    if len(offramp_downstream_node.outgoing) != 1 or not isinstance(
+                        offramp_downstream_node.outgoing[0], Destination
+                    ):
+                        raise ValueError(
+                            f"Offramp {out.id} is not connected to a single destination downstream."
+                        )
+
+                    destination = offramp_downstream_node.outgoing[0]
+                    destination_density_bc = density_boundary_conditions[destination.id]
+
                     # previous-step flows are used for the computation of the next-step offramp
                     # flow and queue since the offramp keeps its own flow state and queue with
                     # store-and-forward dynamics
@@ -1435,7 +1449,7 @@ class METANET:
                         offramp=out,
                         node_outflows=node_outflows,
                         offramp_queues=offramp_queues,
-                        density_boundary_conditions=density_boundary_conditions,
+                        density_boundary_condition=destination_density_bc,
                         dt=dt,
                     )
 

@@ -1,7 +1,7 @@
 import casadi
 from typing import Tuple, Union
 
-from traffic_flow_models.network import Node, Origin, Onramp, MotorwayLink
+from traffic_flow_models.network import Node, Origin, Onramp, Offramp, MotorwayLink
 
 
 def store_and_forward_update(
@@ -109,6 +109,9 @@ def compute_node_outflows(
             Qn += flows[inc.id][0]
         elif isinstance(inc, Onramp):
             # onramp link: use the flow entering the onramp (from state vector) - demand -> flow update separate
+            Qn += flows[inc.id][0]
+        elif isinstance(inc, Offramp):
+            # offramp link: use the flow entering the offramp (from state vector) - demand -> flow update separate
             Qn += flows[inc.id][0]
         else:
             raise TypeError("Unknown incoming link type")
