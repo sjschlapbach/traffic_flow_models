@@ -542,15 +542,15 @@ class TestMETANET:
             lanes=1, lane_capacity=2000, free_flow_speed=100, jam_density=180
         )
         dest = Destination()
-        offramp.destination = dest
 
         # create circular topology
         node1 = Node(id="n1", incoming=[origin], outgoing=[link1])
         node2 = Node(id="n2", incoming=[link1, link4], outgoing=[link2])  # loop closure
         node3 = Node(id="n3", incoming=[link2], outgoing=[link3, offramp])
         node4 = Node(id="n4", incoming=[link3], outgoing=[link4])
+        node_off = Node(id="n_off", incoming=[offramp], outgoing=[dest])
 
-        network = Network(nodes=[node1, node2, node3, node4])
+        network = Network(nodes=[node1, node2, node3, node4, node_off])
 
         # partition links
         link1.partition_link(preferred_cell_size=0.5, dt=dt)
@@ -607,6 +607,7 @@ class TestMETANET:
             node2.id: lambda t: {link2.id: 1.0},
             node3.id: lambda t: {link3.id: 0.9, offramp.id: 0.1},  # 10% exit
             node4.id: lambda t: {link4.id: 1.0},
+            node_off.id: lambda t: {dest.id: 1.0},
         }
 
         # run short simulation

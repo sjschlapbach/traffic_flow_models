@@ -56,7 +56,7 @@ class Node:
         """
         Return a tuple of allowed types for incoming links.
         """
-        return (MotorwayLink, Onramp, Origin)
+        return (MotorwayLink, Onramp, Offramp, Origin)
 
     def _allowed_outgoing_types(self):
         """

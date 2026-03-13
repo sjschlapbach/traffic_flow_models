@@ -326,6 +326,7 @@ class TestVisualization:
         origin = Origin(id="o1")
         ramp_origin = Origin(id="o_on")
         dest = Destination(id="d1")
+        dest_off = Destination(id="d_off")
         onramp = Onramp(
             id="on1",
             lanes=1,
@@ -340,7 +341,6 @@ class TestVisualization:
             free_flow_speed=80.0,
             jam_density=160.0,
         )
-        offramp.destination = Destination(id="d_off")
 
         # separate nodes for onramp and offramp to satisfy validation rules
         node1 = Node(id="n1", incoming=[origin], outgoing=[main1])
@@ -348,6 +348,7 @@ class TestVisualization:
         node2 = Node(id="n2", incoming=[main1, onramp], outgoing=[main2])
         node3 = Node(id="n3", incoming=[main2], outgoing=[main3, offramp])
         node4 = Node(id="n4", incoming=[main3], outgoing=[dest])
+        node_off = Node(id="n_off", incoming=[offramp], outgoing=[dest_off])
 
         # set positions
         node1.set_position(0.0, 0.0)
@@ -355,8 +356,9 @@ class TestVisualization:
         node2.set_position(1.0, 0.0)
         node3.set_position(2.0, 0.0)
         node4.set_position(3.0, 0.0)
+        node_off.set_position(2.2, -0.4)
 
-        net = Network(nodes=[node2, node1, node_ramp, node3, node4])
+        net = Network(nodes=[node2, node1, node_ramp, node3, node4, node_off])
         net.validate()
 
         # partition links
@@ -375,14 +377,17 @@ class TestVisualization:
                 origin.id: lambda t: 1000.0,
                 ramp_origin.id: lambda t: 500.0,
             },
-            turning_rates={node3.id: lambda t: {offramp.id: 0.2, main3.id: 0.8}},
+            turning_rates={
+                node3.id: lambda t: {offramp.id: 0.2, main3.id: 0.8},
+                node_off.id: lambda t: {dest_off.id: 1.0},
+            },
             destination_flow_bc={
                 dest.id: lambda t: 6000.0,
-                offramp.destination.id: lambda t: 6000.0,
+                dest_off.id: lambda t: 6000.0,
             },
             destination_density_bc={
                 dest.id: lambda t: 0.0,
-                offramp.destination.id: lambda t: 0.0,
+                dest_off.id: lambda t: 0.0,
             },
         )
 

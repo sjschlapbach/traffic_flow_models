@@ -501,39 +501,8 @@ class Simulation:
                     else:
                         link_speeds_dict[link.id] = np.full(num_cells, link.vf)
 
-                # for offramps, make sure a boundary condition is defined for the connected destination
-                # destinations with missing boundary conditions are assigned a constant zero function (downstream in free-flow)
-                # additionally, initialize offramp flows and queues
+                # for offramps initialize offramp flows and queues
                 if isinstance(link, Offramp):
-                    if link.destination is not None:
-                        dest_id = link.destination.id
-                        if dest_id not in destination_flow_bc:
-                            raise ValueError(
-                                f"Destination flow boundary condition function for destination {dest_id} (connected to offramp {link.id}) not provided and cannot be inferred."
-                            )
-                        else:
-                            destination_flow_bc_dict[dest_id] = destination_flow_bc[
-                                dest_id
-                            ]
-
-                        if dest_id not in destination_density_bc:
-                            warnings.warn(
-                                f"Destination density boundary condition function for destination {dest_id} (connected to offramp {link.id}) not provided. Assuming downstream free flow conditions (zero density).",
-                                stacklevel=2,
-                            )
-                            # capture dest_id to avoid late-binding (if lambda ever uses it)
-                            destination_density_bc_dict[dest_id] = (
-                                lambda _, dest_id=dest_id: 0.0
-                            )
-                        else:
-                            destination_density_bc_dict[dest_id] = (
-                                destination_density_bc[dest_id]
-                            )
-                    else:
-                        raise ValueError(
-                            f"Offramp {link.id} has no destination assigned."
-                        )
-
                     if initial_flows is not None and link.id in initial_flows:
                         init_flow = initial_flows[link.id]
                         if isinstance(init_flow, np.ndarray):
@@ -2213,7 +2182,7 @@ class Simulation:
             axes[0].set_ylim([0, max_inflow * 1.1 if max_inflow > 0 else 2500])
             axes[0].set_xlabel("time (s)")
             axes[0].set_ylabel("flow (veh/h)")
-            axes[0].set_title("Incoming Flows")
+            axes[0].set_title("Incoming Flows (last segment of incoming links)")
             axes[0].legend(fontsize="small", frameon=False)
         else:
             axes[0].text(
@@ -2256,7 +2225,7 @@ class Simulation:
             axes[1].set_ylim([0, max_outflow * 1.1 if max_outflow > 0 else 2500])
             axes[1].set_xlabel("time (s)")
             axes[1].set_ylabel("flow (veh/h)")
-            axes[1].set_title("Outgoing Flows")
+            axes[1].set_title("Outgoing Flows (first segment of outgoing links)")
             axes[1].legend(fontsize="small", frameon=False)
         else:
             axes[1].text(

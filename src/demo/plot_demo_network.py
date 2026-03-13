@@ -32,6 +32,7 @@ def build_and_plot_network():
     )
 
     origin = Origin()
+    origin_onramp = Origin()
     destination_main = Destination(id=None)
     destination_off = Destination(id=None)
 
@@ -48,11 +49,13 @@ def build_and_plot_network():
         lane_capacity=2000,
         free_flow_speed=100,
         jam_density=180,
-        destination=destination_off,
     )
 
     n0 = Node(incoming=[origin], outgoing=[m1])
     n0.position = (0.0, 0.0)
+
+    nonr = Node(incoming=[origin_onramp], outgoing=[onr])
+    nonr.position = (0.9, 0.1)
 
     n1 = Node(incoming=[m1, onr], outgoing=[m2])
     n1.position = (1.0, 0.0)
@@ -60,10 +63,13 @@ def build_and_plot_network():
     n2 = Node(incoming=[m2], outgoing=[m3, offr])
     n2.position = (2.0, 0.0)
 
+    noffr = Node(incoming=[offr], outgoing=[destination_off])
+    noffr.position = (2.2, -0.1)
+
     n3 = Node(incoming=[m3], outgoing=[destination_main])
     n3.position = (2.5, 0.0)
 
-    net = Network(nodes=[n0, n1, n2, n3])
+    net = Network(nodes=[n0, nonr, n1, n2, n3, noffr])
 
     return net
 
