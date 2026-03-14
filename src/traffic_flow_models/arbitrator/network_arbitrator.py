@@ -314,11 +314,13 @@ class NetworkArbitrator:
         #         f"Filter priorities: {self.hwy_filter}"
         #     )
 
+        self.selected_types = NetworkArbitrator.MOTORWAY_TYPES
+        
         if not any(t in self.found_types for t in NetworkArbitrator.MOTORWAY_TYPES):
             raise ValueError(
                 f"No motorway edges found in network '{self.path}'."
             )
-        self.selected_types = NetworkArbitrator.MOTORWAY_TYPES
+       
 
         # extract junction coordinates
         raw_coordinates = {}
