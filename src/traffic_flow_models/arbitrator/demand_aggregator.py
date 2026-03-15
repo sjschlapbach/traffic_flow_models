@@ -169,6 +169,7 @@ class DemandAggregator:
         self,
         origin_ids: list[str],
         onramp_ids: list[str],
+        backbone_node_ids: set[str],
         sumo_network_path: str,
     ) -> dict[str, Callable[[float], float]]:
         """Aggregate detector data feeding into macroscopic entry points.
@@ -197,17 +198,21 @@ class DemandAggregator:
         origin_demands: dict[str, Callable[[float], float]] = {}
 
         for origin_node in origin_node_ids:
-            upstream_nodes = self._find_upstream_nodes(graph, origin_node)
+            upstream_nodes = self._find_upstream_nodes(
+                graph, origin_node, backbone_node_ids
+            )
             aggregated_bins = self._aggregate_demand(upstream_nodes)
 
             origin_id = f"origin_{origin_node}"
             origin_demands[origin_id] = self._make_demand_function(aggregated_bins)
 
         for onramp_node in onramp_node_ids:
-            upstream_nodes = self._find_upstream_nodes(graph, onramp_node)
+            upstream_nodes = self._find_upstream_nodes(
+                graph, onramp_node, backbone_node_ids
+            )
             aggregated_bins = self._aggregate_demand(upstream_nodes)
 
-            ramp_origin_id = f"origin_onramp_{onramp_node}"
+            ramp_origin_id = f"onramp_{onramp_node}"
             origin_demands[ramp_origin_id] = self._make_demand_function(aggregated_bins)
 
         all_detector_vehicles = sum(
@@ -247,7 +252,9 @@ class DemandAggregator:
 
         return graph
 
-    def _find_upstream_nodes(self, graph: nx.DiGraph, target_node: str) -> set[str]:
+    def _find_upstream_nodes(
+        self, graph: nx.DiGraph, target_node: str, backbone_node_ids: set[str]
+    ) -> set[str]:
         """Find all nodes that have a path leading to the target node.
 
         Identifies all network nodes from which there exists a directed path
@@ -266,6 +273,9 @@ class DemandAggregator:
 
         for node in self.node_intervals.keys():
             if node == target_node:
+                continue
+
+            if node in backbone_node_ids and node != target_node:
                 continue
 
             try:
@@ -328,6 +338,8 @@ class DemandAggregator:
         self,
         origin_ids: list[str],
         onramp_ids: list[str],
+        offramp_ids: list[str],
+        backbone_node_ids: set[str],
         sumo_network_path: str,
     ) -> dict[str, Callable[[float], float]]:
         """Execute the complete demand aggregation pipeline.
@@ -354,4 +366,6 @@ class DemandAggregator:
         self.classify_and_map()
         self.aggregate_spatially()
 
-        return self.aggregate_urban_inflows(origin_ids, onramp_ids, sumo_network_path)
+        return self.aggregate_urban_inflows(
+            origin_ids, onramp_ids, backbone_node_ids, sumo_network_path
+        )
