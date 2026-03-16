@@ -105,6 +105,12 @@ class BackboneStateAggregator:
             self.detector_intervals[det_id].append((begin, count, speed_kmh))
             self.max_time = max(self.max_time, end)
 
+    def reset_state(self) -> None:
+        self.detector_intervals = defaultdict(list)
+        self.detector_mapping = {}
+        self.edge_intervals = defaultdict(list)
+        self.max_time = 0.0
+
     def classify_and_map(self) -> None:
         """Map backbone detector IDs to their edge IDs from the specification CSV.
 
@@ -127,6 +133,9 @@ class BackboneStateAggregator:
                 if not edge_id:
                     continue
 
+                position_str = row.get("position", "").strip()
+                position = float(position_str) if position_str else None
+
                 # support the same ID variants used in other aggregators
                 for variant in [
                     det_id,
@@ -136,39 +145,61 @@ class BackboneStateAggregator:
                     self.detector_mapping[variant] = {
                         "edge_id": edge_id,
                         "type": det_type,
+                        "position": position,
                     }
 
     def aggregate_spatially(self) -> None:
-        """Aggregate lane-level readings into edge-level time series.
-
-        For each SUMO measurement interval the counts from all lanes on the same
-        edge are summed and the speeds are averaged (weighted by vehicle count so
-        that lanes with more vehicles contribute more to the mean).  The result is
-        one ``(begin, total_count, mean_speed_kmh)`` triple per timestamp per edge.
-        """
-        # accumulate per edge per timestamp: {edge_id: {begin: [count, speed_sum, weight]}}
-        edge_time_data: defaultdict[str, defaultdict[float, list]] = defaultdict(
-            lambda: defaultdict(lambda: [0, 0.0, 0])
-        )
+        # accumulate per (edge, position) cross-section per timestamp
+        # structure: {edge_id: {position: {begin: [count_sum, speed_weighted_sum, weight]}}}
+        edge_position_time: defaultdict[
+            str, defaultdict[float | None, defaultdict[float, list]]
+        ] = defaultdict(lambda: defaultdict(lambda: defaultdict(lambda: [0, 0.0, 0])))
 
         for det_id, intervals in self.detector_intervals.items():
             if det_id not in self.detector_mapping:
                 continue
 
-            edge_id = self.detector_mapping[det_id]["edge_id"]
+            mapping = self.detector_mapping[det_id]
+            edge_id = mapping["edge_id"]
+            position = mapping.get("position")
 
             for begin, count, speed_kmh in intervals:
-                bucket = edge_time_data[edge_id][begin]
-                bucket[0] += count  # total count
-                bucket[1] += speed_kmh * count  # weighted speed sum
-                bucket[2] += count  # weight (same as count)
+                bucket = edge_position_time[edge_id][position][begin]
+                bucket[0] += count
+                bucket[1] += speed_kmh * count
+                bucket[2] += count
 
-        for edge_id, time_data in edge_time_data.items():
-            for begin, (total_count, weighted_speed, weight) in sorted(
-                time_data.items()
-            ):
-                mean_speed = weighted_speed / weight if weight > 0 else 0.0
-                self.edge_intervals[edge_id].append((begin, total_count, mean_speed))
+        # for each edge, average across positions then store as edge_intervals
+        for edge_id, position_data in edge_position_time.items():
+            num_positions = len(position_data)
+            if num_positions == 0:
+                continue
+
+            # collect all timestamps across all positions
+            all_timestamps: set[float] = set()
+            for time_data in position_data.values():
+                all_timestamps.update(time_data.keys())
+
+            for begin in sorted(all_timestamps):
+                total_count = 0
+                weighted_speed_sum = 0.0
+                total_weight = 0
+
+                for time_data in position_data.values():
+                    if begin in time_data:
+                        count, wspeed, weight = time_data[begin]
+                        total_count += count
+                        weighted_speed_sum += wspeed
+                        total_weight += weight
+
+                # normalize count by number of positions to avoid length inflation
+                normalized_count = total_count / num_positions
+                mean_speed = (
+                    weighted_speed_sum / total_weight if total_weight > 0 else 0.0
+                )
+                self.edge_intervals[edge_id].append(
+                    (begin, normalized_count, mean_speed)
+                )
 
     def compute_traffic_state(
         self,
@@ -395,6 +426,7 @@ class BackboneStateAggregator:
         Returns:
             Path to the written JSON file.
         """
+        self.reset_state()
         self.parse_detector_output()
         self.classify_and_map()
         self.aggregate_spatially()

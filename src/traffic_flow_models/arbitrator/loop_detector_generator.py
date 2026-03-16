@@ -199,13 +199,12 @@ class LoopDetectorGenerator:
 
     def add_detectors_backbone_network(self) -> int:
         segment_detector_count = 0
-        detector_interval = 10.0  # meters
+        detector_interval = 10.0
 
         backbone_nodes = self._extract_backbone_nodes(
             self.origin_ids, self.onramp_ids, self.destination_ids
         )
 
-        # Collect ramp edge IDs from onramp nodes via XML
         ramp_edges = set()
         tree = ET.parse(self.sumo_network_path)
         root = tree.getroot()
@@ -219,7 +218,12 @@ class LoopDetectorGenerator:
             for onramp_id in self.onramp_ids:
                 node_id = onramp_id.replace("onramp_", "")
                 if from_node == node_id or to_node == node_id:
-                    ramp_edges.add(edge_id)
+                    # only add non-backbone edges as ramp edges (fix finding 4)
+                    is_backbone_edge = (
+                        from_node in backbone_nodes and to_node in backbone_nodes
+                    )
+                    if not is_backbone_edge:
+                        ramp_edges.add(edge_id)
 
         for edge in root.findall("edge"):
             if edge.get("function") == "internal":
@@ -244,6 +248,7 @@ class LoopDetectorGenerator:
                     continue
                 lane_length = float(length_str)
 
+                segment_index = 0  # per-lane position counter (fix finding 3)
                 current_pos = 0.0
                 while current_pos <= lane_length:
                     self.edge_detectors.append(
@@ -252,6 +257,7 @@ class LoopDetectorGenerator:
                             "lane_id": lane_id,
                             "lane_index": lane_idx,
                             "position": current_pos,
+                            "segment_index": segment_index,
                             "type": "backbone_segment",
                             "from_node": from_node,
                             "to_node": to_node,
@@ -260,6 +266,7 @@ class LoopDetectorGenerator:
                     )
                     segment_detector_count += 1
                     current_pos += detector_interval
+                    segment_index += 1
 
         return segment_detector_count
 
@@ -333,6 +340,14 @@ class LoopDetectorGenerator:
 
         return turning_rate_count
 
+    def build_det_id(self, det: dict) -> str:
+        """Build a unique detector ID, appending segment_index for backbone detectors."""
+        det_type = det.get("type", "interface").replace("_", "")
+        base = f"detector_{det_type}_{det['edge_id']}_{det['lane_index']}"
+        if "segment_index" in det:
+            return f"{base}_{det['segment_index']}"
+        return base
+
     def write_detector_xml(self) -> str:
         """Write SUMO loop detector configuration XML file.
 
@@ -349,7 +364,8 @@ class LoopDetectorGenerator:
 
         for det in self.edge_detectors:
             det_type = det.get("type", "interface").replace("_", "")
-            det_id = f"detector_{det_type}_{det['edge_id']}_{det['lane_index']}"
+            # det_id = f"detector_{det_type}_{det['edge_id']}_{det['lane_index']}"
+            det_id = self.build_det_id(det)
 
             detector = ET.SubElement(root, "inductionLoop")
             detector.set("id", det_id)
@@ -388,6 +404,7 @@ class LoopDetectorGenerator:
                     "edge_id",
                     "backbone_node",
                     "diverge_node_id",
+                    "position",
                 ],
             )
             writer.writeheader()
@@ -395,7 +412,8 @@ class LoopDetectorGenerator:
             for det in self.edge_detectors:
                 # include type in detector ID to avoid conflicts between interface and turning rate detectors
                 det_type = det.get("type", "interface").replace("_", "")
-                det_id = f"detector_{det_type}_{det['edge_id']}_{det['lane_index']}"
+                # det_id = f"detector_{det_type}_{det['edge_id']}_{det['lane_index']}"
+                det_id = self.build_det_id(det)
 
                 writer.writerow(
                     {
@@ -406,6 +424,7 @@ class LoopDetectorGenerator:
                         "edge_id": det["edge_id"],
                         "backbone_node": det["node_id"],
                         "diverge_node_id": det.get("diverge_node_id", ""),
+                        "position": det.get("position", ""),
                     }
                 )
 

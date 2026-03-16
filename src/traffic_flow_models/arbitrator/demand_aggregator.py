@@ -329,24 +329,9 @@ class DemandAggregator:
         origin_ids: list[str],
         onramp_ids: list[str],
         sumo_network_path: str,
-    ) -> dict[str, Callable[[float], float]]:
-        """Execute the complete demand aggregation pipeline.
-
-        Orchestrates the full workflow: parsing detector outputs, mapping
-        detectors to nodes, performing spatial aggregation, and computing
-        upstream demand functions for all macroscopic model entry points.
-
-        Args:
-            origin_ids: List of origin node IDs in the network.
-            onramp_ids: List of onramp node IDs in the network.
-            sumo_network_path: Path to the SUMO network XML file.
-
-        Returns:
-            origin_demands: Dictionary mapping origin IDs to demand functions.
-
-        Raises:
-            ValueError: If sumo_network_path is not provided.
-        """
+    ) -> tuple[
+        dict[str, Callable[[float], float]], dict[str, Callable[[float], float]]
+    ]:
         if not sumo_network_path:
             raise ValueError("sumo_network_path is required")
 
@@ -354,4 +339,15 @@ class DemandAggregator:
         self.classify_and_map()
         self.aggregate_spatially()
 
-        return self.aggregate_urban_inflows(origin_ids, onramp_ids, sumo_network_path)
+        all_demands = self.aggregate_urban_inflows(
+            origin_ids, onramp_ids, sumo_network_path
+        )
+
+        origin_demands = {
+            k: v for k, v in all_demands.items() if not k.startswith("origin_onramp_")
+        }
+        onramp_demands = {
+            k: v for k, v in all_demands.items() if k.startswith("origin_onramp_")
+        }
+
+        return origin_demands, onramp_demands

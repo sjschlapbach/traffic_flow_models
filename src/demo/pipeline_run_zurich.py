@@ -94,6 +94,8 @@ if __name__ == "__main__":
         sumo_network_path=pipeline.net_file,
     )
 
+    combined_demands = {**origin_demands, **onramp_demands}
+
     # initialize the results directory
     timestamp = datetime.now().strftime("simulation_results_%Y-%m-%d_%H%M%S")
     results_dir = f"results/{timestamp}"
@@ -129,8 +131,9 @@ if __name__ == "__main__":
         duration=duration,
         dt=dt,
         preferred_cell_size=preferred_cell_size,
-        origin_demands=origin_demands,
-        onramp_demands=onramp_demands,
+        # origin_demands=origin_demands,
+        # onramp_demands=onramp_demands,
+        origin_demands=combined_demands,
         turning_rates=splits,
         destination_density_bc=destination_density_bc,
         destination_flow_bc=destination_flow_bc,

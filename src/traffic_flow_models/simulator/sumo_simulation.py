@@ -64,9 +64,18 @@ class SUMOSimulation:
         Executes the SUMO simulation using the configuration file and prints
         a summary of results if statistics are available.
         """
-        subprocess.run(
-            ["sumo", "-c", os.path.basename(self.cfg_file), "--no-step-log", "true"], check=True, cwd=self.output_dir
-        )
+        # subprocess.run(
+        #     ["sumo", "-c", self.cfg_file, "--no-step-log", "true"], check=True
+        # )
+
+        cmd = [
+            "sumo",
+            "-c",
+            os.path.basename(self.cfg_file),
+            "--no-step-log",
+            "true",
+        ]
+        subprocess.run(cmd, check=True, cwd=self.output_dir)
 
         if os.path.exists(self.stats_file):
             self.print_summary()
