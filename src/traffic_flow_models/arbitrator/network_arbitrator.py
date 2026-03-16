@@ -383,7 +383,7 @@ class NetworkArbitrator:
                 type=edge_type,
             )
 
-        if not any(t in self.found_types for t in NetworkArbitrator.MOTORWAY_TYPES):
+        if "highway.motorway" not in self.found_types:
             raise ValueError(
                 f"No motorway edges found in network '{self.path}'. "
                 f"Available types: {sorted(self.found_types)}"
