@@ -9,7 +9,7 @@ from traffic_flow_models import (
     DemandAggregator,
     Simulation,
 )
-#from backbone_aggregator import BackboneStateAggregator
+from traffic_flow_models.arbitrator.backbone_aggregator import BackboneStateAggregator
 
 if __name__ == "__main__":
     args = argparse.ArgumentParser(description="Run the Zurich demo scenario.")
@@ -88,22 +88,28 @@ if __name__ == "__main__":
     demand_generator = DemandAggregator(
         detector_output_path=detector_output_file, detector_spec_path=spec_file
     )
-    origin_demands = demand_generator.run(
+    origin_demands, onramp_demands = demand_generator.run(
         origin_ids=origin_ids,
         onramp_ids=onramp_ids,
         sumo_network_path=pipeline.net_file,
     )
-    
-    # backbone_state_path = os.path.join(results_dir, "backbone_state.json")
-    # backbone_aggregator = BackboneStateAggregator(
-    #     detector_output_path=detector_output_file,
-    #     detector_spec_path=spec_file,
-    #     window_size_minutes=2.0,
-    # )
-    # backbone_aggregator.run(
-    #     output_path=backbone_state_path,
-    #     time_step_minutes=1.0,
-    # )
+
+     # initialize the results directory
+    timestamp = datetime.now().strftime("simulation_results_%Y-%m-%d_%H%M%S")
+    results_dir = f"results/{timestamp}"
+    os.makedirs(results_dir, exist_ok=True)
+
+
+    backbone_state_path = os.path.join(results_dir, "backbone_state.json")
+    backbone_aggregator = BackboneStateAggregator(
+        detector_output_path=detector_output_file,
+        detector_spec_path=spec_file,
+        window_size_minutes=2.0,
+    )
+    backbone_aggregator.run(
+        output_path=backbone_state_path,
+        time_step_minutes=1.0,
+    )
 
     # compute splits (turning rates) from detector data
     # This is the primary source of splits - detector-based with lane-based fallback
@@ -113,11 +119,6 @@ if __name__ == "__main__":
     # TODO: replace these, once they can be obtained from data
     destination_density_bc = {dest_id: lambda _t: 10.0 for dest_id in destination_ids}
     destination_flow_bc = {dest_id: lambda _t: 6000.0 for dest_id in destination_ids}
-
-    # initialize the results directory
-    timestamp = datetime.now().strftime("simulation_results_%Y-%m-%d_%H%M%S")
-    results_dir = f"results/{timestamp}"
-    os.makedirs(results_dir, exist_ok=True)
 
     # plot the network
     network.plot(save_path="results/zurich/network.png", show=plot_enabled)
@@ -130,6 +131,7 @@ if __name__ == "__main__":
         dt=dt,
         preferred_cell_size=preferred_cell_size,
         origin_demands=origin_demands,
+        onramp_demands=onramp_demands,
         turning_rates=splits,
         destination_density_bc=destination_density_bc,
         destination_flow_bc=destination_flow_bc,

@@ -201,71 +201,65 @@ class LoopDetectorGenerator:
         segment_detector_count = 0
         detector_interval = 10.0  # meters
 
-        # Get backbone nodes (strip prefixes from origin/onramp/destination IDs)
         backbone_nodes = self._extract_backbone_nodes(
             self.origin_ids, self.onramp_ids, self.destination_ids
         )
 
-        # Identify ramp edges to exclude
+        # Collect ramp edge IDs from onramp nodes via XML
         ramp_edges = set()
-        for onramp_id in self.onramp_ids:
-            # Get the actual node ID (with prefix removed)
-            node_id = onramp_id.replace("onramp_", "")
-            node = self.net.getNode(node_id)
-            if node:
-                # Incoming edges to onramp are ramp edges
-                for edge in node.getIncoming():
-                    ramp_edges.add(edge.getID())
-                # Outgoing edges from onramp are ramp edges
-                for edge in node.getOutgoing():
-                    ramp_edges.add(edge.getID())
+        tree = ET.parse(self.sumo_network_path)
+        root = tree.getroot()
 
-        # Iterate through all edges in the network
-        for edge in self.net.getEdges():
-            edge_id = edge.getID()
-            from_node_id = edge.getFromNode().getID()
-            to_node_id = edge.getToNode().getID()
+        for edge in root.findall("edge"):
+            if edge.get("function") == "internal":
+                continue
+            from_node = edge.get("from")
+            to_node = edge.get("to")
+            edge_id = edge.get("id")
+            for onramp_id in self.onramp_ids:
+                node_id = onramp_id.replace("onramp_", "")
+                if from_node == node_id or to_node == node_id:
+                    ramp_edges.add(edge_id)
 
-            # Skip internal edges, ramps, and non-backbone edges
+        for edge in root.findall("edge"):
+            if edge.get("function") == "internal":
+                continue
+
+            edge_id = edge.get("id")
+            from_node = edge.get("from")
+            to_node = edge.get("to")
+
             if (
-                edge.isSpecial()
-                or edge_id in ramp_edges
-                or from_node_id not in backbone_nodes
-                or to_node_id not in backbone_nodes
+                edge_id in ramp_edges
+                or from_node not in backbone_nodes
+                or to_node not in backbone_nodes
             ):
                 continue
 
-            # Get edge length
-            edge_length = edge.getLength()
+            lanes = edge.findall("lane")
+            for lane_idx, lane in enumerate(lanes):
+                lane_id = lane.get("id")
+                length_str = lane.get("length")
+                if length_str is None:
+                    continue
+                lane_length = float(length_str)
 
-            # Calculate detector positions (0m, 10m, 20m, ...)
-            positions = []
-            current_pos = 0.0
-            while current_pos <= edge_length:
-                positions.append(current_pos)
-                current_pos += detector_interval
-
-            # Place detector on each lane at each position
-            num_lanes = edge.getLaneNumber()
-            for lane_index in range(num_lanes):
-                lane_id = f"{edge_id}_{lane_index}"
-
-                for position in positions:
-                    # Store detector information
+                current_pos = 0.0
+                while current_pos <= lane_length:
                     self.edge_detectors.append(
                         {
                             "edge_id": edge_id,
                             "lane_id": lane_id,
-                            "lane_index": lane_index,
-                            "position": position,
+                            "lane_index": lane_idx,
+                            "position": current_pos,
                             "type": "backbone_segment",
-                            "from_node": from_node_id,
-                            "to_node": to_node_id,
-                            "node_id": None,  # Not associated with single backbone node
+                            "from_node": from_node,
+                            "to_node": to_node,
+                            "node_id": None,
                         }
                     )
-
                     segment_detector_count += 1
+                    current_pos += detector_interval
 
         return segment_detector_count
 
