@@ -670,7 +670,9 @@ class NetworkArbitrator:
         list[str],
         list[str],
         list[str],
+        list[str],
         dict[str, list[str]],
+        set[str],
     ]:
         """Create macroscopic network objects from the processed graph.
 
@@ -841,7 +843,11 @@ class NetworkArbitrator:
         # # TODO: Extract this information from the corresponding OSM road category
         # onramp_ids: list[str] = []
 
-        backbone_node_ids: set[str] = {str(nid) for nid in self.graph.nodes()}
+        backbone_node_ids: set[str] = (
+            {str(nid) for nid in self.graph.nodes()}
+            - onramp_source_nodes
+            - offramp_sink_nodes
+        )
 
         return (
             Network(nodes=list(macro_nodes.values())),

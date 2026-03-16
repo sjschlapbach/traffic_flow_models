@@ -86,7 +86,7 @@ class SUMOPipeline:
         self.onramp_ids: Optional[list[str]] = None
         self.offramp_ids: Optional[list[str]] = None
         self.destination_ids: Optional[list[str]] = None
-        self.backbone_node_ids: Optional[list[str]] = None
+        self.backbone_node_ids: Optional[set[str]] = None
         self.road_params: Optional[RoadParamsConfig] = None
         self.diverge_node_info: Optional[dict[str, list[str]]] = None
 
