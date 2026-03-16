@@ -65,7 +65,7 @@ class SUMOSimulation:
         a summary of results if statistics are available.
         """
         subprocess.run(
-            ["sumo", "-c", self.cfg_file, "--no-step-log", "true"], check=True
+            ["sumo", "-c", os.path.basename(self.cfg_file), "--no-step-log", "true"], check=True, cwd=self.output_dir
         )
 
         if os.path.exists(self.stats_file):
