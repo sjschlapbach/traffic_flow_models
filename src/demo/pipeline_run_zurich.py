@@ -94,11 +94,10 @@ if __name__ == "__main__":
         sumo_network_path=pipeline.net_file,
     )
 
-     # initialize the results directory
+    # initialize the results directory
     timestamp = datetime.now().strftime("simulation_results_%Y-%m-%d_%H%M%S")
     results_dir = f"results/{timestamp}"
     os.makedirs(results_dir, exist_ok=True)
-
 
     backbone_state_path = os.path.join(results_dir, "backbone_state.json")
     backbone_aggregator = BackboneStateAggregator(
