@@ -9,6 +9,7 @@ from traffic_flow_models import (
     DemandAggregator,
     Simulation,
 )
+#from backbone_aggregator import BackboneStateAggregator
 
 if __name__ == "__main__":
     args = argparse.ArgumentParser(description="Run the Zurich demo scenario.")
@@ -92,6 +93,17 @@ if __name__ == "__main__":
         onramp_ids=onramp_ids,
         sumo_network_path=pipeline.net_file,
     )
+    
+    # backbone_state_path = os.path.join(results_dir, "backbone_state.json")
+    # backbone_aggregator = BackboneStateAggregator(
+    #     detector_output_path=detector_output_file,
+    #     detector_spec_path=spec_file,
+    #     window_size_minutes=2.0,
+    # )
+    # backbone_aggregator.run(
+    #     output_path=backbone_state_path,
+    #     time_step_minutes=1.0,
+    # )
 
     # compute splits (turning rates) from detector data
     # This is the primary source of splits - detector-based with lane-based fallback

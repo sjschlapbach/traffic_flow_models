@@ -235,37 +235,37 @@ class LoopDetectorGenerator:
             ):
                 continue
 
-        # Get edge length
-        edge_length = edge.getLength()
+            # Get edge length
+            edge_length = edge.getLength()
 
-        # Calculate detector positions (0m, 10m, 20m, ...)
-        positions = []
-        current_pos = 0.0
-        while current_pos <= edge_length:
-            positions.append(current_pos)
-            current_pos += detector_interval
+            # Calculate detector positions (0m, 10m, 20m, ...)
+            positions = []
+            current_pos = 0.0
+            while current_pos <= edge_length:
+                positions.append(current_pos)
+                current_pos += detector_interval
 
-        # Place detector on each lane at each position
-        num_lanes = edge.getLaneNumber()
-        for lane_index in range(num_lanes):
-            lane_id = f"{edge_id}_{lane_index}"
+            # Place detector on each lane at each position
+            num_lanes = edge.getLaneNumber()
+            for lane_index in range(num_lanes):
+                lane_id = f"{edge_id}_{lane_index}"
 
-            for position in positions:
-                # Store detector information
-                self.edge_detectors.append(
-                    {
-                        "edge_id": edge_id,
-                        "lane_id": lane_id,
-                        "lane_index": lane_index,
-                        "position": position,
-                        "type": "backbone_segment",
-                        "from_node": from_node_id,
-                        "to_node": to_node_id,
-                        "node_id": None,  # Not associated with single backbone node
-                    }
-                )
+                for position in positions:
+                    # Store detector information
+                    self.edge_detectors.append(
+                        {
+                            "edge_id": edge_id,
+                            "lane_id": lane_id,
+                            "lane_index": lane_index,
+                            "position": position,
+                            "type": "backbone_segment",
+                            "from_node": from_node_id,
+                            "to_node": to_node_id,
+                            "node_id": None,  # Not associated with single backbone node
+                        }
+                    )
 
-                segment_detector_count += 1
+                    segment_detector_count += 1
 
         return segment_detector_count
 
