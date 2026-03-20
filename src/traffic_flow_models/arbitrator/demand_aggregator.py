@@ -59,6 +59,8 @@ class DemandAggregator:
         self.node_intervals: defaultdict[str, list[Tuple[float, int]]] = defaultdict(
             list
         )
+        # map ramp edge ids to their upstream nodes for onramp demand lookups
+        self.ramp_edge_to_from: dict[str, str] = {}
         self.max_time: float = 0.0
 
     def parse_detector_output(self) -> None:
@@ -110,10 +112,14 @@ class DemandAggregator:
                 det_type = row["type"].strip().lower()
                 from_node = row["from"].strip().strip('"').strip("'")
                 to_node = row["to"].strip().strip('"').strip("'")
-
                 # match detector types based on spec CSV values:
                 # 'inflow', 'outflow', 'ramp_inflow', 'ramp_outflow'
-                if "inflow" in det_type:
+                if "ramp_inflow" in det_type:
+                    # ramp sources: attribute demand to the ramp's upstream node
+                    node_id = from_node
+                    if edge_id := row.get("edge_id", "").strip().strip('"').strip("'"):
+                        self.ramp_edge_to_from[edge_id] = from_node
+                elif "inflow" in det_type:
                     # traffic entering the backbone network
                     node_id = to_node
                 elif "outflow" in det_type:
@@ -186,18 +192,22 @@ class DemandAggregator:
                 topology analysis.
 
         Returns:
-            origin_demands: Dictionary mapping origin IDs to demand functions. Onramp
-                inflows are converted into additional origins.
+            origin_demands: Dictionary mapping origin/onramp IDs to demand functions.
         """
         graph = self._build_network_graph(sumo_network_path)
         origin_demands: dict[str, Callable[[float], float]] = {}
 
-        for origin_id in origin_ids:
+        entry_ids = list(origin_ids) + list(onramp_ids)
+
+        for entry_id in entry_ids:
+            # for ramps identified by edge id, redirect path target to their upstream node
+            path_target = self.ramp_edge_to_from.get(entry_id, entry_id)
+
             upstream_nodes = self._find_upstream_nodes(
-                graph, origin_id, backbone_node_ids
+                graph, path_target, backbone_node_ids
             )
             aggregated_bins = self._aggregate_demand(upstream_nodes)
-            origin_demands[origin_id] = self._make_demand_function(aggregated_bins)
+            origin_demands[entry_id] = self._make_demand_function(aggregated_bins)
 
         all_detector_vehicles = sum(
             sum(count for _, count in intervals)
@@ -253,18 +263,23 @@ class DemandAggregator:
             Set of node IDs that are upstream of the target node, including
             the target node itself.
         """
-        upstream_nodes = {target_node}
+        prefixes = ("origin_", "onramp_", "offramp_", "dest_")
+        base_target = target_node
+        for prefix in prefixes:
+            if target_node.startswith(prefix):
+                base_target = target_node[len(prefix) :]
+                break
+
+        path_target = base_target if graph.has_node(base_target) else target_node
+        upstream_nodes = {path_target}
 
         for node in self.node_intervals.keys():
-            if node == target_node:
-                continue
-
-            if node in backbone_node_ids and node != target_node:
+            if node == path_target:
                 continue
 
             try:
-                if graph.has_node(node) and graph.has_node(target_node):
-                    if nx.has_path(graph, node, target_node):
+                if graph.has_node(node) and graph.has_node(path_target):
+                    if nx.has_path(graph, node, path_target):
                         upstream_nodes.add(node)
             except nx.NetworkXError:
                 continue
