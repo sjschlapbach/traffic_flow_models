@@ -204,14 +204,7 @@ class LoopDetectorGenerator:
                         continue
                     lane_length = float(length_str)
 
-                    # place detector near end of edge
-                    if lane_length < 10:  # less than 10 meters
-                        print(
-                            f"  Skipping short lane {lane_id} (length={lane_length}m)"
-                        )
-                        continue
-
-                    detector_pos = min(lane_length * 0.9, lane_length - 5)
+                    detector_pos = min(lane_length * 0.9, max(1, lane_length - 5))
 
                     self.edge_detectors.append(
                         {
@@ -269,13 +262,6 @@ class LoopDetectorGenerator:
                     if length_str is None:
                         continue
                     lane_length = float(length_str)
-
-                    # skip very short lanes
-                    if lane_length < 10:
-                        print(
-                            f"  Skipping short lane {lane_id} (length={lane_length}m)"
-                        )
-                        continue
 
                     # place detector near start of edge (5m from start)
                     detector_pos = min(5.0, lane_length * 0.1)

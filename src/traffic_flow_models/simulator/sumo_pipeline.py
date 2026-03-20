@@ -371,7 +371,7 @@ class SUMOPipeline:
         # fall back to lane-based splits for nodes without detector data
         if self.consolidated_network and self.arbitrator:
             lane_based_splits = self.arbitrator.compute_lane_based_splits(
-                self.consolidated_network, self.diverge_node_info
+                network=self.consolidated_network
             )
 
             # use detector-based splits where available, lane-based as fallback
@@ -382,6 +382,13 @@ class SUMOPipeline:
                 ):
                     detector_based_splits[node_id] = lane_based_splits[node_id]
                     print(f"  Using lane-based fallback for diverge node {node_id}")
+                elif (
+                    node_id not in detector_based_splits
+                    and node_id not in lane_based_splits
+                ):
+                    raise ValueError(
+                        f"No split data available for diverge node {node_id} from either detectors or lane-based estimation."
+                    )
 
         return detector_based_splits
 

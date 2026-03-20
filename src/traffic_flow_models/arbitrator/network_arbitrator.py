@@ -5,13 +5,16 @@ import networkx as nx
 import xml.etree.ElementTree as ET
 from typing import Union, Tuple, Callable, TypedDict, cast
 
-from traffic_flow_models.network.node import Node
-from traffic_flow_models.network.motorway_link import MotorwayLink
-from traffic_flow_models.network.origin import Origin
-from traffic_flow_models.network.destination import Destination
-from traffic_flow_models.network.network import Network
-from traffic_flow_models.network import Onramp
-from traffic_flow_models.network import Offramp
+
+from traffic_flow_models.network import (
+    Network,
+    Origin,
+    Onramp,
+    Offramp,
+    Destination,
+    MotorwayLink,
+    Node,
+)
 
 
 class RoadTypeParams(TypedDict):
@@ -629,20 +632,28 @@ class NetworkArbitrator:
                         self.graph.remove_edge(u, v, key)
 
                     if self.graph.has_node(u) and self.graph.has_node(v) and u != v:
+                        # keep the node with more outgoing links to preserve turning-rate references
+                        pivot, other = (u, v)
+                        if self.graph.out_degree(v) > self.graph.out_degree(u):
+                            pivot, other = v, u
+
                         # update coordinates to midpoint
-                        if u in self.node_coordinates and v in self.node_coordinates:
-                            u_coord = self.node_coordinates[u]
-                            v_coord = self.node_coordinates[v]
-                            self.node_coordinates[u] = (
-                                (u_coord[0] + v_coord[0]) / 2,
-                                (u_coord[1] + v_coord[1]) / 2,
+                        if (
+                            pivot in self.node_coordinates
+                            and other in self.node_coordinates
+                        ):
+                            pivot_coord = self.node_coordinates[pivot]
+                            other_coord = self.node_coordinates[other]
+                            self.node_coordinates[pivot] = (
+                                (pivot_coord[0] + other_coord[0]) / 2,
+                                (pivot_coord[1] + other_coord[1]) / 2,
                             )
-                            if v in self.node_coordinates:
-                                del self.node_coordinates[v]
+                            if other in self.node_coordinates:
+                                del self.node_coordinates[other]
 
                         try:
                             self.graph = nx.contracted_nodes(
-                                self.graph, u, v, self_loops=False
+                                self.graph, pivot, other, self_loops=False
                             )
                         except nx.NetworkXError:
                             warnings.warn(
@@ -819,13 +830,6 @@ class NetworkArbitrator:
         destination_ids: list[str] = []
         offramp_ids: list[str] = []
 
-        # # TODO: remove the creation of cells here if they are not used for the data aggregation and calibration later on -> partitioning performed automatically during simulation
-        # num_cells = max(1, math.ceil(data["length"] / self.target_cell_length))
-        # cell_len = data["length"] / num_cells
-        # for _ in range(num_cells):
-        #     link.add_cell(length=cell_len)
-        #     total_cells += 1
-
         for nid, node_obj in macro_nodes.items():
             nid_str = str(nid)
 
@@ -846,21 +850,6 @@ class NetworkArbitrator:
                     dest = Destination(id=f"dest_{nid}", origin_node_id=nid_str)
                     destination_ids.append(dest.id)
                 node_obj.add_outgoing(dest)
-
-        # origin_ids: list[str] = [
-        #     node_obj.incoming[0].id
-        #     for node_obj in macro_nodes.values()
-        #     if node_obj.incoming and isinstance(node_obj.incoming[0], Origin)
-        # ]
-
-        # destination_ids: list[str] = [
-        #     node_obj.outgoing[0].id
-        #     for node_obj in macro_nodes.values()
-        #     if node_obj.outgoing and isinstance(node_obj.outgoing[0], Destination)
-        # ]
-
-        # # TODO: Extract this information from the corresponding OSM road category
-        # onramp_ids: list[str] = []
 
         backbone_node_ids: set[str] = (
             {str(nid) for nid in self.graph.nodes()}
@@ -935,7 +924,7 @@ class NetworkArbitrator:
         print("=" * 60)
 
     def compute_lane_based_splits(
-        self, network: Network, diverge_node_info: dict[str, list[str]]
+        self, network: Network
     ) -> dict[str, Callable[[float], dict[str, float]]]:
         """Compute lane-based split ratios for nodes as fallback.
 
@@ -946,7 +935,6 @@ class NetworkArbitrator:
 
         Args:
             network: Network object containing all nodes and links.
-            diverge_node_info: Dictionary mapping node IDs to lists of SUMO edge IDs.
 
         Returns:
             Dictionary mapping node IDs to time-invariant split functions.
@@ -956,24 +944,36 @@ class NetworkArbitrator:
 
         for node in network:
             node_id = node.id
-            if node_id not in diverge_node_info:
-                continue
 
             outgoing_links = [
                 link
                 for link in node.outgoing
-                if isinstance(link, (MotorwayLink, Offramp))
+                if isinstance(link, (MotorwayLink, Onramp, Offramp, Destination))
             ]
 
-            if len(outgoing_links) == 1:
+            if len(outgoing_links) == 0:
+                raise ValueError(
+                    f"Node {node_id} has no outgoing links, cannot compute lane-based splits."
+                )
+
+            elif len(outgoing_links) == 1:
                 # single outgoing link: turning rate = 1.0
                 splits[node_id] = lambda t, ol=outgoing_links: {ol[0].id: 1.0}
+
             elif len(outgoing_links) >= 2:
                 # multiple outgoing links: use lane-proportional splits
-                total_lanes = sum(link.lanes for link in outgoing_links)
+                total_lanes = sum(
+                    (link.lanes if isinstance(link, (MotorwayLink, Offramp)) else 1)
+                    for link in outgoing_links
+                )
+
                 # create time-invariant split function based on lane proportions
                 splits[node_id] = lambda t, ol=outgoing_links, tl=total_lanes: {
-                    link.id: link.lanes / tl for link in ol
+                    link.id: (
+                        (link.lanes if isinstance(link, (MotorwayLink, Offramp)) else 1)
+                        / tl
+                    )
+                    for link in ol
                 }
 
         return splits
