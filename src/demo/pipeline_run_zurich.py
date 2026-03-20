@@ -114,15 +114,8 @@ if __name__ == "__main__":
     splits = pipeline.compute_splits(window_size_minutes=2.0)
 
     # TODO: replace these, once they can be obtained from data
-    # destination_density_bc = {dest_id: lambda _t: 10.0 for dest_id in destination_ids}
-    # destination_flow_bc = {dest_id: lambda _t: 6000.0 for dest_id in destination_ids}
-
-    destination_density_bc = {
-        dest_id: lambda _t: 10.0 for dest_id in destination_ids + offramp_ids
-    }
-    destination_flow_bc = {
-        dest_id: lambda _t: 6000.0 for dest_id in destination_ids + offramp_ids
-    }
+    destination_density_bc = {dest_id: lambda _t: 10.0 for dest_id in destination_ids}
+    destination_flow_bc = {dest_id: lambda _t: 6000.0 for dest_id in destination_ids}
 
     # initialize the results directory
     timestamp = datetime.now().strftime("simulation_results_%Y-%m-%d_%H%M%S")

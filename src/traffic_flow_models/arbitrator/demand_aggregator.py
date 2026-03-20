@@ -187,33 +187,17 @@ class DemandAggregator:
 
         Returns:
             origin_demands: Dictionary mapping origin IDs to demand functions. Onramp
-                inflows are converted into additional origins (prefixed with
-                "origin_onramp_").
+                inflows are converted into additional origins.
         """
         graph = self._build_network_graph(sumo_network_path)
-
-        origin_node_ids = [oid.replace("origin_", "") for oid in origin_ids]
-        onramp_node_ids = [oid.replace("onramp_", "") for oid in onramp_ids]
-
         origin_demands: dict[str, Callable[[float], float]] = {}
 
-        for origin_node in origin_node_ids:
+        for origin_id in origin_ids:
             upstream_nodes = self._find_upstream_nodes(
-                graph, origin_node, backbone_node_ids
+                graph, origin_id, backbone_node_ids
             )
             aggregated_bins = self._aggregate_demand(upstream_nodes)
-
-            origin_id = f"origin_{origin_node}"
             origin_demands[origin_id] = self._make_demand_function(aggregated_bins)
-
-        for onramp_node in onramp_node_ids:
-            upstream_nodes = self._find_upstream_nodes(
-                graph, onramp_node, backbone_node_ids
-            )
-            aggregated_bins = self._aggregate_demand(upstream_nodes)
-
-            ramp_origin_id = f"onramp_{onramp_node}"
-            origin_demands[ramp_origin_id] = self._make_demand_function(aggregated_bins)
 
         all_detector_vehicles = sum(
             sum(count for _, count in intervals)

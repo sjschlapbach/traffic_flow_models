@@ -835,8 +835,11 @@ class NetworkArbitrator:
 
             if not node_obj.incoming:
                 if any(isinstance(l, Onramp) for l in node_obj.outgoing):
-                    orig = Origin(id=f"onramp_{nid}", destination_node_id=nid_str)
-                    onramp_ids.append(orig.id)
+                    for l in node_obj.outgoing:
+                        onramp_ids.append(l.id)
+
+                    orig = Origin(id=f"origin_{nid}", destination_node_id=nid_str)
+                    origin_ids.append(orig.id)
                 else:
                     orig = Origin(id=f"origin_{nid}", destination_node_id=nid_str)
                     origin_ids.append(orig.id)
@@ -844,8 +847,11 @@ class NetworkArbitrator:
 
             if not node_obj.outgoing:
                 if any(isinstance(l, Offramp) for l in node_obj.incoming):
-                    dest = Destination(id=f"offramp_{nid}", origin_node_id=nid_str)
-                    offramp_ids.append(dest.id)
+                    for l in node_obj.incoming:
+                        offramp_ids.append(l.id)
+
+                    dest = Destination(id=f"dest_{nid}", origin_node_id=nid_str)
+                    destination_ids.append(dest.id)
                 else:
                     dest = Destination(id=f"dest_{nid}", origin_node_id=nid_str)
                     destination_ids.append(dest.id)
