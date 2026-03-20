@@ -594,9 +594,7 @@ class NetworkArbitrator:
             # process only the shortest link
             length, u, v, key, data = short_links[0]
             link_id = data.get("id", f"{u}->{v}")
-
             link_type = data.get("type", "")
-            # is_ramp = "highway.motorway_link" in link_type
 
             if length > threshold:
                 # stretch the link to minimum length
@@ -604,38 +602,59 @@ class NetworkArbitrator:
                 data["length"] = self.min_link_length
                 all_stretched_links.append((link_id, old_length, self.min_link_length))
             else:
-                # fuse the link by contracting nodes
-                all_fused_links.append((link_id, length))
+                if "motorway_link" in link_type:
+                    # preserve onramps/offramps: stretch instead of fusing
+                    old_length = data["length"]
+                    data["length"] = self.min_link_length
+                    all_stretched_links.append(
+                        (link_id, old_length, self.min_link_length)
+                    )
+                    continue
 
-                # remove the edge first
-                if self.graph.has_edge(u, v, key):
-                    self.graph.remove_edge(u, v, key)
+                upstream_uniform_type = self.graph.in_degree(u) > 0 and all(
+                    edge_data.get("type", "") == link_type
+                    for _, _, edge_data in self.graph.in_edges(u, data=True)
+                )
 
-                # contract nodes: merge v into u
-                if self.graph.has_node(u) and self.graph.has_node(v) and u != v:
-                    # update coordinates to midpoint
-                    if u in self.node_coordinates and v in self.node_coordinates:
-                        u_coord = self.node_coordinates[u]
-                        v_coord = self.node_coordinates[v]
-                        self.node_coordinates[u] = (
-                            (u_coord[0] + v_coord[0]) / 2,
-                            (u_coord[1] + v_coord[1]) / 2,
-                        )
-                        if v in self.node_coordinates:
-                            del self.node_coordinates[v]
+                downstream_uniform_type = self.graph.out_degree(v) > 0 and all(
+                    edge_data.get("type", "") == link_type
+                    for _, _, edge_data in self.graph.out_edges(v, data=True)
+                )
 
-                    # contract v into u (merge nodes)
-                    try:
-                        self.graph = nx.contracted_nodes(
-                            self.graph, u, v, self_loops=False
-                        )
-                    except nx.NetworkXError:
-                        # node might have been contracted already
-                        warnings.warn(
-                            f"Failed to contract nodes {u} and {v} for link {link_id}. Nodes may have been modified already.",
-                            stacklevel=2,
-                        )
-                        pass
+                if upstream_uniform_type or downstream_uniform_type:
+                    # fuse the link by contracting its boundary nodes, keeping nearby link types unchanged
+                    all_fused_links.append((link_id, length))
+
+                    if self.graph.has_edge(u, v, key):
+                        self.graph.remove_edge(u, v, key)
+
+                    if self.graph.has_node(u) and self.graph.has_node(v) and u != v:
+                        # update coordinates to midpoint
+                        if u in self.node_coordinates and v in self.node_coordinates:
+                            u_coord = self.node_coordinates[u]
+                            v_coord = self.node_coordinates[v]
+                            self.node_coordinates[u] = (
+                                (u_coord[0] + v_coord[0]) / 2,
+                                (u_coord[1] + v_coord[1]) / 2,
+                            )
+                            if v in self.node_coordinates:
+                                del self.node_coordinates[v]
+
+                        try:
+                            self.graph = nx.contracted_nodes(
+                                self.graph, u, v, self_loops=False
+                            )
+                        except nx.NetworkXError:
+                            warnings.warn(
+                                f"Failed to contract nodes {u} and {v} for link {link_id}. Nodes may have been modified already.",
+                                stacklevel=2,
+                            )
+                    continue
+
+                # fallback: stretch when merging would cross a type boundary
+                old_length = data["length"]
+                data["length"] = self.min_link_length
+                all_stretched_links.append((link_id, old_length, self.min_link_length))
 
         # log statistics
         if all_stretched_links or all_fused_links:
