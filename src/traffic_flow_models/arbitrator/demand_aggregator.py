@@ -172,32 +172,25 @@ class DemandAggregator:
         backbone_node_ids: set[str],
         sumo_network_path: str,
     ) -> dict[str, Callable[[float], float]]:
-        """Aggregate detector data feeding into macroscopic entry points.
 
-        Identifies all network nodes upstream of each macroscopic model origin
-        and onramp, aggregates their detector counts, and produces time-dependent
-        demand functions suitable for macroscopic simulation. This captures the
-        full demand from the microscopic network feeding into the macroscopic model.
-
-        Args:
-            origin_ids: List of origin node IDs in the network.
-            onramp_ids: List of onramp node IDs in the network.
-            sumo_network_path: Path to the SUMO network XML file used for
-                topology analysis.
-
-        Returns:
-            origin_demands: Dictionary mapping origin IDs to demand functions. Onramp
-                inflows are converted into additional origins.
-        """
         graph = self._build_network_graph(sumo_network_path)
         origin_demands: dict[str, Callable[[float], float]] = {}
 
-        for origin_id in origin_ids:
+        all_entry_points: dict[str, str] = {
+            origin_id: origin_id.replace("origin_", "") for origin_id in origin_ids
+        }
+        for onramp_id in onramp_ids:
+            all_entry_points[onramp_id] = onramp_id
+
+        # use only origin nodes as boundaries to prevent catchment area overlap
+        raw_origin_nodes = {oid.replace("origin_", "") for oid in origin_ids}
+
+        for demand_key, raw_node_id in all_entry_points.items():
             upstream_nodes = self._find_upstream_nodes(
-                graph, origin_id, backbone_node_ids
+                graph, raw_node_id, raw_origin_nodes  # fixed: was backbone_node_ids
             )
             aggregated_bins = self._aggregate_demand(upstream_nodes)
-            origin_demands[origin_id] = self._make_demand_function(aggregated_bins)
+            origin_demands[demand_key] = self._make_demand_function(aggregated_bins)
 
         all_detector_vehicles = sum(
             sum(count for _, count in intervals)
@@ -208,7 +201,31 @@ class DemandAggregator:
         print(f"  Total detector nodes: {len(self.node_intervals)}")
         print(f"  Total detector vehicles: {all_detector_vehicles}")
         print(f"  Network entry points (origins incl. ramps): {len(origin_demands)}")
-        return origin_demands
+
+        print("\nDEMAND VERIFICATION:")
+        print(
+            f"{'Entry Point':<40} {'t=0h':>10} {'t=0.25h':>10} {'t=0.5h':>10} {'t=0.75h':>10} {'t=1h':>10}"
+        )
+        print("-" * 90)
+        for demand_key, fn in origin_demands.items():
+            vals = [fn(t) for t in [0, 0.25, 0.5, 0.75, 1.0]]
+            print(
+                f"{demand_key:<40} {vals[0]:>10.1f} {vals[1]:>10.1f} {vals[2]:>10.1f} {vals[3]:>10.1f} {vals[4]:>10.1f}"
+            )
+
+        print(f"\nUpstream nodes per entry point:")
+        for demand_key, raw_node_id in all_entry_points.items():
+            upstream = self._find_upstream_nodes(graph, raw_node_id, raw_origin_nodes)
+            total_veh = sum(
+                sum(count for _, count in self.node_intervals[n])
+                for n in upstream
+                if n in self.node_intervals
+            )
+            print(
+                f"  {demand_key:<40} upstream nodes: {len(upstream):>3}  raw vehicles: {total_veh:>6}"
+            )
+
+        return origin_demands  # outside the loop
 
     def _build_network_graph(self, sumo_network_path: str) -> nx.DiGraph:
         """Build directed graph from SUMO network XML.
@@ -237,29 +254,16 @@ class DemandAggregator:
         return graph
 
     def _find_upstream_nodes(
-        self, graph: nx.DiGraph, target_node: str, backbone_node_ids: set[str]
+        self, graph: nx.DiGraph, target_node: str, origin_node_ids: set[str]
     ) -> set[str]:
-        """Find all nodes that have a path leading to the target node.
-
-        Identifies all network nodes from which there exists a directed path
-        to the target node. This is used to determine which detector data
-        should be aggregated for a given macroscopic model entry point.
-
-        Args:
-            graph: NetworkX DiGraph representing the network topology.
-            target_node: Node ID for which to find upstream nodes.
-
-        Returns:
-            Set of node IDs that are upstream of the target node, including
-            the target node itself.
-        """
         upstream_nodes = {target_node}
 
         for node in self.node_intervals.keys():
             if node == target_node:
                 continue
 
-            if node in backbone_node_ids and node != target_node:
+            # stop at other origin nodes to prevent catchment area overlap
+            if node in origin_node_ids and node != target_node:
                 continue
 
             try:
