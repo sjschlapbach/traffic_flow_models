@@ -126,6 +126,9 @@ class LoopDetectorGenerator:
         inflow_count = 0
         outflow_count = 0
 
+        inflow_boundary_nodes = self.backbone_nodes | set(self.onramp_ids)
+        onramp_nodes = set(self.onramp_ids)
+
         for edge in root.findall("edge"):
             if edge.get("function") == "internal":
                 continue
@@ -136,8 +139,11 @@ class LoopDetectorGenerator:
             to_node = edge.get("to")
 
             # is_motorway = "motorway" in edge_type
-            to_is_backbone = to_node in self.backbone_nodes
-            from_is_backbone = from_node in self.backbone_nodes
+            # to_is_backbone = to_node in self.backbone_nodes
+            # from_is_backbone = from_node in self.backbone_nodes
+
+            to_is_backbone = to_node in inflow_boundary_nodes
+            from_is_backbone = from_node in inflow_boundary_nodes
 
             detector_type = None
             detector_node = None
@@ -145,35 +151,18 @@ class LoopDetectorGenerator:
             if edge_id is None:
                 raise ValueError("Edge is missing 'id' attribute")
 
-            # # urban → motorway (macroscopic network inflow)
-            # if to_is_backbone and not is_motorway:
-            #     detector_type = "inflow"
-            #     detector_node = to_node
-            #     inflow_count += 1
-
-            # # motorway → urban (macroscopic network outflow)
-            # elif from_is_backbone and not is_motorway:
-            #     detector_type = "outflow"
-            #     detector_node = from_node
-            #     outflow_count += 1
-
-            # # direct backbone interface (ramps connecting to backbone)
-            # elif edge_id.endswith("_link") or "link" in edge_type:
-            #     if to_is_backbone and not from_is_backbone:
-            #         detector_type = "ramp_inflow"
-            #         detector_node = to_node
-            #         inflow_count += 1
-            #     elif from_is_backbone and not to_is_backbone:
-            #         detector_type = "ramp_outflow"
-            #         detector_node = from_node
-            #         outflow_count += 1
-
             is_motorway_mainline = edge_type == "motorway"
             is_motorway_link = "motorway_link" in edge_type
             is_backbone_edge = is_motorway_mainline or is_motorway_link
 
             # urban road entering backbone (mainline origin interface)
             if to_is_backbone and not is_backbone_edge:
+                detector_type = "inflow"
+                detector_node = to_node
+                inflow_count += 1
+
+            # motorway_link entering an onramp node — treat as inflow too
+            elif to_node in onramp_nodes and is_motorway_link:
                 detector_type = "inflow"
                 detector_node = to_node
                 inflow_count += 1
