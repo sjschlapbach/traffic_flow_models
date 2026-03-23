@@ -327,55 +327,61 @@ class DemandAggregator:
         self, graph: nx.DiGraph, target_node: str, origin_node_ids: set[str]
     ) -> set[str]:
         """Find all nodes that have a path leading to the target node.
-
         Identifies all network nodes from which there exists a directed path
         to the target node. This is used to determine which detector data
         should be aggregated for a given macroscopic model entry point.
-
         Args:
             graph: NetworkX DiGraph representing the network topology.
             target_node: Node ID for which to find upstream nodes.
-
+            origin_node_ids: A set of all origin node IDs in the graph.
         Returns:
             Set of node IDs that are upstream of the target node, including
             the target node itself.
         """
+        if not graph.has_node(target_node):
+            raise ValueError(f"Target node '{target_node}' not found in the graph.")
 
+        # find all nodes that can reach the target_node
+        ancestors = nx.ancestors(graph, target_node)
+        ancestors.add(target_node)
+
+        # filter for nodes that are also detector locations
+        relevant_nodes = ancestors.intersection(self.node_intervals.keys())
         upstream_nodes = {target_node}
 
-        for node in self.node_intervals.keys():
+        # for each relevant upstream node, find the closest origin it flows into
+        for node in relevant_nodes:
             if node == target_node:
                 continue
-            if not graph.has_node(node) or not graph.has_node(target_node):
-                continue
 
+            # calculate shortest path lengths from the current node to all other nodes
             try:
-                if not nx.has_path(graph, node, target_node):
-                    continue
-
-                # find the closest origin this detector node can reach
-                shortest_to_target = nx.shortest_path_length(graph, node, target_node)
-
-                # check if any other origin is closer
-                closest_origin = target_node
-                closest_dist = shortest_to_target
-                for other_origin in origin_node_ids:
-                    if other_origin == target_node:
-                        continue
-                    if graph.has_node(other_origin) and nx.has_path(
-                        graph, node, other_origin
-                    ):
-                        dist = nx.shortest_path_length(graph, node, other_origin)
-                        if dist < closest_dist:
-                            closest_dist = dist
-                            closest_origin = other_origin
-
-                # only claim this node if target is the closest origin
-                if closest_origin == target_node:
-                    upstream_nodes.add(node)
-
-            except nx.NetworkXError:
+                path_lengths = nx.single_source_shortest_path_length(graph, node)
+            except nx.NetworkXNoPath:
                 continue
+
+            # check if the target_node is reachable
+            if target_node not in path_lengths:
+                continue
+
+            shortest_to_target = path_lengths[target_node]
+
+            # find the closest origin
+            closest_origin = target_node
+            closest_dist = shortest_to_target
+
+            for other_origin in origin_node_ids:
+                if other_origin == target_node:
+                    continue
+                if other_origin in path_lengths:
+                    dist = path_lengths[other_origin]
+                    if dist < closest_dist:
+                        closest_dist = dist
+                        closest_origin = other_origin
+
+            # if the target_node is the closest origin, claim this upstream node
+            if closest_origin == target_node:
+                upstream_nodes.add(node)
 
         return upstream_nodes
 
