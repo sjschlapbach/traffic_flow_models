@@ -67,9 +67,6 @@ class LoopDetectorGenerator:
         self.spec_filename: str = spec_filename
         self.output_xml_filename: str = output_xml_filename
 
-        # self.backbone_nodes: set[str] = self._extract_backbone_nodes(
-        #    origin_ids, onramp_ids, destination_ids
-        # )
         self.backbone_nodes = backbone_node_ids
         self.interface_edges: list = []
         self.edge_detectors: list[dict] = []
@@ -137,10 +134,6 @@ class LoopDetectorGenerator:
             edge_type = edge.get("type", "").lower()
             from_node = edge.get("from")
             to_node = edge.get("to")
-
-            # is_motorway = "motorway" in edge_type
-            # to_is_backbone = to_node in self.backbone_nodes
-            # from_is_backbone = from_node in self.backbone_nodes
 
             to_is_backbone = to_node in inflow_boundary_nodes
             from_is_backbone = from_node in inflow_boundary_nodes

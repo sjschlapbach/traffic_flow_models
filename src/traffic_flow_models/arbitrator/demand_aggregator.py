@@ -168,10 +168,25 @@ class DemandAggregator:
     def aggregate_urban_inflows(
         self,
         origin_ids: list[str],
-        onramp_ids: list[str],
-        backbone_node_ids: set[str],
         sumo_network_path: str,
     ) -> dict[str, Callable[[float], float]]:
+        """Aggregate detector data feeding into macroscopic entry points.
+
+        Identifies all network nodes upstream of each macroscopic model origin
+        and onramp, aggregates their detector counts, and produces time-dependent
+        demand functions suitable for macroscopic simulation. This captures the
+        full demand from the microscopic network feeding into the macroscopic model.
+
+        Args:
+            origin_ids: List of origin node IDs in the network.
+            sumo_network_path: Path to the SUMO network XML file used for
+                topology analysis.
+
+        Returns:
+            origin_demands: Dictionary mapping origin IDs to demand functions. Onramp
+                inflows are converted into additional origins (prefixed with
+                "origin_onramp_").
+        """
 
         graph = self._build_network_graph(sumo_network_path)
         origin_demands: dict[str, Callable[[float], float]] = {}
@@ -182,18 +197,13 @@ class DemandAggregator:
 
         # use only origin nodes as boundaries to prevent catchment area overlap
         raw_origin_nodes = {oid.replace("origin_", "") for oid in origin_ids}
-
         all_entry_points: dict[str, str] = {
             origin_id: origin_id.replace("origin_", "") for origin_id in origin_ids
         }
 
-        for onramp_id in onramp_ids:
-            if onramp_id not in raw_origin_nodes:
-                all_entry_points[onramp_id] = onramp_id
-
         for demand_key, raw_node_id in all_entry_points.items():
             upstream_nodes = self._find_upstream_nodes(
-                graph, raw_node_id, raw_origin_nodes  # fixed: was backbone_node_ids
+                graph, raw_node_id, raw_origin_nodes
             )
             aggregated_bins = self._aggregate_demand(upstream_nodes)
             origin_demands[demand_key] = self._make_demand_function(aggregated_bins)
@@ -236,20 +246,25 @@ class DemandAggregator:
         #     upstream = self._find_upstream_nodes(graph, raw_node_id, raw_origin_nodes)
         #     total_veh = sum(
         #         sum(count for _, count in self.node_intervals[n])
-        #         for n in upstream if n in self.node_intervals
+        #         for n in upstream
+        #         if n in self.node_intervals
         #     )
         #     if total_veh == 0:
         #         in_graph = graph.has_node(raw_node_id)
         #         reachable_from = [
-        #             n for n in self.node_intervals.keys()
-        #             if graph.has_node(n) and in_graph
+        #             n
+        #             for n in self.node_intervals.keys()
+        #             if graph.has_node(n)
+        #             and in_graph
         #             and nx.has_path(graph, n, raw_node_id)
         #         ]
-        #         print(f"  {demand_key}: in_graph={in_graph}, reachable from: {reachable_from}")
+        #         print(
+        #             f"  {demand_key}: in_graph={in_graph}, reachable from: {reachable_from}"
+        #         )
 
         # print("\nSUMO graph nodes containing onramp-related strings:")
         # for node in graph.nodes():
-        #     for onramp_id in ['9623489', '17051627', '24043220', '22944609']:
+        #     for onramp_id in ["9623489", "17051627", "24043220", "22944609"]:
         #         if onramp_id in str(node):
         #             print(f"  found: {node}")
 
@@ -262,13 +277,13 @@ class DemandAggregator:
 
         # origin_keys = list(upstream_per_origin.keys())
         # for i, key_a in enumerate(origin_keys):
-        #     for key_b in origin_keys[i+1:]:
+        #     for key_b in origin_keys[i + 1 :]:
         #         shared = upstream_per_origin[key_a] & upstream_per_origin[key_b]
         #         if shared:
         #             print(f"  {key_a} ∩ {key_b}: {len(shared)} shared nodes")
         #             print(f"    shared: {shared}")
 
-        return origin_demands  # outside the loop
+        return origin_demands
 
     def _build_network_graph(self, sumo_network_path: str) -> nx.DiGraph:
         """Build directed graph from SUMO network XML.
@@ -299,6 +314,21 @@ class DemandAggregator:
     def _find_upstream_nodes(
         self, graph: nx.DiGraph, target_node: str, origin_node_ids: set[str]
     ) -> set[str]:
+        """Find all nodes that have a path leading to the target node.
+
+        Identifies all network nodes from which there exists a directed path
+        to the target node. This is used to determine which detector data
+        should be aggregated for a given macroscopic model entry point.
+
+        Args:
+            graph: NetworkX DiGraph representing the network topology.
+            target_node: Node ID for which to find upstream nodes.
+
+        Returns:
+            Set of node IDs that are upstream of the target node, including
+            the target node itself.
+        """
+
         upstream_nodes = {target_node}
 
         for node in self.node_intervals.keys():
@@ -387,9 +417,6 @@ class DemandAggregator:
     def run(
         self,
         origin_ids: list[str],
-        onramp_ids: list[str],
-        offramp_ids: list[str],
-        backbone_node_ids: set[str],
         sumo_network_path: str,
     ) -> dict[str, Callable[[float], float]]:
         """Execute the complete demand aggregation pipeline.
@@ -401,6 +428,8 @@ class DemandAggregator:
         Args:
             origin_ids: List of origin node IDs in the network.
             onramp_ids: List of onramp node IDs in the network.
+            offramp_ids: List of offramp node IDs in the network.
+            backbone_node_ids: Set of node IDs that are part of the backbone network.
             sumo_network_path: Path to the SUMO network XML file.
 
         Returns:
@@ -416,6 +445,4 @@ class DemandAggregator:
         self.classify_and_map()
         self.aggregate_spatially()
 
-        return self.aggregate_urban_inflows(
-            origin_ids, onramp_ids, backbone_node_ids, sumo_network_path
-        )
+        return self.aggregate_urban_inflows(origin_ids, sumo_network_path)
