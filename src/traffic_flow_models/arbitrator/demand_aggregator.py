@@ -2,6 +2,7 @@ import csv
 import warnings
 import xml.etree.ElementTree as ET
 import networkx as nx
+from tqdm import tqdm
 from collections import defaultdict
 from typing import Callable, Tuple
 
@@ -71,7 +72,10 @@ class DemandAggregator:
         tree = ET.parse(self.detector_output_path)
         root = tree.getroot()
 
-        for interval in root.findall("interval"):
+        intervals = root.findall("interval")
+        for interval in tqdm(
+            intervals, desc="Parsing detector intervals", unit="interval"
+        ):
             det_id = interval.get("id")
             begin_str = interval.get("begin")
 
@@ -98,7 +102,7 @@ class DemandAggregator:
         with open(self.detector_spec_path, "r", encoding="utf-8-sig") as f:
             reader = csv.DictReader(f)
 
-            for row in reader:
+            for row in tqdm(reader, desc="Classifying detectors", unit="detector"):
                 det_id = row["detector_id"].strip().strip('"').strip("'")
 
                 det_id_variants = [
@@ -152,7 +156,11 @@ class DemandAggregator:
             lambda: defaultdict(int)
         )
 
-        for det_id, intervals in self.detector_intervals.items():
+        for det_id, intervals in tqdm(
+            list(self.detector_intervals.items()),
+            desc="Spatially aggregating detectors",
+            unit="detector",
+        ):
             if det_id not in self.detector_mapping:
                 continue
 
@@ -201,7 +209,11 @@ class DemandAggregator:
             origin_id: origin_id.replace("origin_", "") for origin_id in origin_ids
         }
 
-        for demand_key, raw_node_id in all_entry_points.items():
+        for demand_key, raw_node_id in tqdm(
+            list(all_entry_points.items()),
+            desc="Aggregating entry points",
+            unit="entry",
+        ):
             upstream_nodes = self._find_upstream_nodes(
                 graph, raw_node_id, raw_origin_nodes
             )
