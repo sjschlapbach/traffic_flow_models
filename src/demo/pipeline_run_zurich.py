@@ -67,10 +67,18 @@ if __name__ == "__main__":
         network,
         origin_ids,
         onramp_ids,
+        offramp_ids,
         destination_ids,
         road_params,
         diverge_node_info,
+        backbone_node_ids,
     ) = pipeline.get_consolidated_network()
+
+    # Diagnostic
+    print(f"Origins:  {len(origin_ids)} → {origin_ids}")
+    print(f"Onramps:  {len(onramp_ids)} → {onramp_ids}")
+    print(f"Offramps: {len(offramp_ids)} → {offramp_ids}")
+    print(f"Destinations: {len(destination_ids)}")
 
     # run the SUMO simulation
     sim = SUMOSimulation(
@@ -89,9 +97,13 @@ if __name__ == "__main__":
     )
     origin_demands = demand_generator.run(
         origin_ids=origin_ids,
-        onramp_ids=onramp_ids,
         sumo_network_path=pipeline.net_file,
     )
+
+    # Diagnostic
+
+    print("Demand keys:", sorted(origin_demands.keys()))
+    print("Missing:", [k for k in origin_ids if k not in origin_demands])
 
     # compute splits (turning rates) from detector data
     # This is the primary source of splits - detector-based with lane-based fallback
