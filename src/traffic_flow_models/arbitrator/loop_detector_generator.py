@@ -31,9 +31,11 @@ class LoopDetectorGenerator:
         sumo_network_path: str,
         origin_ids: list[str],
         onramp_ids: list[str],
+        offramp_ids: list[str],
         destination_ids: list[str],
         output_dir: str,
         diverge_node_info: dict[str, list[str]],
+        backbone_node_ids: set[str],
         detection_freq: int = 15,
         detector_filename: str = "detector.xml",
         spec_filename: str = "_detectors_spec.csv",
@@ -65,43 +67,41 @@ class LoopDetectorGenerator:
         self.spec_filename: str = spec_filename
         self.output_xml_filename: str = output_xml_filename
 
-        self.backbone_nodes: set[str] = self._extract_backbone_nodes(
-            origin_ids, onramp_ids, destination_ids
-        )
+        self.backbone_nodes = backbone_node_ids
         self.interface_edges: list = []
         self.edge_detectors: list[dict] = []
 
-    def _extract_backbone_nodes(
-        self, origin_ids: list[str], onramp_ids: list[str], destination_ids: list[str]
-    ) -> set[str]:
-        """Extract all nodes from the consolidated network.
+    # def _extract_backbone_nodes(
+    #     self, origin_ids: list[str], onramp_ids: list[str], destination_ids: list[str]
+    # ) -> set[str]:
+    #     """Extract all nodes from the consolidated network.
 
-        Identifies nodes that are part of the macroscopic backbone network by
-        processing origin, onramp, and destination node IDs.
-        These nodes represent the macroscopic network structure.
+    #     Identifies nodes that are part of the macroscopic backbone network by
+    #     processing origin, onramp, and destination node IDs.
+    #     These nodes represent the macroscopic network structure.
 
-        Args:
-            origin_ids: List of origin node IDs in the network.
-            onramp_ids: List of onramp node IDs in the network.
-            destination_ids: List of destination node IDs in the network.
+    #     Args:
+    #         origin_ids: List of origin node IDs in the network.
+    #         onramp_ids: List of onramp node IDs in the network.
+    #         destination_ids: List of destination node IDs in the network.
 
-        Returns:
-            Set of node IDs belonging to the macroscopic backbone network.
-        """
-        backbone = set()
+    #     Returns:
+    #         Set of node IDs belonging to the macroscopic backbone network.
+    #     """
+    #     backbone = set()
 
-        for oid in origin_ids:
-            backbone.add(oid.replace("origin_", ""))
+    #     for oid in origin_ids:
+    #         backbone.add(oid.replace("origin_", ""))
 
-        # add onramp nodes
-        for oid in onramp_ids:
-            backbone.add(oid.replace("onramp_", ""))
+    #     # add onramp nodes
+    #     for oid in onramp_ids:
+    #         backbone.add(oid.replace("onramp_", ""))
 
-        # add destination nodes
-        for did in destination_ids:
-            backbone.add(did.replace("dest_", ""))
+    #     # add destination nodes
+    #     for did in destination_ids:
+    #         backbone.add(did.replace("dest_", ""))
 
-        return backbone
+    #     return backbone
 
     def find_interface_edges(self) -> Tuple[int, int]:
         """Find interface points between macroscopic and microscopic networks.
@@ -123,6 +123,9 @@ class LoopDetectorGenerator:
         inflow_count = 0
         outflow_count = 0
 
+        inflow_boundary_nodes = self.backbone_nodes | set(self.onramp_ids)
+        onramp_nodes = set(self.onramp_ids)
+
         for edge in root.findall("edge"):
             if edge.get("function") == "internal":
                 continue
@@ -132,9 +135,8 @@ class LoopDetectorGenerator:
             from_node = edge.get("from")
             to_node = edge.get("to")
 
-            is_motorway = "motorway" in edge_type
-            to_is_backbone = to_node in self.backbone_nodes
-            from_is_backbone = from_node in self.backbone_nodes
+            to_is_backbone = to_node in inflow_boundary_nodes
+            from_is_backbone = from_node in inflow_boundary_nodes
 
             detector_type = None
             detector_node = None
@@ -142,26 +144,36 @@ class LoopDetectorGenerator:
             if edge_id is None:
                 raise ValueError("Edge is missing 'id' attribute")
 
-            # urban → motorway (macroscopic network inflow)
-            if to_is_backbone and not is_motorway:
+            is_motorway_mainline = edge_type == "motorway"
+            is_motorway_link = "motorway_link" in edge_type
+            is_backbone_edge = is_motorway_mainline or is_motorway_link
+
+            # urban road entering backbone (mainline origin interface)
+            if to_is_backbone and not is_backbone_edge:
                 detector_type = "inflow"
                 detector_node = to_node
                 inflow_count += 1
 
-            # motorway → urban (macroscopic network outflow)
-            elif from_is_backbone and not is_motorway:
+            # motorway_link entering an onramp node — treat as inflow too
+            elif to_node in onramp_nodes and is_motorway_link:
+                detector_type = "inflow"
+                detector_node = to_node
+                inflow_count += 1
+
+            # backbone exiting to urban road (mainline destination interface)
+            elif from_is_backbone and not is_backbone_edge:
                 detector_type = "outflow"
                 detector_node = from_node
                 outflow_count += 1
 
-            # direct backbone interface (ramps connecting to backbone)
-            elif edge_id.endswith("_link") or "link" in edge_type:
+            # motorway_link ramp connections
+            elif is_motorway_link:
                 if to_is_backbone and not from_is_backbone:
-                    detector_type = "ramp_inflow"
+                    detector_type = "ramp_inflow"  # onramp merging onto mainline
                     detector_node = to_node
                     inflow_count += 1
                 elif from_is_backbone and not to_is_backbone:
-                    detector_type = "ramp_outflow"
+                    detector_type = "ramp_outflow"  # offramp leaving mainline
                     detector_node = from_node
                     outflow_count += 1
 
@@ -174,14 +186,7 @@ class LoopDetectorGenerator:
                         continue
                     lane_length = float(length_str)
 
-                    # place detector near end of edge
-                    if lane_length < 10:  # less than 10 meters
-                        print(
-                            f"  Skipping short lane {lane_id} (length={lane_length}m)"
-                        )
-                        continue
-
-                    detector_pos = min(lane_length * 0.9, lane_length - 5)
+                    detector_pos = min(lane_length * 0.9, max(1, lane_length - 5))
 
                     self.edge_detectors.append(
                         {
@@ -312,13 +317,6 @@ class LoopDetectorGenerator:
                     if length_str is None:
                         continue
                     lane_length = float(length_str)
-
-                    # skip very short lanes
-                    if lane_length < 10:
-                        print(
-                            f"  Skipping short lane {lane_id} (length={lane_length}m)"
-                        )
-                        continue
 
                     # place detector near start of edge (5m from start)
                     detector_pos = min(5.0, lane_length * 0.1)

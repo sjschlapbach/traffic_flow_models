@@ -33,6 +33,7 @@ from .arbitrator import (
     LoopDetectorGenerator,
     DemandAggregator,
     TurningRateAggregator,
+    BackboneStateAggregator,
 )
 
 __all__ = [
@@ -57,4 +58,5 @@ __all__ = [
     "LoopDetectorGenerator",
     "DemandAggregator",
     "TurningRateAggregator",
+    "BackboneStateAggregator",
 ]

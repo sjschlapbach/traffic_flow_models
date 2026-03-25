@@ -84,7 +84,9 @@ class SUMOPipeline:
         self.arbitrator: Optional[NetworkArbitrator] = None
         self.origin_ids: Optional[list[str]] = None
         self.onramp_ids: Optional[list[str]] = None
+        self.offramp_ids: Optional[list[str]] = None
         self.destination_ids: Optional[list[str]] = None
+        self.backbone_node_ids: Optional[set[str]] = None
         self.road_params: Optional[RoadParamsConfig] = None
         self.diverge_node_info: Optional[dict[str, list[str]]] = None
 
@@ -202,8 +204,10 @@ class SUMOPipeline:
         list[str],
         list[str],
         list[str],
+        list[str],
         RoadParamsConfig,
         dict[str, list[str]],
+        set[str],
     ]:
         """Create consolidated network from SUMO network.
 
@@ -235,18 +239,22 @@ class SUMOPipeline:
             self.consolidated_network,
             self.origin_ids,
             self.onramp_ids,
+            self.offramp_ids,
             self.destination_ids,
             self.road_params,
             self.diverge_node_info,
+            self.backbone_node_ids,
         ) = self.arbitrator.run()
 
         return (
             self.consolidated_network,
             self.origin_ids,
             self.onramp_ids,
+            self.offramp_ids,
             self.destination_ids,
             self.road_params,
             self.diverge_node_info,
+            self.backbone_node_ids,
         )
 
     def generate_detectors(self) -> Tuple[str, str, str]:
@@ -278,7 +286,9 @@ class SUMOPipeline:
         if (
             self.origin_ids is None
             or self.onramp_ids is None
+            or self.offramp_ids is None
             or self.destination_ids is None
+            or self.backbone_node_ids is None
         ):
             raise ValueError(
                 "Network parameters must be initialized before generating detectors"
@@ -289,7 +299,9 @@ class SUMOPipeline:
             sumo_network_path=self.net_file,
             origin_ids=self.origin_ids,
             onramp_ids=self.onramp_ids,
+            offramp_ids=self.offramp_ids,
             destination_ids=self.destination_ids,
+            backbone_node_ids=self.backbone_node_ids,
             output_dir=self.output_dir,
             diverge_node_info=(
                 self.diverge_node_info if self.diverge_node_info is not None else {}
@@ -359,7 +371,7 @@ class SUMOPipeline:
         # fall back to lane-based splits for nodes without detector data
         if self.consolidated_network and self.arbitrator:
             lane_based_splits = self.arbitrator.compute_lane_based_splits(
-                self.consolidated_network, self.diverge_node_info
+                network=self.consolidated_network
             )
 
             # use detector-based splits where available, lane-based as fallback
@@ -370,6 +382,13 @@ class SUMOPipeline:
                 ):
                     detector_based_splits[node_id] = lane_based_splits[node_id]
                     print(f"  Using lane-based fallback for diverge node {node_id}")
+                elif (
+                    node_id not in detector_based_splits
+                    and node_id not in lane_based_splits
+                ):
+                    raise ValueError(
+                        f"No split data available for diverge node {node_id} from either detectors or lane-based estimation."
+                    )
 
         return detector_based_splits
 
@@ -380,8 +399,10 @@ class SUMOPipeline:
         list[str],
         list[str],
         list[str],
+        list[str],
         RoadParamsConfig,
         dict[str, list[str]],
+        set[str],
     ]:
         """Retrieve the consolidated macroscopic network and metadata.
 
@@ -409,7 +430,9 @@ class SUMOPipeline:
         if (
             self.origin_ids is None
             or self.onramp_ids is None
+            or self.offramp_ids is None
             or self.destination_ids is None
+            or self.backbone_node_ids is None
             or self.road_params is None
             or self.diverge_node_info is None
         ):
@@ -419,7 +442,9 @@ class SUMOPipeline:
             self.consolidated_network,
             self.origin_ids,
             self.onramp_ids,
+            self.offramp_ids,
             self.destination_ids,
             self.road_params,
             self.diverge_node_info,
+            self.backbone_node_ids,
         )

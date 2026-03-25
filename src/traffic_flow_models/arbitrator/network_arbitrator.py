@@ -5,11 +5,16 @@ import networkx as nx
 import xml.etree.ElementTree as ET
 from typing import Union, Tuple, Callable, TypedDict, cast
 
-from traffic_flow_models.network.node import Node
-from traffic_flow_models.network.motorway_link import MotorwayLink
-from traffic_flow_models.network.origin import Origin
-from traffic_flow_models.network.destination import Destination
-from traffic_flow_models.network.network import Network
+
+from traffic_flow_models.network import (
+    Network,
+    Origin,
+    Onramp,
+    Offramp,
+    Destination,
+    MotorwayLink,
+    Node,
+)
 
 
 class RoadTypeParams(TypedDict):
@@ -49,10 +54,6 @@ class NetworkArbitrator:
     The process involves filtering roads by type, merging serial edges, handling
     roundabouts, and instantiating network objects with appropriate parameters.
 
-    The class uses hierarchical road type filtering to automatically select the
-    highest priority road types present in the network (e.g., motorways, then trunks,
-    then primary roads, etc.).
-
     Attributes:
         path: Path to the SUMO network XML file.
         target_cell_length: Target length for macroscopic link cells in kilometers (default: 0.3).
@@ -66,12 +67,14 @@ class NetworkArbitrator:
         road_params: Road parameters configuration loaded from JSON file.
     """
 
+    MOTORWAY_TYPES: Tuple[str, str] = ("highway.motorway", "highway.motorway_link")
+
     def __init__(
         self,
         net_xml_path: str,
         road_params_config_path: str,
         target_cell_length: float = 0.3,
-        hwy_filter: Union[list[Tuple[str, str]], None] = None,
+        # hwy_filter: Union[list[Tuple[str, str]], None] = None,
         min_link_length: Union[float, None] = None,
     ):
         """Initialize the network arbitrator.
@@ -100,17 +103,17 @@ class NetworkArbitrator:
 
         # set the hierarchical filter for road types, allowing for
         # flexible specification of type groups and priorities
-        self.hwy_filter: list[Tuple[str, str]] = (
-            hwy_filter
-            if hwy_filter is not None
-            else [
-                ("motorway", "motorway_link"),
-                ("trunk", "trunk_link"),
-                ("primary", "primary_link"),
-                ("secondary", "secondary_link"),
-                ("tertiary", "tertiary_link"),
-            ]
-        )
+        # self.hwy_filter: list[Tuple[str, str]] = (
+        #     hwy_filter
+        #     if hwy_filter is not None
+        #     else [
+        #         ("motorway", "motorway_link"),
+        #         ("trunk", "trunk_link"),
+        #         ("primary", "primary_link"),
+        #         ("secondary", "secondary_link"),
+        #         ("tertiary", "tertiary_link"),
+        #     ]
+        # )
 
         # load road parameters from config file
         self.road_params: RoadParamsConfig = self._load_road_params_from_json(
@@ -205,8 +208,10 @@ class NetworkArbitrator:
         list[str],
         list[str],
         list[str],
+        list[str],
         RoadParamsConfig,
         dict[str, list[str]],
+        set[str],
     ]:
         """Execute the complete network arbitration pipeline.
 
@@ -252,8 +257,10 @@ class NetworkArbitrator:
             macroscopic_network,
             origin_ids,
             onramp_ids,
+            offramp_ids,
             destination_ids,
             diverge_node_info,
+            backbone_node_ids,
         ) = self.instantiate_network()
         self._log_network_statistics(macroscopic_network)
 
@@ -261,9 +268,11 @@ class NetworkArbitrator:
             macroscopic_network,
             origin_ids,
             onramp_ids,
+            offramp_ids,
             destination_ids,
             self.road_params,
             diverge_node_info,
+            backbone_node_ids,
         )
 
     def parse_sumo_xml(self) -> None:
@@ -284,34 +293,36 @@ class NetworkArbitrator:
         root = tree.getroot()
 
         # extract all available road types in the network for filtering
-        available_types = set()
-        for edge in root.findall("edge"):
-            if edge.get("function") == "internal":
-                continue
-            edge_type = edge.get("type", "")
-            if edge_type:
-                available_types.add(edge_type)
+        # available_types = set()
+        # for edge in root.findall("edge"):
+        #     if edge.get("function") == "internal":
+        #         continue
+        #     edge_type = edge.get("type", "")
+        #     if edge_type:
+        #         available_types.add(edge_type)
 
-        # select highest priority level available
-        for priority_level in self.hwy_filter:
-            # check if ANY type from this priority exists
-            matching = [
-                t
-                for t in priority_level
-                if any(t in avail for avail in available_types)
-            ]
+        # # select highest priority level available
+        # for priority_level in self.hwy_filter:
+        #     # check if ANY type from this priority exists
+        #     matching = [
+        #         t
+        #         for t in priority_level
+        #         if any(t in avail for avail in available_types)
+        #     ]
 
-            if matching:
-                self.selected_types = priority_level
-                print(f"Selected road types: {self.selected_types}")
-                break
+        #     if matching:
+        #         self.selected_types = priority_level
+        #         print(f"Selected road types: {self.selected_types}")
+        #         break
 
-        if self.selected_types is None:
-            raise ValueError(
-                f"No matching road types found in SUMO network. "
-                f"Available types: {sorted(available_types)}, "
-                f"Filter priorities: {self.hwy_filter}"
-            )
+        # if self.selected_types is None:
+        #     raise ValueError(
+        #         f"No matching road types found in SUMO network. "
+        #         f"Available types: {sorted(available_types)}, "
+        #         f"Filter priorities: {self.hwy_filter}"
+        #     )
+
+        self.selected_types = NetworkArbitrator.MOTORWAY_TYPES
 
         # extract junction coordinates
         raw_coordinates = {}
@@ -373,6 +384,12 @@ class NetworkArbitrator:
                 speed=speed_kmh,
                 lanes=len(lanes),
                 type=edge_type,
+            )
+
+        if "highway.motorway" not in self.found_types:
+            raise ValueError(
+                f"No motorway edges found in network '{self.path}'. "
+                f"Available types: {sorted(self.found_types)}"
             )
 
     def eliminate_roundabouts(self) -> None:
@@ -504,7 +521,13 @@ class NetworkArbitrator:
                 same_lanes = d_in["lanes"] == d_out["lanes"]
                 same_speed = abs(d_in["speed"] - d_out["speed"]) < 5.0
 
-                if same_lanes and same_speed:
+                same_type = d_in.get("type", "") == d_out.get("type", "")
+
+                is_type_transition = ("motorway_link" in d_in.get("type", "")) != (
+                    "motorway_link" in d_out.get("type", "")
+                )
+
+                if same_lanes and same_speed and same_type and not is_type_transition:
                     new_attr = {
                         "id": f"merged_{d_in['id']}_{d_out['id']}",
                         "length": d_in["length"] + d_out["length"],
@@ -574,6 +597,7 @@ class NetworkArbitrator:
             # process only the shortest link
             length, u, v, key, data = short_links[0]
             link_id = data.get("id", f"{u}->{v}")
+            link_type = data.get("type", "")
 
             if length > threshold:
                 # stretch the link to minimum length
@@ -581,38 +605,67 @@ class NetworkArbitrator:
                 data["length"] = self.min_link_length
                 all_stretched_links.append((link_id, old_length, self.min_link_length))
             else:
-                # fuse the link by contracting nodes
-                all_fused_links.append((link_id, length))
+                if "motorway_link" in link_type:
+                    # preserve onramps/offramps: stretch instead of fusing
+                    old_length = data["length"]
+                    data["length"] = self.min_link_length
+                    all_stretched_links.append(
+                        (link_id, old_length, self.min_link_length)
+                    )
+                    continue
 
-                # remove the edge first
-                if self.graph.has_edge(u, v, key):
-                    self.graph.remove_edge(u, v, key)
+                upstream_uniform_type = self.graph.in_degree(u) > 0 and all(
+                    edge_data.get("type", "") == link_type
+                    for _, _, edge_data in self.graph.in_edges(u, data=True)
+                )
 
-                # contract nodes: merge v into u
-                if self.graph.has_node(u) and self.graph.has_node(v) and u != v:
-                    # update coordinates to midpoint
-                    if u in self.node_coordinates and v in self.node_coordinates:
-                        u_coord = self.node_coordinates[u]
-                        v_coord = self.node_coordinates[v]
-                        self.node_coordinates[u] = (
-                            (u_coord[0] + v_coord[0]) / 2,
-                            (u_coord[1] + v_coord[1]) / 2,
-                        )
-                        if v in self.node_coordinates:
-                            del self.node_coordinates[v]
+                downstream_uniform_type = self.graph.out_degree(v) > 0 and all(
+                    edge_data.get("type", "") == link_type
+                    for _, _, edge_data in self.graph.out_edges(v, data=True)
+                )
 
-                    # contract v into u (merge nodes)
-                    try:
-                        self.graph = nx.contracted_nodes(
-                            self.graph, u, v, self_loops=False
-                        )
-                    except nx.NetworkXError:
-                        # node might have been contracted already
-                        warnings.warn(
-                            f"Failed to contract nodes {u} and {v} for link {link_id}. Nodes may have been modified already.",
-                            stacklevel=2,
-                        )
-                        pass
+                if upstream_uniform_type or downstream_uniform_type:
+                    # fuse the link by contracting its boundary nodes, keeping nearby link types unchanged
+                    all_fused_links.append((link_id, length))
+
+                    if self.graph.has_edge(u, v, key):
+                        self.graph.remove_edge(u, v, key)
+
+                    if self.graph.has_node(u) and self.graph.has_node(v) and u != v:
+                        # keep the node with more outgoing links to preserve turning-rate references
+                        pivot, other = (u, v)
+                        if self.graph.out_degree(v) > self.graph.out_degree(u):
+                            pivot, other = v, u
+
+                        # update coordinates to midpoint
+                        if (
+                            pivot in self.node_coordinates
+                            and other in self.node_coordinates
+                        ):
+                            pivot_coord = self.node_coordinates[pivot]
+                            other_coord = self.node_coordinates[other]
+                            self.node_coordinates[pivot] = (
+                                (pivot_coord[0] + other_coord[0]) / 2,
+                                (pivot_coord[1] + other_coord[1]) / 2,
+                            )
+                            if other in self.node_coordinates:
+                                del self.node_coordinates[other]
+
+                        try:
+                            self.graph = nx.contracted_nodes(
+                                self.graph, pivot, other, self_loops=False
+                            )
+                        except nx.NetworkXError:
+                            warnings.warn(
+                                f"Failed to contract nodes {u} and {v} for link {link_id}. Nodes may have been modified already.",
+                                stacklevel=2,
+                            )
+                    continue
+
+                # fallback: stretch when merging would cross a type boundary
+                old_length = data["length"]
+                data["length"] = self.min_link_length
+                all_stretched_links.append((link_id, old_length, self.min_link_length))
 
         # log statistics
         if all_stretched_links or all_fused_links:
@@ -647,7 +700,9 @@ class NetworkArbitrator:
         list[str],
         list[str],
         list[str],
+        list[str],
         dict[str, list[str]],
+        set[str],
     ]:
         """Create macroscopic network objects from the processed graph.
 
@@ -684,6 +739,27 @@ class NetworkArbitrator:
         # track diverge node information (node ID -> SUMO edge IDs)
         diverge_node_info: dict[str, list[str]] = {}
 
+        # onramp source: in_degree=0, all outgoing edges are motorway_link
+        # offramp sink:  out_degree=0, all incoming edges are motorway_link
+        onramp_source_nodes: set[str] = set()
+        offramp_sink_nodes: set[str] = set()
+
+        for nid in self.graph.nodes():
+            if self.graph.in_degree(nid) == 0:
+                out_edges = list(self.graph.out_edges(nid, data=True))
+                if out_edges and all(
+                    "motorway_link" in d.get("type", "") for _, _, d in out_edges
+                ):
+                    onramp_source_nodes.add(str(nid))
+
+            if self.graph.out_degree(nid) == 0:
+                in_edges = list(self.graph.in_edges(nid, data=True))
+                if in_edges and all(
+                    "motorway_link" in d.get("type", "") for _, _, d in in_edges
+                ):
+                    offramp_sink_nodes.add(str(nid))
+
+        # create node objects
         for nid in self.graph.nodes():
             n_obj = Node(id=str(nid))
             n_obj.set_position(*self.node_coordinates.get(nid, (0, 0)))
@@ -699,64 +775,103 @@ class NetworkArbitrator:
                 ),
             )
 
-            # initiate motorway link and directly connect it to the connected nodes
-            link = MotorwayLink(
-                id=str(data["id"]),
-                length=data["length"],
-                lanes=data["lanes"],
-                lane_capacity=params["lane_capacity"],
-                free_flow_speed=params["free_flow_speed"],
-                jam_density=params["jam_density"],
-                origin_node_id=str(u),
-                destination_node_id=str(v),
-            )
+            u_str, v_str = str(u), str(v)
+            is_ramp = "highway.motorway_link" in edge_type
+
+            if is_ramp and u_str in onramp_source_nodes:
+                link = Onramp(
+                    id=str(data["id"]),
+                    lanes=data["lanes"],
+                    lane_capacity=params["lane_capacity"],
+                    free_flow_speed=params["free_flow_speed"],
+                    jam_density=params["jam_density"],
+                    origin_node_id=u_str,
+                    destination_node_id=v_str,
+                )
+            elif is_ramp and v_str in offramp_sink_nodes:
+                link = Offramp(
+                    id=str(data["id"]),
+                    lanes=data["lanes"],
+                    lane_capacity=params["lane_capacity"],
+                    free_flow_speed=params["free_flow_speed"],
+                    jam_density=params["jam_density"],
+                    origin_node_id=u_str,
+                    destination_node_id=v_str,
+                )
+            else:
+                link = MotorwayLink(
+                    id=str(data["id"]),
+                    length=data["length"],
+                    lanes=data["lanes"],
+                    lane_capacity=params["lane_capacity"],
+                    free_flow_speed=params["free_flow_speed"],
+                    jam_density=params["jam_density"],
+                    origin_node_id=u_str,
+                    destination_node_id=v_str,
+                )
+                num_cells = max(1, math.ceil(data["length"] / self.target_cell_length))
+                cell_len = data["length"] / num_cells
+                for _ in range(num_cells):
+                    link.add_cell(length=cell_len)
+                    total_cells += 1
 
             # connect link to nodes
             macro_nodes[u].add_outgoing(link)
             macro_nodes[v].add_incoming(link)
 
             # track SUMO edge ID for this link's origin node (for turning rate detection)
-            if str(u) not in diverge_node_info:
+            if u_str not in diverge_node_info:
                 diverge_node_info[str(u)] = []
             diverge_node_info[str(u)].append(str(data["id"]))
 
-            # TODO: remove the creation of cells here if they are not used for the data aggregation and calibration later on -> partitioning performed automatically during simulation
-            num_cells = max(1, math.ceil(data["length"] / self.target_cell_length))
-            cell_len = data["length"] / num_cells
-            for _ in range(num_cells):
-                link.add_cell(length=cell_len)
-                total_cells += 1
+        # assign Origins and Destinations, distinguishing ramp vs mainline
+        origin_ids: list[str] = []
+        onramp_ids: list[str] = []
+        destination_ids: list[str] = []
+        offramp_ids: list[str] = []
 
         for nid, node_obj in macro_nodes.items():
+            nid_str = str(nid)
+
             if not node_obj.incoming:
-                orig = Origin(id=f"origin_{nid}", destination_node_id=str(nid))
+                if any(isinstance(l, Onramp) for l in node_obj.outgoing):
+                    for l in node_obj.outgoing:
+                        onramp_ids.append(l.id)
+                    # onramp_ids.append(nid_str)
+
+                    orig = Origin(id=f"origin_{nid}", destination_node_id=nid_str)
+                    origin_ids.append(orig.id)
+                else:
+                    orig = Origin(id=f"origin_{nid}", destination_node_id=nid_str)
+                    origin_ids.append(orig.id)
                 node_obj.add_incoming(orig)
 
             if not node_obj.outgoing:
-                dest = Destination(id=f"dest_{nid}", origin_node_id=str(nid))
+                if any(isinstance(l, Offramp) for l in node_obj.incoming):
+                    for l in node_obj.incoming:
+                        offramp_ids.append(l.id)
+
+                    dest = Destination(id=f"dest_{nid}", origin_node_id=nid_str)
+                    destination_ids.append(dest.id)
+                else:
+                    dest = Destination(id=f"dest_{nid}", origin_node_id=nid_str)
+                    destination_ids.append(dest.id)
                 node_obj.add_outgoing(dest)
 
-        origin_ids: list[str] = [
-            node_obj.incoming[0].id
-            for node_obj in macro_nodes.values()
-            if node_obj.incoming and isinstance(node_obj.incoming[0], Origin)
-        ]
-
-        destination_ids: list[str] = [
-            node_obj.outgoing[0].id
-            for node_obj in macro_nodes.values()
-            if node_obj.outgoing and isinstance(node_obj.outgoing[0], Destination)
-        ]
-
-        # TODO: Extract this information from the corresponding OSM road category
-        onramp_ids: list[str] = []
+        backbone_node_ids: set[str] = (
+            {str(nid) for nid in self.graph.nodes()}
+            - onramp_source_nodes
+            - offramp_sink_nodes
+        )
 
         return (
             Network(nodes=list(macro_nodes.values())),
             origin_ids,
             onramp_ids,
+            offramp_ids,
             destination_ids,
             diverge_node_info,
+            backbone_node_ids,
         )
 
     def _log_network_statistics(self, network: Network) -> None:
@@ -774,10 +889,17 @@ class NetworkArbitrator:
             network: Network object containing the macroscopic network.
         """
         num_nodes = len(network)
+        # num_links = sum(
+        #     len(node.outgoing)
+        #     for node in network
+        #     if node.outgoing and not isinstance(node.outgoing[0], Destination)
+        # )
+
         num_links = sum(
-            len(node.outgoing)
+            1
             for node in network
-            if node.outgoing and not isinstance(node.outgoing[0], Destination)
+            for link in node.outgoing
+            if isinstance(link, MotorwayLink)
         )
 
         num_origins = sum(
@@ -809,7 +931,7 @@ class NetworkArbitrator:
         print("=" * 60)
 
     def compute_lane_based_splits(
-        self, network: Network, diverge_node_info: dict[str, list[str]]
+        self, network: Network
     ) -> dict[str, Callable[[float], dict[str, float]]]:
         """Compute lane-based split ratios for nodes as fallback.
 
@@ -820,7 +942,6 @@ class NetworkArbitrator:
 
         Args:
             network: Network object containing all nodes and links.
-            diverge_node_info: Dictionary mapping node IDs to lists of SUMO edge IDs.
 
         Returns:
             Dictionary mapping node IDs to time-invariant split functions.
@@ -830,22 +951,36 @@ class NetworkArbitrator:
 
         for node in network:
             node_id = node.id
-            if node_id not in diverge_node_info:
-                continue
 
             outgoing_links = [
-                link for link in node.outgoing if isinstance(link, MotorwayLink)
+                link
+                for link in node.outgoing
+                if isinstance(link, (MotorwayLink, Onramp, Offramp, Destination))
             ]
 
-            if len(outgoing_links) == 1:
+            if len(outgoing_links) == 0:
+                raise ValueError(
+                    f"Node {node_id} has no outgoing links, cannot compute lane-based splits."
+                )
+
+            elif len(outgoing_links) == 1:
                 # single outgoing link: turning rate = 1.0
                 splits[node_id] = lambda t, ol=outgoing_links: {ol[0].id: 1.0}
+
             elif len(outgoing_links) >= 2:
                 # multiple outgoing links: use lane-proportional splits
-                total_lanes = sum(link.lanes for link in outgoing_links)
+                total_lanes = sum(
+                    (link.lanes if isinstance(link, (MotorwayLink, Offramp)) else 1)
+                    for link in outgoing_links
+                )
+
                 # create time-invariant split function based on lane proportions
                 splits[node_id] = lambda t, ol=outgoing_links, tl=total_lanes: {
-                    link.id: link.lanes / tl for link in ol
+                    link.id: (
+                        (link.lanes if isinstance(link, (MotorwayLink, Offramp)) else 1)
+                        / tl
+                    )
+                    for link in ol
                 }
 
         return splits
