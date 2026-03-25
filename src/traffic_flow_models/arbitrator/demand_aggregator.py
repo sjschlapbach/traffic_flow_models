@@ -122,6 +122,8 @@ class DemandAggregator:
                 elif "turning_rate" in det_type:
                     # turning rate detectors should be ignored for demand aggregation
                     continue
+                elif "backbone_segment" in det_type:
+                    continue
                 else:
                     # fallback for any other types
                     warnings.warn(

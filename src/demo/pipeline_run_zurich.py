@@ -8,8 +8,8 @@ from traffic_flow_models import (
     SUMOSimulation,
     DemandAggregator,
     Simulation,
+    BackboneStateAggregator,
 )
-from traffic_flow_models.arbitrator.backbone_aggregator import BackboneStateAggregator
 
 if __name__ == "__main__":
     args = argparse.ArgumentParser(description="Run the Zurich demo scenario.")
@@ -68,10 +68,18 @@ if __name__ == "__main__":
         network,
         origin_ids,
         onramp_ids,
+        offramp_ids,
         destination_ids,
         road_params,
         diverge_node_info,
+        backbone_node_ids,
     ) = pipeline.get_consolidated_network()
+
+    # Diagnostic
+    print(f"Origins:  {len(origin_ids)} → {origin_ids}")
+    print(f"Onramps:  {len(onramp_ids)} → {onramp_ids}")
+    print(f"Offramps: {len(offramp_ids)} → {offramp_ids}")
+    print(f"Destinations: {len(destination_ids)}")
 
     # run the SUMO simulation
     sim = SUMOSimulation(
@@ -88,19 +96,31 @@ if __name__ == "__main__":
     demand_generator = DemandAggregator(
         detector_output_path=detector_output_file, detector_spec_path=spec_file
     )
-    origin_demands, onramp_demands = demand_generator.run(
+    origin_demands = demand_generator.run(
         origin_ids=origin_ids,
-        onramp_ids=onramp_ids,
         sumo_network_path=pipeline.net_file,
     )
 
-    combined_demands = {**origin_demands, **onramp_demands}
+    # Diagnostic
+
+    print("Demand keys:", sorted(origin_demands.keys()))
+    print("Missing:", [k for k in origin_ids if k not in origin_demands])
+
+    # compute splits (turning rates) from detector data
+    # This is the primary source of splits - detector-based with lane-based fallback
+    # Uses rolling window aggregation (2 minutes by default) over small detector intervals (15 seconds)
+    splits = pipeline.compute_splits(window_size_minutes=2.0)
+
+    # TODO: replace these, once they can be obtained from data
+    destination_density_bc = {dest_id: lambda _t: 10.0 for dest_id in destination_ids}
+    destination_flow_bc = {dest_id: lambda _t: 6000.0 for dest_id in destination_ids}
 
     # initialize the results directory
     timestamp = datetime.now().strftime("simulation_results_%Y-%m-%d_%H%M%S")
     results_dir = f"results/{timestamp}"
     os.makedirs(results_dir, exist_ok=True)
 
+    # ── Backbone state estimation ──────────────────────────────────────────────
     backbone_state_path = os.path.join(results_dir, "backbone_state.json")
     backbone_aggregator = BackboneStateAggregator(
         detector_output_path=detector_output_file,
@@ -112,15 +132,6 @@ if __name__ == "__main__":
         time_step_minutes=1.0,
     )
 
-    # compute splits (turning rates) from detector data
-    # This is the primary source of splits - detector-based with lane-based fallback
-    # Uses rolling window aggregation (2 minutes by default) over small detector intervals (15 seconds)
-    splits = pipeline.compute_splits(window_size_minutes=2.0)
-
-    # TODO: replace these, once they can be obtained from data
-    destination_density_bc = {dest_id: lambda _t: 10.0 for dest_id in destination_ids}
-    destination_flow_bc = {dest_id: lambda _t: 6000.0 for dest_id in destination_ids}
-
     # plot the network
     network.plot(save_path="results/zurich/network.png", show=plot_enabled)
 
@@ -131,9 +142,7 @@ if __name__ == "__main__":
         duration=duration,
         dt=dt,
         preferred_cell_size=preferred_cell_size,
-        # origin_demands=origin_demands,
-        # onramp_demands=onramp_demands,
-        origin_demands=combined_demands,
+        origin_demands=origin_demands,
         turning_rates=splits,
         destination_density_bc=destination_density_bc,
         destination_flow_bc=destination_flow_bc,

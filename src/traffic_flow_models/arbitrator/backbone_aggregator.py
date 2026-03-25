@@ -258,18 +258,21 @@ class BackboneStateAggregator:
             Callable ``f(t_hours) → {"flow", "speed", "density"}``, or ``None``
             if the rolling-window helper returns ``None`` for the count stream.
         """
+
+        SCALE = 1000
+
         # split into two parallel interval streams for the existing helper
         count_intervals: dict[str, list[Tuple[float, int]]] = {
-            "flow": [(begin, count) for begin, count, _ in intervals]
+            "flow": [(begin, count * SCALE) for begin, count, _ in intervals]
         }
         # represent speed as a pseudo-count stream weighted by vehicle count
         # aggregation_type="rate" will normalise by window duration → flow-like unit
         speed_weight_intervals: dict[str, list[Tuple[float, int]]] = {
             "speed_x_count": [
-                (begin, int(speed * count))  # weighted speed sum per interval
+                (begin, int(speed * count * SCALE))  # weighted speed sum per interval
                 for begin, count, speed in intervals
             ],
-            "count_weight": [(begin, count) for begin, count, _ in intervals],
+            "count_weight": [(begin, count * SCALE) for begin, count, _ in intervals],
         }
 
         flow_fn = make_rolling_window_aggregator(
@@ -286,14 +289,14 @@ class BackboneStateAggregator:
             intervals={"speed_x_count": speed_weight_intervals["speed_x_count"]},
             window_size_sec=self.window_size_sec,
             max_time=self.max_time,
-            aggregation_type="total",  # raw sum of (speed * count)
+            aggregation_type="rate",  # raw sum of (speed * count)
         )
 
         count_denom_fn = make_rolling_window_aggregator(
             intervals={"count_weight": speed_weight_intervals["count_weight"]},
             window_size_sec=self.window_size_sec,
             max_time=self.max_time,
-            aggregation_type="total",  # raw vehicle count in window
+            aggregation_type="rate",  # raw vehicle count in window
         )
 
         def state_fn(t_hours: float) -> dict[str, float]:

@@ -71,37 +71,18 @@ class LoopDetectorGenerator:
         self.interface_edges: list = []
         self.edge_detectors: list[dict] = []
 
-    # def _extract_backbone_nodes(
-    #     self, origin_ids: list[str], onramp_ids: list[str], destination_ids: list[str]
-    # ) -> set[str]:
-    #     """Extract all nodes from the consolidated network.
+    def _extract_backbone_nodes(self) -> set[str]:
+        
+        backbone = set()
+        tree = ET.parse(self.sumo_network_path)
+        root = tree.getroot()
 
-    #     Identifies nodes that are part of the macroscopic backbone network by
-    #     processing origin, onramp, and destination node IDs.
-    #     These nodes represent the macroscopic network structure.
+        for junction in root.findall("junction"):
+            node_id = junction.get("id")
+            if node_id and not node_id.startswith(":"):  # skip internal junctions
+                backbone.add(node_id)
 
-    #     Args:
-    #         origin_ids: List of origin node IDs in the network.
-    #         onramp_ids: List of onramp node IDs in the network.
-    #         destination_ids: List of destination node IDs in the network.
-
-    #     Returns:
-    #         Set of node IDs belonging to the macroscopic backbone network.
-    #     """
-    #     backbone = set()
-
-    #     for oid in origin_ids:
-    #         backbone.add(oid.replace("origin_", ""))
-
-    #     # add onramp nodes
-    #     for oid in onramp_ids:
-    #         backbone.add(oid.replace("onramp_", ""))
-
-    #     # add destination nodes
-    #     for did in destination_ids:
-    #         backbone.add(did.replace("dest_", ""))
-
-    #     return backbone
+        return backbone
 
     def find_interface_edges(self) -> Tuple[int, int]:
         """Find interface points between macroscopic and microscopic networks.
@@ -204,11 +185,8 @@ class LoopDetectorGenerator:
 
     def add_detectors_backbone_network(self) -> int:
         segment_detector_count = 0
-        detector_interval = 10.0
 
-        backbone_nodes = self._extract_backbone_nodes(
-            self.origin_ids, self.onramp_ids, self.destination_ids
-        )
+        backbone_nodes = self._extract_backbone_nodes()
 
         ramp_edges = set()
         tree = ET.parse(self.sumo_network_path)
@@ -253,26 +231,23 @@ class LoopDetectorGenerator:
                     continue
                 lane_length = float(length_str)
 
-                segment_index = 0  # per-lane position counter (fix finding 3)
-                current_pos = 0.0
-                while current_pos <= lane_length:
-                    self.edge_detectors.append(
-                        {
-                            "edge_id": edge_id,
-                            "lane_id": lane_id,
-                            "lane_index": lane_idx,
-                            "position": current_pos,
-                            "segment_index": segment_index,
-                            "type": "backbone_segment",
-                            "from_node": from_node,
-                            "to_node": to_node,
-                            "node_id": None,
-                        }
-                    )
-                    segment_detector_count += 1
-                    current_pos += detector_interval
-                    segment_index += 1
+                position = lane_length / 2.0
 
+                self.edge_detectors.append(
+                    {
+                        "edge_id": edge_id,
+                        "lane_id": lane_id,
+                        "lane_index": lane_idx,
+                        "position": position,
+                        "segment_index": 0,
+                        "type": "backbone_segment",
+                        "from_node": from_node,
+                        "to_node": to_node,
+                        "node_id": None,
+                    }
+                )
+                segment_detector_count += 1
+                    
         return segment_detector_count
 
     def find_turning_rate_edges(self) -> int:
