@@ -51,13 +51,13 @@ class BackboneStateAggregator:
         self.window_size_sec: float = window_size_minutes * 60
 
         # raw readings: {det_id: [(begin_sec, count, speed_kmh), ...]}
-        self.detector_intervals: defaultdict[str, list[Tuple[float, int, float]]] = (
+        self.detector_intervals: defaultdict[str, list[Tuple[float, float, float]]] = (
             defaultdict(list)
         )
         self.detector_mapping: dict[str, dict[str, str]] = {}
 
         # spatially aggregated per edge: {edge_id: [(begin_sec, count, speed_kmh), ...]}
-        self.edge_intervals: defaultdict[str, list[Tuple[float, int, float]]] = (
+        self.edge_intervals: defaultdict[str, list[Tuple[float, float, float]]] = (
             defaultdict(list)
         )
         self.max_time: float = 0.0
@@ -184,6 +184,7 @@ class BackboneStateAggregator:
                 total_count = 0
                 weighted_speed_sum = 0.0
                 total_weight = 0
+                reporting_positions = 0
 
                 for time_data in position_data.values():
                     if begin in time_data:
@@ -191,9 +192,14 @@ class BackboneStateAggregator:
                         total_count += count
                         weighted_speed_sum += wspeed
                         total_weight += weight
+                        reporting_positions += 1
 
                 # normalize count by number of positions to avoid length inflation
-                normalized_count = total_count / num_positions
+                normalized_count = (
+                    total_count / reporting_positions
+                    if reporting_positions > 0
+                    else 0.0
+                )
                 mean_speed = (
                     weighted_speed_sum / total_weight if total_weight > 0 else 0.0
                 )
@@ -242,7 +248,7 @@ class BackboneStateAggregator:
 
     def _make_state_function(
         self,
-        intervals: list[Tuple[float, int, float]],
+        intervals: list[Tuple[float, float, float]],
     ) -> Callable[[float], dict[str, float]] | None:
         """Build a rolling-window state function for a single edge.
 
@@ -259,27 +265,25 @@ class BackboneStateAggregator:
             if the rolling-window helper returns ``None`` for the count stream.
         """
 
-        SCALE = 1000
-
         # split into two parallel interval streams for the existing helper
         count_intervals: dict[str, list[Tuple[float, int]]] = {
-            "flow": [(begin, count * SCALE) for begin, count, _ in intervals]
+            "flow": [(begin, count) for begin, count, _ in intervals]
         }
         # represent speed as a pseudo-count stream weighted by vehicle count
         # aggregation_type="rate" will normalise by window duration → flow-like unit
-        speed_weight_intervals: dict[str, list[Tuple[float, int]]] = {
+        speed_weight_intervals: dict[str, list[Tuple[float, float]]] = {
             "speed_x_count": [
-                (begin, int(speed * count * SCALE))  # weighted speed sum per interval
+                (begin, float(speed * count))  # weighted speed sum per interval
                 for begin, count, speed in intervals
             ],
-            "count_weight": [(begin, count * SCALE) for begin, count, _ in intervals],
+            "count_weight": [(begin, count) for begin, count, _ in intervals],
         }
 
         flow_fn = make_rolling_window_aggregator(
             intervals=count_intervals,
             window_size_sec=self.window_size_sec,
             max_time=self.max_time,
-            aggregation_type="rate",  # → veh/h
+            aggregation_type="demand",  # → veh/h
         )
 
         if flow_fn is None:
@@ -289,14 +293,14 @@ class BackboneStateAggregator:
             intervals={"speed_x_count": speed_weight_intervals["speed_x_count"]},
             window_size_sec=self.window_size_sec,
             max_time=self.max_time,
-            aggregation_type="rate",  # raw sum of (speed * count)
+            aggregation_type="demand",  # raw sum of (speed * count)
         )
 
         count_denom_fn = make_rolling_window_aggregator(
             intervals={"count_weight": speed_weight_intervals["count_weight"]},
             window_size_sec=self.window_size_sec,
             max_time=self.max_time,
-            aggregation_type="rate",  # raw vehicle count in window
+            aggregation_type="demand",  # raw vehicle count in window
         )
 
         def state_fn(t_hours: float) -> dict[str, float]:

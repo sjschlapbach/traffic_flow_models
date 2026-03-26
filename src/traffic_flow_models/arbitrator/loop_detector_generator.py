@@ -71,19 +71,6 @@ class LoopDetectorGenerator:
         self.interface_edges: list = []
         self.edge_detectors: list[dict] = []
 
-    def _extract_backbone_nodes(self) -> set[str]:
-        
-        backbone = set()
-        tree = ET.parse(self.sumo_network_path)
-        root = tree.getroot()
-
-        for junction in root.findall("junction"):
-            node_id = junction.get("id")
-            if node_id and not node_id.startswith(":"):  # skip internal junctions
-                backbone.add(node_id)
-
-        return backbone
-
     def find_interface_edges(self) -> Tuple[int, int]:
         """Find interface points between macroscopic and microscopic networks.
 
@@ -185,10 +172,8 @@ class LoopDetectorGenerator:
 
     def add_detectors_backbone_network(self) -> int:
         segment_detector_count = 0
-
-        backbone_nodes = self._extract_backbone_nodes()
-
         ramp_edges = set()
+
         tree = ET.parse(self.sumo_network_path)
         root = tree.getroot()
 
@@ -198,15 +183,15 @@ class LoopDetectorGenerator:
             from_node = edge.get("from")
             to_node = edge.get("to")
             edge_id = edge.get("id")
-            for onramp_id in self.onramp_ids:
-                node_id = onramp_id.replace("onramp_", "")
-                if from_node == node_id or to_node == node_id:
-                    # only add non-backbone edges as ramp edges (fix finding 4)
-                    is_backbone_edge = (
-                        from_node in backbone_nodes and to_node in backbone_nodes
-                    )
-                    if not is_backbone_edge:
-                        ramp_edges.add(edge_id)
+            # for onramp_id in self.onramp_ids:
+            #     node_id = onramp_id.replace("onramp_", "")
+            #     if from_node == node_id or to_node == node_id:
+            #         # only add non-backbone edges as ramp edges (fix finding 4)
+            #         is_backbone_edge = (
+            #             from_node in self.backbone_nodes and to_node in self.backbone_nodes
+            #         )
+            #         if not is_backbone_edge:
+            #             ramp_edges.add(edge_id)
 
         for edge in root.findall("edge"):
             if edge.get("function") == "internal":
@@ -218,8 +203,8 @@ class LoopDetectorGenerator:
 
             if (
                 edge_id in ramp_edges
-                or from_node not in backbone_nodes
-                or to_node not in backbone_nodes
+                or from_node not in self.backbone_nodes
+                or to_node not in self.backbone_nodes
             ):
                 continue
 
@@ -247,7 +232,7 @@ class LoopDetectorGenerator:
                     }
                 )
                 segment_detector_count += 1
-                    
+
         return segment_detector_count
 
     def find_turning_rate_edges(self) -> int:
