@@ -100,7 +100,7 @@ class BackboneStateAggregator:
 
             # SUMO reports speed in m/s; -1 indicates no vehicles in interval
             # raw_speed_ms = float(interval.get("speed", -1.0))
-            raw_speed_ms = float(interval.get("meanspeed", -1.0))
+            raw_speed_ms = float(interval.get("meanSpeed", -1.0))
             speed_kmh = raw_speed_ms * 3.6 if raw_speed_ms >= 0 else 0.0
             occupancy = float(interval.get("meanOccupancy", 0.0))
 
@@ -166,18 +166,12 @@ class BackboneStateAggregator:
 
             mapping = self.detector_mapping[det_id]
             cell_key = mapping["cell_key"]
-            # edge_id = mapping["edge_id"]
-            # position = mapping.get("position")
-
-            # Create a unique key for this specific spatial cell
-            # cell_key = (edge_id, position)
-            # cell_key = f"{edge_id}@{position}"
 
             for begin, count, speed_kmh, occupancy in intervals:
                 bucket = cell_time_data[cell_key][begin]
                 bucket[0] += count
                 bucket[1] += speed_kmh * count
-                bucket[2] += count
+                bucket[2] += 1  # Interval for occupancy averaging
                 bucket[3] += occupancy
 
         # Compute stats per cell_key and store in edge_intervals (holds cell level data)
@@ -185,11 +179,14 @@ class BackboneStateAggregator:
             for begin in sorted(time_data.keys()):
                 count, wspeed, weight, occ_sum = time_data[begin]
 
-                mean_speed = wspeed / weight if weight > 0 else 0.0
-                mean_occupancy = occ_sum / weight if weight > 0 else 0.0
+                mean_speed = wspeed / count if count > 0 else 0.0
+                n_lanes = time_data[begin][2]
+                mean_occupancy = occ_sum / n_lanes if n_lanes > 0 else 0.0
 
                 # self.edge_intervals[cell_key].append((begin, float(count), mean_speed))
-                self.edge_intervals[cell_key].append((begin, float(count), mean_speed, mean_occupancy))
+                self.edge_intervals[cell_key].append(
+                    (begin, float(count), mean_speed, mean_occupancy, float(n_lanes))
+                )
 
     def compute_traffic_state(
         self,
@@ -214,7 +211,7 @@ class BackboneStateAggregator:
         state_functions: dict[str, Callable[[float], dict[str, float]]] = {}
 
         for edge_id, intervals in self.edge_intervals.items():
-            total_vehicles = sum(count for _, count, _, _ in intervals)
+            total_vehicles = sum(count for _, count, _, _, _ in intervals)
 
             if total_vehicles == 0:
                 warnings.warn(
@@ -232,7 +229,7 @@ class BackboneStateAggregator:
 
     def _make_state_function(
         self,
-        intervals: list[Tuple[float, float, float, float]],
+        intervals: list[Tuple[float, float, float, float, float]],
     ) -> Callable[[float], dict[str, float]] | None:
         """Build a rolling-window state function for a single edge.
 
@@ -251,23 +248,25 @@ class BackboneStateAggregator:
 
         # split into two parallel interval streams for the existing helper
         count_intervals: dict[str, list[Tuple[float, int]]] = {
-            "flow": [(begin, count) for begin, count, _, _ in intervals]
+            "flow": [(begin, count) for begin, count, _, _, _ in intervals]
         }
         # represent speed as a pseudo-count stream weighted by vehicle count
         # aggregation_type="rate" will normalise by window duration → flow-like unit
         speed_weight_intervals: dict[str, list[Tuple[float, float]]] = {
             "speed_x_count": [
                 (begin, float(speed * count))  # weighted speed sum per interval
-                for begin, count, speed, _ in intervals
+                for begin, count, speed, _, _ in intervals
             ],
-            "count_weight": [(begin, count) for begin, count, _, _ in intervals],
+            "count_weight": [(begin, count) for begin, count, _, _, _ in intervals],
         }
 
-        occupancy_intervals = {
-            "occupancy": [
-                (begin, occupancy)
-                for begin, _, __, occupancy in intervals]
-        }
+        raw_occupancy: list[tuple[float, float]] = [
+            (begin, occupancy) for begin, _, _, occupancy, _ in intervals
+        ]
+
+        raw_n_lanes: list[tuple[float, float]] = [
+            (begin, n_lanes) for begin, _, _, _, n_lanes in intervals
+        ]
 
         flow_fn = make_rolling_window_aggregator(
             intervals=count_intervals,
@@ -293,32 +292,64 @@ class BackboneStateAggregator:
             aggregation_type="demand",  # raw vehicle count in window
         )
 
-        occupancy_fn = make_rolling_window_aggregator(
-            intervals=occupancy_intervals,
-            window_size_sec=self.window_size_sec,
-            max_time=self.max_time,
-            aggregation_type="demand",
-        )
+        max_time = self.max_time
+        window_size_sec = self.window_size_sec
+
+        def mean_in_window(
+            t_hours: float, data_stream: list[tuple[float, float]]
+        ) -> float:
+            """Compute mean directly — simple average of intervals in window."""
+            query_sec = t_hours * 3600.0
+
+            w_start = query_sec - window_size_sec / 2
+            w_end = query_sec + window_size_sec / 2
+
+            if w_start < 0:
+                w_start, w_end = 0.0, min(window_size_sec, max_time)
+            elif w_end > max_time:
+                w_start = max(0.0, max_time - window_size_sec)
+                w_end = max_time
+
+            values = [val for begin, val in data_stream if w_start <= begin < w_end]
+            return sum(values) / len(values) if values else 0.0
 
         def state_fn(t_hours: float) -> dict[str, float]:
-            flow_dict = flow_fn(t_hours)
-            flow = flow_dict.get("flow", 0.0)
+            # Average vehicle length + gap or detector length (in kilometers)
+            # Example: 7.5 meters total effective length -> 0.0075 km
+            L_EFF_KM = 0.0075
+            FREE_FLOW_SPEED = 120.0
 
-            # weighted-mean speed: sum(v_i * n_i) / sum(n_i)
+            flow_dict = flow_fn(t_hours)
+            flow_total = flow_dict.get("flow", 0.0)
+
+            # 1. Convert cross-sectional flow to per-lane flow
+            n_lanes = mean_in_window(t_hours, raw_n_lanes)
+            flow_per_lane = flow_total / n_lanes if n_lanes > 0 else 0.0
+
+            # 2. Calculate weighted mean speed
             if speed_numerator_fn is not None and count_denom_fn is not None:
                 num = speed_numerator_fn(t_hours).get("speed_x_count", 0.0)
                 den = count_denom_fn(t_hours).get("count_weight", 0.0)
-                speed = num / den if den > 0 else 0.0
+
+                speed = num / den if den > 0 else FREE_FLOW_SPEED
             else:
-                speed = 0.0
+                speed = FREE_FLOW_SPEED
+            # 3. Derive per-lane density from Flow/Speed: k = q / v
+            density_derived = flow_per_lane / speed if speed > 0 else 0.0
 
-            # fundamental relation: k = q / v  (veh/km)
-            density_derived = flow / speed if speed > 0 else 0.0
-            #density from E2 occupancy
-            #SUMO occupancy is a percentage [0,100] of time the detector was occupied
-            occupancy_pct = occupancy_fn(t_hours).get("occupancy", 0.0) if occupancy_fn else 0.0
+            # 4. Convert Occupancy % to Density (veh/km/lane)
+            # Formula: k = Occupancy_fraction / L_eff
+            occ_percent = mean_in_window(t_hours, raw_occupancy)
+            occ_fraction = occ_percent / 100.0
+            density_occupancy = occ_fraction / L_EFF_KM
 
-            return {"flow": flow, "speed": speed, "density_derived": density_derived, "density_occupancy": occupancy_pct}
+            return {
+                "flow": flow_per_lane,
+                "speed": speed,
+                "density_derived": density_derived,
+                "density_occupancy": density_occupancy,
+                "n_lanes": n_lanes,
+            }
 
         return state_fn
 
@@ -442,7 +473,8 @@ class BackboneStateAggregator:
         state_functions = self.compute_traffic_state()
 
         total_vehicles = sum(
-            sum(count for _, count, _, _ in ivs) for ivs in self.edge_intervals.values()
+            sum(count for _, count, _, _, _ in ivs)
+            for ivs in self.edge_intervals.values()
         )
 
         print("BACKBONE STATE AGGREGATION SUMMARY:")
