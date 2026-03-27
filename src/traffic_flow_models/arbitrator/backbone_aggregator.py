@@ -99,10 +99,12 @@ class BackboneStateAggregator:
             count = int(interval.get("nVehEntered", interval.get("nVehContrib", 0)))
 
             # SUMO reports speed in m/s; -1 indicates no vehicles in interval
-            raw_speed_ms = float(interval.get("speed", -1.0))
+            # raw_speed_ms = float(interval.get("speed", -1.0))
+            raw_speed_ms = float(interval.get("meanspeed", -1.0))
             speed_kmh = raw_speed_ms * 3.6 if raw_speed_ms >= 0 else 0.0
+            occupancy = float(interval.get("meanOccupancy", 0.0))
 
-            self.detector_intervals[det_id].append((begin, count, speed_kmh))
+            self.detector_intervals[det_id].append((begin, count, speed_kmh, occupancy))
             self.max_time = max(self.max_time, end)
 
     def reset_state(self) -> None:
@@ -136,6 +138,9 @@ class BackboneStateAggregator:
                 position_str = row.get("position", "").strip()
                 position = float(position_str) if position_str else None
 
+                cell_index = row.get("cell_index", "0").strip()
+                cell_key = f"{edge_id}_cell{cell_index}"
+
                 # support the same ID variants used in other aggregators
                 for variant in [
                     det_id,
@@ -144,68 +149,47 @@ class BackboneStateAggregator:
                 ]:
                     self.detector_mapping[variant] = {
                         "edge_id": edge_id,
+                        "cell_key": cell_key,
+                        "cell_index": int(cell_index) if cell_index else 0,
                         "type": det_type,
                         "position": position,
                     }
 
     def aggregate_spatially(self) -> None:
-        # accumulate per (edge, position) cross-section per timestamp
-        # structure: {edge_id: {position: {begin: [count_sum, speed_weighted_sum, weight]}}}
-        edge_position_time: defaultdict[
-            str, defaultdict[float | None, defaultdict[float, list]]
-        ] = defaultdict(lambda: defaultdict(lambda: defaultdict(lambda: [0, 0.0, 0])))
+        cell_time_data: defaultdict[str, defaultdict[float, list]] = defaultdict(
+            lambda: defaultdict(lambda: [0, 0.0, 0, 0.0])
+        )
 
         for det_id, intervals in self.detector_intervals.items():
             if det_id not in self.detector_mapping:
                 continue
 
             mapping = self.detector_mapping[det_id]
-            edge_id = mapping["edge_id"]
-            position = mapping.get("position")
+            cell_key = mapping["cell_key"]
+            # edge_id = mapping["edge_id"]
+            # position = mapping.get("position")
 
-            for begin, count, speed_kmh in intervals:
-                bucket = edge_position_time[edge_id][position][begin]
+            # Create a unique key for this specific spatial cell
+            # cell_key = (edge_id, position)
+            # cell_key = f"{edge_id}@{position}"
+
+            for begin, count, speed_kmh, occupancy in intervals:
+                bucket = cell_time_data[cell_key][begin]
                 bucket[0] += count
                 bucket[1] += speed_kmh * count
                 bucket[2] += count
+                bucket[3] += occupancy
 
-        # for each edge, average across positions then store as edge_intervals
-        for edge_id, position_data in edge_position_time.items():
-            num_positions = len(position_data)
-            if num_positions == 0:
-                continue
+        # Compute stats per cell_key and store in edge_intervals (holds cell level data)
+        for cell_key, time_data in cell_time_data.items():
+            for begin in sorted(time_data.keys()):
+                count, wspeed, weight, occ_sum = time_data[begin]
 
-            # collect all timestamps across all positions
-            all_timestamps: set[float] = set()
-            for time_data in position_data.values():
-                all_timestamps.update(time_data.keys())
+                mean_speed = wspeed / weight if weight > 0 else 0.0
+                mean_occupancy = occ_sum / weight if weight > 0 else 0.0
 
-            for begin in sorted(all_timestamps):
-                total_count = 0
-                weighted_speed_sum = 0.0
-                total_weight = 0
-                reporting_positions = 0
-
-                for time_data in position_data.values():
-                    if begin in time_data:
-                        count, wspeed, weight = time_data[begin]
-                        total_count += count
-                        weighted_speed_sum += wspeed
-                        total_weight += weight
-                        reporting_positions += 1
-
-                # normalize count by number of positions to avoid length inflation
-                normalized_count = (
-                    total_count / reporting_positions
-                    if reporting_positions > 0
-                    else 0.0
-                )
-                mean_speed = (
-                    weighted_speed_sum / total_weight if total_weight > 0 else 0.0
-                )
-                self.edge_intervals[edge_id].append(
-                    (begin, normalized_count, mean_speed)
-                )
+                # self.edge_intervals[cell_key].append((begin, float(count), mean_speed))
+                self.edge_intervals[cell_key].append((begin, float(count), mean_speed, mean_occupancy))
 
     def compute_traffic_state(
         self,
@@ -230,7 +214,7 @@ class BackboneStateAggregator:
         state_functions: dict[str, Callable[[float], dict[str, float]]] = {}
 
         for edge_id, intervals in self.edge_intervals.items():
-            total_vehicles = sum(count for _, count, _ in intervals)
+            total_vehicles = sum(count for _, count, _, _ in intervals)
 
             if total_vehicles == 0:
                 warnings.warn(
@@ -248,7 +232,7 @@ class BackboneStateAggregator:
 
     def _make_state_function(
         self,
-        intervals: list[Tuple[float, float, float]],
+        intervals: list[Tuple[float, float, float, float]],
     ) -> Callable[[float], dict[str, float]] | None:
         """Build a rolling-window state function for a single edge.
 
@@ -267,16 +251,22 @@ class BackboneStateAggregator:
 
         # split into two parallel interval streams for the existing helper
         count_intervals: dict[str, list[Tuple[float, int]]] = {
-            "flow": [(begin, count) for begin, count, _ in intervals]
+            "flow": [(begin, count) for begin, count, _, _ in intervals]
         }
         # represent speed as a pseudo-count stream weighted by vehicle count
         # aggregation_type="rate" will normalise by window duration → flow-like unit
         speed_weight_intervals: dict[str, list[Tuple[float, float]]] = {
             "speed_x_count": [
                 (begin, float(speed * count))  # weighted speed sum per interval
-                for begin, count, speed in intervals
+                for begin, count, speed, _ in intervals
             ],
-            "count_weight": [(begin, count) for begin, count, _ in intervals],
+            "count_weight": [(begin, count) for begin, count, _, _ in intervals],
+        }
+
+        occupancy_intervals = {
+            "occupancy": [
+                (begin, occupancy)
+                for begin, _, __, occupancy in intervals]
         }
 
         flow_fn = make_rolling_window_aggregator(
@@ -303,6 +293,13 @@ class BackboneStateAggregator:
             aggregation_type="demand",  # raw vehicle count in window
         )
 
+        occupancy_fn = make_rolling_window_aggregator(
+            intervals=occupancy_intervals,
+            window_size_sec=self.window_size_sec,
+            max_time=self.max_time,
+            aggregation_type="demand",
+        )
+
         def state_fn(t_hours: float) -> dict[str, float]:
             flow_dict = flow_fn(t_hours)
             flow = flow_dict.get("flow", 0.0)
@@ -316,9 +313,12 @@ class BackboneStateAggregator:
                 speed = 0.0
 
             # fundamental relation: k = q / v  (veh/km)
-            density = flow / speed if speed > 0 else 0.0
+            density_derived = flow / speed if speed > 0 else 0.0
+            #density from E2 occupancy
+            #SUMO occupancy is a percentage [0,100] of time the detector was occupied
+            occupancy_pct = occupancy_fn(t_hours).get("occupancy", 0.0) if occupancy_fn else 0.0
 
-            return {"flow": flow, "speed": speed, "density": density}
+            return {"flow": flow, "speed": speed, "density_derived": density_derived, "density_occupancy": occupancy_pct}
 
         return state_fn
 
@@ -394,7 +394,8 @@ class BackboneStateAggregator:
                         "time_hours": round(t_h, 6),
                         "flow": round(state["flow"], 2),
                         "speed": round(state["speed"], 2),
-                        "density": round(state["density"], 4),
+                        "density_derived": round(state["density_derived"], 4),
+                        "density_occupancy": round(state["density_occupancy"], 4),
                     }
                 )
             output["edges"][edge_id] = time_series
@@ -441,7 +442,7 @@ class BackboneStateAggregator:
         state_functions = self.compute_traffic_state()
 
         total_vehicles = sum(
-            sum(count for _, count, _ in ivs) for ivs in self.edge_intervals.values()
+            sum(count for _, count, _, _ in ivs) for ivs in self.edge_intervals.values()
         )
 
         print("BACKBONE STATE AGGREGATION SUMMARY:")

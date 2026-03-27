@@ -1,5 +1,6 @@
 import xml.etree.ElementTree as ET
 import csv
+import math
 from typing import Tuple
 
 
@@ -36,6 +37,7 @@ class LoopDetectorGenerator:
         output_dir: str,
         diverge_node_info: dict[str, list[str]],
         backbone_node_ids: set[str],
+        target_cell_length_km: float = 0.3,
         detection_freq: int = 15,
         detector_filename: str = "detector.xml",
         spec_filename: str = "_detectors_spec.csv",
@@ -68,6 +70,7 @@ class LoopDetectorGenerator:
         self.output_xml_filename: str = output_xml_filename
 
         self.backbone_nodes = backbone_node_ids
+        self.target_cell_length_km = target_cell_length_km
         self.interface_edges: list = []
         self.edge_detectors: list[dict] = []
 
@@ -170,6 +173,7 @@ class LoopDetectorGenerator:
                     )
         return inflow_count, outflow_count
 
+    """
     def add_detectors_backbone_network(self) -> int:
         segment_detector_count = 0
         ramp_edges = set()
@@ -183,23 +187,6 @@ class LoopDetectorGenerator:
             from_node = edge.get("from")
             to_node = edge.get("to")
             edge_id = edge.get("id")
-            # for onramp_id in self.onramp_ids:
-            #     node_id = onramp_id.replace("onramp_", "")
-            #     if from_node == node_id or to_node == node_id:
-            #         # only add non-backbone edges as ramp edges (fix finding 4)
-            #         is_backbone_edge = (
-            #             from_node in self.backbone_nodes and to_node in self.backbone_nodes
-            #         )
-            #         if not is_backbone_edge:
-            #             ramp_edges.add(edge_id)
-
-        for edge in root.findall("edge"):
-            if edge.get("function") == "internal":
-                continue
-
-            edge_id = edge.get("id")
-            from_node = edge.get("from")
-            to_node = edge.get("to")
 
             if (
                 edge_id in ramp_edges
@@ -232,6 +219,68 @@ class LoopDetectorGenerator:
                     }
                 )
                 segment_detector_count += 1
+
+        return segment_detector_count
+    """
+
+    def add_detectors_backbone_network(self) -> int:
+        segment_detector_count = 0
+
+        tree = ET.parse(self.sumo_network_path)
+        root = tree.getroot()
+
+        for edge in root.findall("edge"):
+            if edge.get("function") == "internal":
+                continue
+
+            edge_id = edge.get("id")
+            from_node = edge.get("from")
+            to_node = edge.get("to")
+
+            # only instrument edges that directly connect two macro backbone nodes
+            if (
+                from_node not in self.backbone_nodes
+                or to_node not in self.backbone_nodes
+            ):
+                continue
+
+            lanes = edge.findall("lane")
+            for lane_idx, lane in enumerate(lanes):
+                lane_id = lane.get("id")
+                length_str = lane.get("length")
+                if length_str is None:
+                    continue
+
+                lane_length_m = float(length_str)
+                lane_length_km = lane_length_m / 1000.0
+
+                # replicate partition_link logic from MotorwayLink
+                num_cells = max(
+                    1, math.ceil(lane_length_km / self.target_cell_length_km)
+                )
+                cell_length_m = lane_length_m / num_cells
+
+                for cell_idx in range(num_cells):
+                    cell_start_m = cell_idx * cell_length_m
+                    # cell_mid_m = cell_start_m + cell_length_m / 2.0
+                    actual_length = min(cell_length_m, lane_length_m - cell_start_m)
+
+                    self.edge_detectors.append(
+                        {
+                            "edge_id": edge_id,
+                            "lane_id": lane_id,
+                            "lane_index": lane_idx,
+                            "position": cell_start_m,  # E2 start position
+                            "detector_length": actual_length,  # E2 spans full cell
+                            "cell_index": cell_idx,
+                            "num_cells": num_cells,
+                            "type": "backbone_segment",
+                            "from_node": from_node,
+                            "to_node": to_node,
+                            "node_id": None,
+                        }
+                    )
+                    segment_detector_count += 1
 
         return segment_detector_count
 
@@ -302,6 +351,8 @@ class LoopDetectorGenerator:
         """Build a unique detector ID, appending segment_index for backbone detectors."""
         det_type = det.get("type", "interface").replace("_", "")
         base = f"detector_{det_type}_{det['edge_id']}_{det['lane_index']}"
+        if "cell_index" in det:
+            return f"{base}_cell{det['cell_index']}"
         if "segment_index" in det:
             return f"{base}_{det['segment_index']}"
         return base
@@ -321,16 +372,25 @@ class LoopDetectorGenerator:
         root = ET.Element("additional")
 
         for det in self.edge_detectors:
-            det_type = det.get("type", "interface").replace("_", "")
-            # det_id = f"detector_{det_type}_{det['edge_id']}_{det['lane_index']}"
             det_id = self.build_det_id(det)
 
-            detector = ET.SubElement(root, "inductionLoop")
-            detector.set("id", det_id)
-            detector.set("lane", det["lane_id"])
-            detector.set("pos", f"{det['position']:.2f}")
-            detector.set("freq", str(self.detection_freq))
-            detector.set("file", self.output_xml_filename)
+            if det["type"] == "backbone_segment":
+                # E2 lane area detector
+                detector = ET.SubElement(root, "laneAreaDetector")
+                detector.set("id", det_id)
+                detector.set("lane", det["lane_id"])
+                detector.set("pos", f"{det['position']:.2f}")
+                detector.set("length", f"{det['detector_length']:.2f}")
+                detector.set("freq", str(self.detection_freq))
+                detector.set("file", self.output_xml_filename)
+            else:
+                # keep point detectors for inflow/outflow/turning_rate
+                detector = ET.SubElement(root, "inductionLoop")
+                detector.set("id", det_id)
+                detector.set("lane", det["lane_id"])
+                detector.set("pos", f"{det['position']:.2f}")
+                detector.set("freq", str(self.detection_freq))
+                detector.set("file", self.output_xml_filename)
 
         tree = ET.ElementTree(root)
         ET.indent(tree, space="  ")
@@ -363,6 +423,8 @@ class LoopDetectorGenerator:
                     "backbone_node",
                     "diverge_node_id",
                     "position",
+                    "cell_index",
+                    "detector_length",
                 ],
             )
             writer.writeheader()
@@ -383,6 +445,8 @@ class LoopDetectorGenerator:
                         "backbone_node": det["node_id"],
                         "diverge_node_id": det.get("diverge_node_id", ""),
                         "position": det.get("position", ""),
+                        "cell_index": det.get("cell_index", ""),
+                        "detector_length": det.get("detector_length", ""),
                     }
                 )
 
