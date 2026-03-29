@@ -221,7 +221,11 @@ class BackboneStateAggregator:
             for begin in sorted(time_data.keys()):
                 aggregate = time_data[begin]
 
-                speed_weight = aggregate.exposure_sum if aggregate.exposure_sum > 0 else aggregate.count
+                speed_weight = (
+                    aggregate.exposure_sum
+                    if aggregate.exposure_sum > 0
+                    else aggregate.count
+                )
 
                 mean_speed = (
                     aggregate.weighted_speed_sum / speed_weight
