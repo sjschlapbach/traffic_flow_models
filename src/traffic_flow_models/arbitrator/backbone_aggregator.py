@@ -250,7 +250,7 @@ class BackboneStateAggregator:
                 )
 
     def compute_traffic_state(
-        self,
+        self, free_flow_speed: float, jam_density: float
     ) -> dict[str, Callable[[float], TrafficState]]:
         """Compute time-varying flow, density, and speed functions for every edge.
 
@@ -281,15 +281,18 @@ class BackboneStateAggregator:
                 )
                 continue
 
-            state_fn = self._make_state_function(intervals)
+            state_fn = self._make_state_function(
+                intervals=intervals,
+                free_flow_speed=free_flow_speed,
+                jam_density=jam_density,
+            )
             if state_fn is not None:
                 state_functions[edge_id] = state_fn
 
         return state_functions
 
     def _make_state_function(
-        self,
-        intervals: list[EdgeInterval],
+        self, intervals: list[EdgeInterval], free_flow_speed: float, jam_density: float
     ) -> Callable[[float], TrafficState] | None:
         """Build a rolling-window state function for a single edge.
 
@@ -379,8 +382,7 @@ class BackboneStateAggregator:
         def state_fn(t_hours: float) -> TrafficState:
             # Average vehicle length + gap or detector length (in kilometers)
             # Example: 7.5 meters total effective length -> 0.0075 km
-            L_EFF_KM = 0.0075
-            FREE_FLOW_SPEED = 120.0
+            L_EFF_KM = 1 / jam_density if jam_density > 0 else 0.0075
 
             flow_dict = flow_fn(t_hours)
             flow_total = flow_dict.get("flow", 0.0)
@@ -393,10 +395,9 @@ class BackboneStateAggregator:
             if speed_numerator_fn is not None and count_denom_fn is not None:
                 num = speed_numerator_fn(t_hours).get("speed_x_count", 0.0)
                 den = count_denom_fn(t_hours).get("count_weight", 0.0)
-
-                speed = num / den if den > 0 else FREE_FLOW_SPEED
+                speed = num / den if den > 0 else free_flow_speed
             else:
-                speed = FREE_FLOW_SPEED
+                speed = free_flow_speed
             # 3. Derive per-lane density from Flow/Speed: k = q / v
             density_derived = flow_per_lane / speed if speed > 0 else 0.0
 
@@ -510,6 +511,8 @@ class BackboneStateAggregator:
     def run(
         self,
         output_path: str,
+        free_flow_speed: float,
+        jam_density: float,
         query_times_hours: list[float] | None = None,
         time_step_minutes: float = 1.0,
     ) -> str:
@@ -521,6 +524,8 @@ class BackboneStateAggregator:
 
         Args:
             output_path: Path for the output JSON file.
+            free_flow_speed: Free flow speed in km/h for density derivation.
+            jam_density: Jam density in veh/km/lane for occupancy-based density.
             query_times_hours: Optional explicit time grid (hours).
             time_step_minutes: Grid resolution when ``query_times_hours`` is
                 not provided.
@@ -533,7 +538,9 @@ class BackboneStateAggregator:
         self.classify_and_map()
         self.aggregate_spatially()
 
-        state_functions = self.compute_traffic_state()
+        state_functions = self.compute_traffic_state(
+            free_flow_speed=free_flow_speed, jam_density=jam_density
+        )
 
         total_vehicles = sum(
             sum(count for _, count, _, _, _, _ in ivs)

@@ -16,12 +16,12 @@
   },
   "secondary": {
     "lane_capacity": 1200.0,
-    "jam_density": 200.0,
+    "jam_density": 180.0,
     "free_flow_speed": 50.0
   },
   "tertiary": {
     "lane_capacity": 1000.0,
-    "jam_density": 210.0,
+    "jam_density": 180.0,
     "free_flow_speed": 30.0
   },
   "default": {

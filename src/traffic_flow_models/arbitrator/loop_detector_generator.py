@@ -37,7 +37,7 @@ class LoopDetectorGenerator:
         output_dir: str,
         diverge_node_info: dict[str, list[str]],
         backbone_node_ids: set[str],
-        target_cell_length_km: float = 0.3,
+        target_cell_length_km: float,
         detection_freq: int = 15,
         detector_filename: str = "detector.xml",
         spec_filename: str = "_detectors_spec.csv",

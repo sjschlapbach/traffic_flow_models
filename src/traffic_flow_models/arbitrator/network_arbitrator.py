@@ -116,11 +116,12 @@ class NetworkArbitrator:
         # )
 
         # load road parameters from config file
-        self.road_params: RoadParamsConfig = self._load_road_params_from_json(
-            road_params_config_path
+        self.road_params: RoadParamsConfig = (
+            NetworkArbitrator._load_road_params_from_json(road_params_config_path)
         )
 
-    def _validate_road_params(self, params: dict) -> None:
+    @staticmethod
+    def _validate_road_params(params: dict) -> None:
         """Validate road parameters configuration.
 
         Ensures all required road types are present with correct parameter structure.
@@ -168,7 +169,8 @@ class NetworkArbitrator:
                         f"Parameter '{param}' for road type '{road_type}' must be positive, got {value}."
                     )
 
-    def _load_road_params_from_json(self, config_path: str) -> RoadParamsConfig:
+    @staticmethod
+    def _load_road_params_from_json(config_path: str) -> RoadParamsConfig:
         """Load and validate road parameters from JSON configuration file.
 
         Args:
@@ -197,7 +199,7 @@ class NetworkArbitrator:
             )
 
         # validate the loaded parameters
-        self._validate_road_params(params)
+        NetworkArbitrator._validate_road_params(params)
 
         return params
 

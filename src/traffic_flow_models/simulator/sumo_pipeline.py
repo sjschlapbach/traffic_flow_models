@@ -257,7 +257,7 @@ class SUMOPipeline:
             self.backbone_node_ids,
         )
 
-    def generate_detectors(self) -> Tuple[str, str, str]:
+    def generate_detectors(self, cell_size: float) -> Tuple[str, str, str]:
         """Generate loop detectors at network interface points.
 
         Creates loop detectors at the boundaries between the macroscopic network
@@ -306,6 +306,7 @@ class SUMOPipeline:
             diverge_node_info=(
                 self.diverge_node_info if self.diverge_node_info is not None else {}
             ),
+            target_cell_length_km=cell_size,
         )
         self.detector_file, self.detector_output_file, self.detector_spec_path = (
             generator.generate()

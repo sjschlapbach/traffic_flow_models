@@ -9,6 +9,7 @@ from traffic_flow_models import (
     DemandAggregator,
     Simulation,
     BackboneStateAggregator,
+    NetworkArbitrator,
 )
 
 if __name__ == "__main__":
@@ -50,6 +51,12 @@ if __name__ == "__main__":
     cfl_minimum = max_free_flow_speed * dt  # CFL condition: cell_length >= vf * dt
     min_link_length = max(cfl_minimum, preferred_cell_size) + 0.01  # km
 
+    # if the preferred cell size is smaller than the CFL minimum, notify the user
+    if preferred_cell_size < cfl_minimum:
+        raise ValueError(
+            f"Preferred cell size ({preferred_cell_size} km) is too small for CFL stability with the given timestep (dt={dt} h) and maximum free-flow speed ({max_free_flow_speed} km/h). Minimum cell size for stability is {cfl_minimum:.3f} km. Please increase the preferred cell size or adjust the timestep."
+        )
+
     # path to road parameters configuration
     road_params_config_path = os.path.join(
         os.path.dirname(__file__), "road_params_config.json"
@@ -62,7 +69,9 @@ if __name__ == "__main__":
     pipeline.fetch_OSM()
     pipeline.convert_to_sumo()
     pipeline.create_consolidated_network(min_link_length=min_link_length)
-    detector_def_file, detector_output_file, spec_file = pipeline.generate_detectors()
+    detector_def_file, detector_output_file, spec_file = pipeline.generate_detectors(
+        cell_size=preferred_cell_size
+    )
     pipeline.generate_demand(vehicle_count=vehicle_demand)
     (
         network,
@@ -121,6 +130,7 @@ if __name__ == "__main__":
     os.makedirs(results_dir, exist_ok=True)
 
     # ── Backbone state estimation ──────────────────────────────────────────────
+    road_params = NetworkArbitrator._load_road_params_from_json(road_params_config_path)
     backbone_state_path = os.path.join(results_dir, "backbone_state.json")
     backbone_aggregator = BackboneStateAggregator(
         detector_output_path=detector_output_file,
@@ -130,6 +140,8 @@ if __name__ == "__main__":
     backbone_aggregator.run(
         output_path=backbone_state_path,
         time_step_minutes=1.0,
+        free_flow_speed=road_params["motorway"]["free_flow_speed"],
+        jam_density=road_params["motorway"]["jam_density"],
     )
 
     # plot the network
