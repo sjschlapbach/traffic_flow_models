@@ -3,11 +3,43 @@ import json
 import warnings
 import xml.etree.ElementTree as ET
 from collections import defaultdict
-from typing import Callable, Tuple
+from dataclasses import dataclass
+from typing import Callable, Mapping, Sequence, TypedDict
 
 from traffic_flow_models.arbitrator.aggregation_helpers import (
     make_rolling_window_aggregator,
 )
+
+
+class DetectorMetadata(TypedDict):
+    edge_id: str
+    cell_key: str
+    cell_index: int
+    type: str
+    position: float | None
+
+
+# (begin_sec, count, speed_kmh, occupancy_percent)
+DetectorInterval = tuple[float, int, float, float]
+
+# (begin_sec, count, mean_speed_kmh, mean_occupancy_percent, n_lanes)
+EdgeInterval = tuple[float, float, float, float, float]
+
+
+class TrafficState(TypedDict):
+    flow: float
+    speed: float
+    density_derived: float
+    density_occupancy: float
+    n_lanes: float
+
+
+@dataclass
+class CellAggregate:
+    count: float = 0.0
+    weighted_speed_sum: float = 0.0
+    lane_count: int = 0
+    occupancy_sum: float = 0.0
 
 
 class BackboneStateAggregator:
@@ -26,9 +58,9 @@ class BackboneStateAggregator:
         detector_output_path: Path to SUMO detector output XML file.
         detector_spec_path: Path to detector specification CSV file.
         window_size_sec: Rolling window size in seconds.
-        detector_intervals: Raw (begin, count, speed) triples indexed by detector ID.
+        detector_intervals: Raw (begin, count, speed, occupancy) tuples indexed by detector ID.
         detector_mapping: Maps detector IDs to edge IDs, positions, and lane indices.
-        edge_intervals: Per-edge lists of (begin, count, speed) after spatial aggregation.
+        edge_intervals: Per-edge lists of (begin, count, speed, occupancy, lanes) after spatial aggregation.
         max_time: Maximum simulation time observed in detector data (seconds).
     """
 
@@ -50,16 +82,16 @@ class BackboneStateAggregator:
         self.detector_spec_path: str = detector_spec_path
         self.window_size_sec: float = window_size_minutes * 60
 
-        # raw readings: {det_id: [(begin_sec, count, speed_kmh), ...]}
-        self.detector_intervals: defaultdict[str, list[Tuple[float, float, float]]] = (
-            defaultdict(list)
-        )
-        self.detector_mapping: dict[str, dict[str, str]] = {}
+        # raw readings: {det_id: [(begin_sec, count, speed_kmh, occupancy_pct), ...]}
+        self.detector_intervals: defaultdict[str, list[DetectorInterval]] = defaultdict[
+            str, list[DetectorInterval]
+        ](list)
+        self.detector_mapping: dict[str, DetectorMetadata] = {}
 
-        # spatially aggregated per edge: {edge_id: [(begin_sec, count, speed_kmh), ...]}
-        self.edge_intervals: defaultdict[str, list[Tuple[float, float, float]]] = (
-            defaultdict(list)
-        )
+        # spatially aggregated per edge: {edge_id: [(begin_sec, count, speed_kmh, occupancy_pct, n_lanes), ...]}
+        self.edge_intervals: defaultdict[str, list[EdgeInterval]] = defaultdict[
+            str, list[EdgeInterval]
+        ](list)
         self.max_time: float = 0.0
 
     # ------------------------------------------------------------------
@@ -108,9 +140,9 @@ class BackboneStateAggregator:
             self.max_time = max(self.max_time, end)
 
     def reset_state(self) -> None:
-        self.detector_intervals = defaultdict(list)
+        self.detector_intervals = defaultdict[str, list[DetectorInterval]](list)
         self.detector_mapping = {}
-        self.edge_intervals = defaultdict(list)
+        self.edge_intervals = defaultdict[str, list[EdgeInterval]](list)
         self.max_time = 0.0
 
     def classify_and_map(self) -> None:
@@ -156,8 +188,8 @@ class BackboneStateAggregator:
                     }
 
     def aggregate_spatially(self) -> None:
-        cell_time_data: defaultdict[str, defaultdict[float, list]] = defaultdict(
-            lambda: defaultdict(lambda: [0, 0.0, 0, 0.0])
+        cell_time_data: defaultdict[str, defaultdict[float, CellAggregate]] = (
+            defaultdict(lambda: defaultdict(CellAggregate))
         )
 
         for det_id, intervals in self.detector_intervals.items():
@@ -169,46 +201,57 @@ class BackboneStateAggregator:
 
             for begin, count, speed_kmh, occupancy in intervals:
                 bucket = cell_time_data[cell_key][begin]
-                bucket[0] += count
-                bucket[1] += speed_kmh * count
-                bucket[2] += 1  # Interval for occupancy averaging
-                bucket[3] += occupancy
+                bucket.count += count
+                bucket.weighted_speed_sum += speed_kmh * count
+                bucket.lane_count += 1  # Interval for occupancy averaging
+                bucket.occupancy_sum += occupancy
 
         # Compute stats per cell_key and store in edge_intervals (holds cell level data)
         for cell_key, time_data in cell_time_data.items():
             for begin in sorted(time_data.keys()):
-                count, wspeed, weight, occ_sum = time_data[begin]
+                aggregate = time_data[begin]
 
-                mean_speed = wspeed / count if count > 0 else 0.0
-                n_lanes = time_data[begin][2]
-                mean_occupancy = occ_sum / n_lanes if n_lanes > 0 else 0.0
+                mean_speed = (
+                    aggregate.weighted_speed_sum / aggregate.count
+                    if aggregate.count > 0
+                    else 0.0
+                )
+                n_lanes = float(aggregate.lane_count)
+                mean_occupancy = (
+                    aggregate.occupancy_sum / n_lanes if n_lanes > 0 else 0.0
+                )
 
                 # self.edge_intervals[cell_key].append((begin, float(count), mean_speed))
                 self.edge_intervals[cell_key].append(
-                    (begin, float(count), mean_speed, mean_occupancy, float(n_lanes))
+                    (
+                        begin,
+                        float(aggregate.count),
+                        mean_speed,
+                        mean_occupancy,
+                        n_lanes,
+                    )
                 )
 
     def compute_traffic_state(
         self,
-    ) -> dict[
-        str,
-        Callable[[float], dict[str, float]],
-    ]:
+    ) -> dict[str, Callable[[float], TrafficState]]:
         """Compute time-varying flow, density, and speed functions for every edge.
 
         For each backbone edge a callable is returned.  At query time ``t`` (hours)
         the function aggregates all observations in the rolling window and returns:
 
-        - ``flow``    – vehicles per hour (veh/h)
-        - ``speed``   – space-mean speed (km/h)
-        - ``density`` – vehicles per kilometre (veh/km), derived as flow / speed
+        - ``flow``              – vehicles per hour per lane (veh/h/lane)
+        - ``speed``             – space-mean speed (km/h)
+        - ``density_derived``   – vehicles per kilometre per lane (veh/km/lane), derived as flow / speed
+        - ``density_occupancy`` – vehicles per kilometre per lane (veh/km/lane), derived from occupancy
+        - ``n_lanes``           – average lane count observed in the window
 
         Edges with no recorded vehicle observations are excluded with a warning.
 
         Returns:
             Mapping from edge IDs to state functions ``f(t_hours) → {"flow", "speed", "density"}``.
         """
-        state_functions: dict[str, Callable[[float], dict[str, float]]] = {}
+        state_functions: dict[str, Callable[[float], TrafficState]] = {}
 
         for edge_id, intervals in self.edge_intervals.items():
             total_vehicles = sum(count for _, count, _, _, _ in intervals)
@@ -229,8 +272,8 @@ class BackboneStateAggregator:
 
     def _make_state_function(
         self,
-        intervals: list[Tuple[float, float, float, float, float]],
-    ) -> Callable[[float], dict[str, float]] | None:
+        intervals: list[EdgeInterval],
+    ) -> Callable[[float], TrafficState] | None:
         """Build a rolling-window state function for a single edge.
 
         Separates the joint ``(begin, count, speed)`` triples into two independent
@@ -247,12 +290,12 @@ class BackboneStateAggregator:
         """
 
         # split into two parallel interval streams for the existing helper
-        count_intervals: dict[str, list[Tuple[float, int]]] = {
+        count_intervals: dict[str, list[tuple[float, float]]] = {
             "flow": [(begin, count) for begin, count, _, _, _ in intervals]
         }
         # represent speed as a pseudo-count stream weighted by vehicle count
         # aggregation_type="rate" will normalise by window duration → flow-like unit
-        speed_weight_intervals: dict[str, list[Tuple[float, float]]] = {
+        speed_weight_intervals: dict[str, list[tuple[float, float]]] = {
             "speed_x_count": [
                 (begin, float(speed * count))  # weighted speed sum per interval
                 for begin, count, speed, _, _ in intervals
@@ -296,7 +339,7 @@ class BackboneStateAggregator:
         window_size_sec = self.window_size_sec
 
         def mean_in_window(
-            t_hours: float, data_stream: list[tuple[float, float]]
+            t_hours: float, data_stream: Sequence[tuple[float, float]]
         ) -> float:
             """Compute mean directly — simple average of intervals in window."""
             query_sec = t_hours * 3600.0
@@ -313,7 +356,7 @@ class BackboneStateAggregator:
             values = [val for begin, val in data_stream if w_start <= begin < w_end]
             return sum(values) / len(values) if values else 0.0
 
-        def state_fn(t_hours: float) -> dict[str, float]:
+        def state_fn(t_hours: float) -> TrafficState:
             # Average vehicle length + gap or detector length (in kilometers)
             # Example: 7.5 meters total effective length -> 0.0075 km
             L_EFF_KM = 0.0075
@@ -359,7 +402,7 @@ class BackboneStateAggregator:
 
     def write_state_json(
         self,
-        state_functions: dict[str, Callable[[float], dict[str, float]]],
+        state_functions: Mapping[str, Callable[[float], TrafficState]],
         output_path: str,
         query_times_hours: list[float] | None = None,
         time_step_minutes: float = 1.0,

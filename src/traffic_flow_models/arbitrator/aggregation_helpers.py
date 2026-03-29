@@ -5,11 +5,13 @@ SUMO detector outputs and creating time-varying demand and turning
 rate functions for macroscopic traffic flow models.
 """
 
-from typing import Callable, Mapping, Literal
+from typing import Callable, Mapping, Literal, Sequence
+
+Number = float | int
 
 
 def make_rolling_window_aggregator(
-    intervals: Mapping[str, list[tuple[float, int]]],
+    intervals: Mapping[str, Sequence[tuple[float, Number]]],
     window_size_sec: float,
     max_time: float,
     aggregation_type: Literal["rate", "demand"] = "rate",
@@ -61,12 +63,12 @@ def make_rolling_window_aggregator(
             window_end = max_time
 
         # aggregate counts for each key within the window
-        key_counts: dict[str, int] = {}
+        key_counts: dict[str, float] = {}
         for key in keys:
             count = 0
             for begin, veh_count in intervals[key]:
                 if window_start <= begin < window_end:
-                    count += veh_count
+                    count += float(veh_count)
             key_counts[key] = count
 
         total = sum(key_counts.values())
@@ -92,7 +94,7 @@ def make_rolling_window_aggregator(
 
 
 def make_single_stream_rolling_window_aggregator(
-    intervals: list[tuple[float, int]],
+    intervals: Sequence[tuple[float, Number]],
     window_size_sec: float,
     max_time: float,
 ) -> Callable[[float], float]:
