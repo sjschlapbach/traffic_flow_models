@@ -91,7 +91,7 @@ class SUMOSimulation:
                 "mean_duration": float(stats.get("duration", 0)),
             }
             print(
-                f"\n[RESULTS] {self.name}: {results['mean_speed']:.2f} m/s average speed over {results['total_vehicles']} vehicles."
+                f"\n[RESULTS] {self.name}: {results['mean_speed']:.2f} m/s average speed over {results['total_vehicles']} vehicles.\n"
             )
             return results
         return None
