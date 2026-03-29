@@ -240,7 +240,7 @@ class BackboneStateAggregator:
         For each backbone edge a callable is returned.  At query time ``t`` (hours)
         the function aggregates all observations in the rolling window and returns:
 
-        - ``flow``              – vehicles per hour per lane (veh/h/lane)
+        - ``flow``              – vehicles per hour across all lanes (veh/h)
         - ``speed``             – space-mean speed (km/h)
         - ``density_derived``   – vehicles per kilometre per lane (veh/km/lane), derived as flow / speed
         - ``density_occupancy`` – vehicles per kilometre per lane (veh/km/lane), derived from occupancy
@@ -365,7 +365,7 @@ class BackboneStateAggregator:
             flow_dict = flow_fn(t_hours)
             flow_total = flow_dict.get("flow", 0.0)
 
-            # 1. Convert cross-sectional flow to per-lane flow
+            # 1. Per-lane flow for density, but keep reported flow as total
             n_lanes = mean_in_window(t_hours, raw_n_lanes)
             flow_per_lane = flow_total / n_lanes if n_lanes > 0 else 0.0
 
@@ -387,7 +387,7 @@ class BackboneStateAggregator:
             density_occupancy = occ_fraction / L_EFF_KM
 
             return {
-                "flow": flow_per_lane,
+                "flow": flow_total,
                 "speed": speed,
                 "density_derived": density_derived,
                 "density_occupancy": density_occupancy,
