@@ -2719,7 +2719,7 @@ class Simulation:
             x, y = node.position
             ax.plot(x, y, "ko", markersize=4, zorder=3)
 
-        # draw motorway links with density coloring
+        # draw motorway links with density coloring and on- and off-ramps with congestion coloring
         for node in self.network.list_nodes():
             for link in node.outgoing:
                 if isinstance(link, MotorwayLink):
@@ -2767,77 +2767,107 @@ class Simulation:
                         zorder=2,
                     )
 
-        # draw onramps with congestion coloring
-        for node in self.network.list_nodes():
-            for link in node.incoming:
-                if isinstance(link, Onramp):
-                    if link.destination_node_id is None:
+                elif isinstance(link, Onramp):
+                    # require both origin and destination node IDs for spatial plotting
+                    if link.origin_node_id is None or link.destination_node_id is None:
                         raise ValueError(
-                            f"Onramp link '{link.id}' is missing destination node ID."
-                        )
-
-                    downstream_node = self.network.get_node(link.destination_node_id)
-                    if downstream_node and downstream_node.position:
-                        x, y = downstream_node.position
-
-                        # determine color based on queue and flow/capacity ratio
-                        queue = float(onramp_queues.get(link.id, 0.0))
-                        if queue > 0:
-                            color = Simulation.COLOR_CONGESTION_RED
-                        else:
-                            flow = float(flows.get(link.id, [0.0])[0])
-                            capacity = link.Qc
-                            ratio = min(flow / capacity if capacity > 0 else 0.0, 1.0)
-                            r = 0.6 * (1 - ratio)
-                            g = 1.0 - 0.5 * ratio
-                            b = 0.6 * (1 - ratio)
-                            color = (r, g, b)
-
-                        # draw short line offset from node
-                        ax.plot(
-                            [x - 0.1, x],
-                            [y + 0.1, y],
-                            color=color,
-                            linewidth=2,
-                            linestyle="--",
-                            zorder=1,
-                        )
-
-        # draw offramps with congestion coloring
-        for node in self.network.list_nodes():
-            for link in node.outgoing:
-                if isinstance(link, Offramp):
-                    if link.origin_node_id is None:
-                        raise ValueError(
-                            f"Offramp link '{link.id}' is missing origin node ID."
+                            f"Onramp link '{link.id}' is missing origin and/or destination node IDs."
                         )
 
                     upstream_node = self.network.get_node(link.origin_node_id)
-                    if upstream_node and upstream_node.position:
-                        x, y = upstream_node.position
+                    downstream_node = self.network.get_node(link.destination_node_id)
 
-                        # determine color based on queue and flow/capacity ratio
-                        queue = float(offramp_queues.get(link.id, 0.0))
-                        if queue > 0:
-                            color = Simulation.COLOR_CONGESTION_RED
-                        else:
-                            flow = float(flows.get(link.id, [0.0])[0])
-                            capacity = link.Qc
-                            ratio = min(flow / capacity if capacity > 0 else 0.0, 1.0)
-                            r = 0.6 * (1 - ratio)
-                            g = 1.0 - 0.5 * ratio
-                            b = 0.6 * (1 - ratio)
-                            color = (r, g, b)
-
-                        # draw short line offset from node
-                        ax.plot(
-                            [x, x + 0.1],
-                            [y, y + 0.1],
-                            color=color,
-                            linewidth=2,
-                            linestyle="--",
-                            zorder=1,
+                    if upstream_node is None or downstream_node is None:
+                        raise ValueError(
+                            f"Onramp link '{link.id}' references non-existent nodes: "
+                            f"origin '{link.origin_node_id}', destination '{link.destination_node_id}'."
                         )
+
+                    if (
+                        upstream_node.position is None
+                        or downstream_node.position is None
+                    ):
+                        raise ValueError(
+                            f"Onramp link '{link.id}' has nodes with missing position information: "
+                            f"origin '{link.origin_node_id}', destination '{link.destination_node_id}'."
+                        )
+
+                    x1, y1 = upstream_node.position
+                    x2, y2 = downstream_node.position
+
+                    # determine color based on queue and flow/capacity ratio (unchanged)
+                    queue = float(onramp_queues.get(link.id, 0.0))
+                    if queue > 0:
+                        color = Simulation.COLOR_CONGESTION_RED
+                    else:
+                        flow = float(flows.get(link.id, [0.0])[0])
+                        capacity = link.Qc
+                        ratio = min(flow / capacity if capacity > 0 else 0.0, 1.0)
+                        r = 0.6 * (1 - ratio)
+                        g = 1.0 - 0.5 * ratio
+                        b = 0.6 * (1 - ratio)
+                        color = (r, g, b)
+
+                    # draw full line between origin and destination nodes
+                    ax.plot(
+                        [x1, x2],
+                        [y1, y2],
+                        color=color,
+                        linewidth=3,
+                        solid_capstyle="round",
+                        zorder=2,
+                    )
+
+                elif isinstance(link, Offramp):
+                    # require both origin and destination node IDs for spatial plotting
+                    if link.origin_node_id is None or link.destination_node_id is None:
+                        raise ValueError(
+                            f"Offramp link '{link.id}' is missing origin and/or destination node IDs."
+                        )
+
+                    upstream_node = self.network.get_node(link.origin_node_id)
+                    downstream_node = self.network.get_node(link.destination_node_id)
+
+                    if upstream_node is None or downstream_node is None:
+                        raise ValueError(
+                            f"Offramp link '{link.id}' references non-existent nodes: "
+                            f"origin '{link.origin_node_id}', destination '{link.destination_node_id}'."
+                        )
+
+                    if (
+                        upstream_node.position is None
+                        or downstream_node.position is None
+                    ):
+                        raise ValueError(
+                            f"Offramp link '{link.id}' has nodes with missing position information: "
+                            f"origin '{link.origin_node_id}', destination '{link.destination_node_id}'."
+                        )
+
+                    x1, y1 = upstream_node.position
+                    x2, y2 = downstream_node.position
+
+                    # determine color based on queue and flow/capacity ratio (unchanged)
+                    queue = float(offramp_queues.get(link.id, 0.0))
+                    if queue > 0:
+                        color = Simulation.COLOR_CONGESTION_RED
+                    else:
+                        flow = float(flows.get(link.id, [0.0])[0])
+                        capacity = link.Qc
+                        ratio = min(flow / capacity if capacity > 0 else 0.0, 1.0)
+                        r = 0.6 * (1 - ratio)
+                        g = 1.0 - 0.5 * ratio
+                        b = 0.6 * (1 - ratio)
+                        color = (r, g, b)
+
+                    # draw full line between origin and destination nodes
+                    ax.plot(
+                        [x1, x2],
+                        [y1, y2],
+                        color=color,
+                        linewidth=3,
+                        solid_capstyle="round",
+                        zorder=2,
+                    )
 
         # add time annotation
         ax.text(
