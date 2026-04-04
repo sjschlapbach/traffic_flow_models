@@ -427,33 +427,28 @@ class BackboneStateAggregator:
         output_path: str,
         query_times_hours: list[float] | None = None,
         time_step_minutes: float = 1.0,
+        dt: float | None = None,
+        duration: float | None = None,
+        preferred_cell_size: float | None = None,
+        model_type: str | None = None,
+        free_flow_speed: float | None = None,
+        jam_density: float | None = None,
     ) -> str:
         """Evaluate state functions on a time grid and write results to JSON.
 
-        The output format is::
-
-            {
-                "metadata": {
-                    "window_size_minutes": ...,
-                    "time_step_minutes": ...,
-                    "num_edges": ...,
-                    "max_simulation_time_hours": ...
-                },
-                "edges": {
-                    "<edge_id>": [
-                        {"time_hours": 0.0, "flow": ..., "speed": ..., "density": ...},
-                        ...
-                    ],
-                    ...
-                }
-            }
+        The output is written in the same high-level format expected by
+        :meth:`traffic_flow_models.network.simulation.Simulation.save_results`.
+        This function fills per-motorway-link `flows`, `densities`, and
+        `speeds` time series and provides a minimal `metadata` block with
+        placeholders where backbone data cannot provide the value (for
+        example, `model_type` is set to "MICRO").
 
         Args:
-            state_functions: Mapping from edge IDs to state callables as returned
-                by :meth:`compute_traffic_state`.
+            state_functions: Mapping from cell keys (or edge keys) to state
+                callables as returned by :meth:`compute_traffic_state`.
             output_path: Filesystem path for the output ``.json`` file.
-            query_times_hours: Explicit list of query times in hours.  If ``None``
-                a uniform grid from ``0`` to ``max_time`` with step
+            query_times_hours: Explicit list of query times in hours. If
+                ``None`` a uniform grid from ``0`` to ``max_time`` with step
                 ``time_step_minutes`` is used.
             time_step_minutes: Grid resolution in minutes when
                 ``query_times_hours`` is not supplied (default 1.0).
@@ -470,36 +465,151 @@ class BackboneStateAggregator:
                 ]
             ]
 
-        output: dict = {
-            "metadata": {
-                "window_size_minutes": self.window_size_sec / 60.0,
-                "time_step_minutes": time_step_minutes,
-                "num_edges": len(state_functions),
-                "max_simulation_time_hours": round(self.max_time / 3600.0, 4),
+        # Reconstruct edge -> {cell_index: state_fn} mapping. The state_functions
+        # keys are typically of the form "<edge_id>_cell<index>"; fall back to
+        # treating the key as a single-cell edge if parsing fails.
+        edge_cells: dict[str, dict[int, Callable[[float], TrafficState]]] = {}
+        for key, fn in state_functions.items():
+            if "_cell" in key:
+                parts = key.rsplit("_cell", 1)
+                edge_id = parts[0]
+                try:
+                    cell_index = int(parts[1])
+                except Exception:
+                    cell_index = 0
+            else:
+                edge_id = key
+                cell_index = 0
+
+            edge_cells.setdefault(edge_id, {})[cell_index] = fn
+
+        # Prepare output containers matching Simulation.save_results layout
+        flows_time: dict[str, list] = {}
+        densities_time: dict[str, list] = {}
+        speeds_time: dict[str, list] = {}
+
+        # pre-fill per-edge containers
+        for edge_id, cells in edge_cells.items():
+            flows_time[edge_id] = []
+            densities_time[edge_id] = []
+            speeds_time[edge_id] = []
+
+        # Evaluate state functions for every timestep and assemble per-edge arrays
+        for t_h in query_times_hours:
+            for edge_id, cells in edge_cells.items():
+                # determine number of cells (sparse indices supported)
+                n_cells = max(cells.keys()) + 1 if cells else 0
+                flows_row = [0.0] * n_cells
+                densities_row = [0.0] * n_cells
+                speeds_row = [0.0] * n_cells
+
+                for idx in range(n_cells):
+                    fn = cells.get(idx)
+                    if fn is None:
+                        # leave zeros for missing cells
+                        continue
+                    state = fn(t_h)
+                    flows_row[idx] = float(round(state.get("flow", 0.0), 2))
+                    speeds_row[idx] = float(round(state.get("speed", 0.0), 2))
+                    densities_row[idx] = float(
+                        round(state.get("density_derived", 0.0), 4)
+                    )
+
+                flows_time[edge_id].append(flows_row)
+                densities_time[edge_id].append(densities_row)
+                speeds_time[edge_id].append(speeds_row)
+
+        # Construct minimal link_properties using available information
+        link_properties: dict[str, dict] = {}
+        for edge_id, cells in edge_cells.items():
+            n_cells = max(cells.keys()) + 1 if cells else 0
+            # attempt to obtain lane counts from the first available state function
+            n_lanes_vals: list[float] = []
+            if n_cells > 0:
+                for fn in cells.values():
+                    try:
+                        val = fn(query_times_hours[0]).get("n_lanes", 0.0)
+                        n_lanes_vals.append(int(val))
+                    except Exception:
+                        n_lanes_vals.append(0.0)
+
+            avg_lanes = (
+                float(sum(n_lanes_vals) / len(n_lanes_vals)) if n_lanes_vals else 0.0
+            )
+
+            link_properties[edge_id] = {
+                "num_cells": n_cells,
+                "n_lanes": avg_lanes,
+            }
+
+        # Build metadata matching Simulation.save_results exact fields.
+        # Use provided values where available, otherwise sensible placeholders.
+        _model_type = model_type if model_type is not None else "MICRO"
+        _dt = dt
+        _duration = duration
+        _pref_cell = preferred_cell_size
+
+        # if dt/duration not provided, derive from time_step_minutes and max_time
+        if _dt is None:
+            _dt = time_step_minutes / 60.0 if time_step_minutes is not None else None
+        if _duration is None:
+            _duration = self.max_time / 3600.0 if self.max_time is not None else None
+
+        metadata = {
+            "model_type": _model_type,
+            "simulation_parameters": {
+                "dt": _dt,
+                "duration": _duration,
+                "preferred_cell_size": _pref_cell,
             },
-            "edges": {},
+            "link_properties": {},
+            "critical_densities": {},
         }
 
-        for edge_id, state_fn in state_functions.items():
-            time_series = []
-            for t_h in query_times_hours:
-                state = state_fn(t_h)
-                time_series.append(
-                    {
-                        "time_hours": round(t_h, 6),
-                        "flow": round(state["flow"], 2),
-                        "speed": round(state["speed"], 2),
-                        "density_derived": round(state["density_derived"], 4),
-                        "density_occupancy": round(state["density_occupancy"], 4),
-                    }
-                )
-            output["edges"][edge_id] = time_series
+        # Populate link_properties for motorway links (best-effort)
+        for edge_id, info in link_properties.items():
+            n_cells = int(info.get("num_cells", 0))
+            cell_lengths = [None] * n_cells if n_cells > 0 else []
+            metadata["link_properties"][edge_id] = {
+                "length": None,
+                "lanes": info.get("n_lanes", 0.0),
+                "lane_capacity": None,
+                "free_flow_speed": free_flow_speed,
+                "jam_density": jam_density,
+                "num_cells": n_cells,
+                "cell_lengths": cell_lengths,
+            }
+
+        # set critical_densities placeholders per edge
+        for edge_id in edge_cells.keys():
+            metadata["critical_densities"][edge_id] = None
+
+        out = {
+            "metadata": metadata,
+            "time_array": [round(t, 6) for t in query_times_hours],
+            "state_time_series": {
+                "flows": flows_time,
+                "densities": densities_time,
+                "speeds": speeds_time,
+                # backbone aggregator does not produce queue data; keep placeholders
+                "origin_queues": {},
+                "onramp_queues": {},
+                "offramp_queues": {},
+            },
+            # no disturbance inputs available from backbone data
+            "disturbance_time_series": {
+                "origin_demands": {},
+                "turning_rates": {},
+                "flow_boundary_conditions": {},
+                "density_boundary_conditions": {},
+            },
+        }
 
         with open(output_path, "w", encoding="utf-8") as f:
-            json.dump(output, f, indent=2)
+            json.dump(out, f, indent=2)
 
         print(f"Backbone traffic state written → {output_path}")
-        print(f"  Edges: {len(state_functions)}")
+        print(f"  Edges: {len(edge_cells)}")
         print(f"  Time steps per edge: {len(query_times_hours)}")
 
         return output_path
@@ -515,6 +625,7 @@ class BackboneStateAggregator:
         jam_density: float,
         query_times_hours: list[float] | None = None,
         time_step_minutes: float = 1.0,
+        preferred_cell_size: float | None = None,
     ) -> str:
         """Execute the full backbone state estimation pipeline.
 
@@ -561,4 +672,10 @@ class BackboneStateAggregator:
             output_path,
             query_times_hours=query_times_hours,
             time_step_minutes=time_step_minutes,
+            dt=(time_step_minutes / 60.0) if time_step_minutes is not None else None,
+            duration=(self.max_time / 3600.0) if self.max_time is not None else None,
+            preferred_cell_size=preferred_cell_size,
+            model_type="MICRO",
+            free_flow_speed=free_flow_speed,
+            jam_density=jam_density,
         )
