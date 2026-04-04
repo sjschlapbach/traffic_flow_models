@@ -475,23 +475,58 @@ class BackboneStateAggregator:
                 ]
             ]
 
-        # Reconstruct edge -> {cell_index: state_fn} mapping. The state_functions
-        # keys are typically of the form "<edge_id>_cell<index>"; fall back to
-        # treating the key as a single-cell edge if parsing fails.
-        edge_cells: dict[str, dict[int, Callable[[float], TrafficState]]] = {}
-        for key, fn in state_functions.items():
+        # Build topology-driven edge -> {cell_index: state_fn} mapping.
+        # Prefer explicit topology from `self.detector_mapping` (which is
+        # populated from the detector spec). Also include any indices seen in
+        # the `state_functions` keys as a fallback. For cells without a
+        # corresponding state function, store ``None`` and emit zero-values
+        # during export so that the exported arrays remain topology-stable
+        # (not traffic-dependent).
+        edge_cell_indices: dict[str, set[int]] = {}
+
+        # Collect declared cells from detector mapping (topology source)
+        for mapping in self.detector_mapping.values():
+            edge_id = mapping.get("edge_id")
+            if edge_id is None:
+                continue
+            cell_index = int(mapping.get("cell_index", 0))
+            edge_cell_indices.setdefault(edge_id, set()).add(cell_index)
+
+        # Also include any indices present in state_functions keys
+        for key in state_functions.keys():
             if "_cell" in key:
                 parts = key.rsplit("_cell", 1)
-                edge_id = parts[0]
+                e = parts[0]
                 try:
-                    cell_index = int(parts[1])
+                    ci = int(parts[1])
                 except Exception:
-                    cell_index = 0
+                    ci = 0
             else:
-                edge_id = key
-                cell_index = 0
+                e = key
+                ci = 0
+            edge_cell_indices.setdefault(e, set()).add(ci)
 
-            edge_cells.setdefault(edge_id, {})[cell_index] = fn
+        # Build contiguous per-edge cell index maps (0..max_index)
+        edge_cells: dict[str, dict[int, Callable[[float], TrafficState] | None]] = {}
+        for edge_id, indices in edge_cell_indices.items():
+            if indices:
+                max_idx = max(indices)
+                cells_map: dict[int, Callable[[float], TrafficState] | None] = {}
+                for idx in range(max_idx + 1):
+                    # prefer explicit keyed functions like "edge_cell{idx}"
+                    key_cell = f"{edge_id}_cell{idx}"
+                    fn = None
+                    if key_cell in state_functions:
+                        fn = state_functions[key_cell]
+                    elif idx == 0 and edge_id in state_functions:
+                        # fallback: unindexed key may represent single-cell edges
+                        fn = state_functions[edge_id]
+                    else:
+                        fn = None
+                    cells_map[idx] = fn
+                edge_cells[edge_id] = cells_map
+            else:
+                edge_cells[edge_id] = {}
 
         # Prepare output containers matching Simulation.save_results layout
         flows_time: dict[str, list] = {}
@@ -534,14 +569,17 @@ class BackboneStateAggregator:
         for edge_id, cells in edge_cells.items():
             n_cells = max(cells.keys()) + 1 if cells else 0
             # attempt to obtain lane counts from the first available state function
-            n_lanes_vals: list[float] = []
+            n_lanes_vals: list[int] = []
             if n_cells > 0:
                 for fn in cells.values():
+                    if fn is None:
+                        n_lanes_vals.append(0)
+                        continue
                     try:
-                        val = fn(query_times_hours[0]).get("n_lanes", 0.0)
+                        val = fn(query_times_hours[0]).get("n_lanes", 0)
                         n_lanes_vals.append(int(val))
                     except Exception:
-                        n_lanes_vals.append(0.0)
+                        n_lanes_vals.append(0)
 
             avg_lanes = (
                 float(sum(n_lanes_vals) / len(n_lanes_vals)) if n_lanes_vals else 0.0
