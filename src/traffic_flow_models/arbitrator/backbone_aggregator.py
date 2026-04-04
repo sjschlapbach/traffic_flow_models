@@ -725,7 +725,7 @@ class BackboneStateAggregator:
             time_step_minutes=time_step_minutes,
             dt=(time_step_minutes / 60.0) if time_step_minutes is not None else None,
             duration=(self.max_time / 3600.0) if self.max_time is not None else None,
-            preferred_cell_size=None,
+            preferred_cell_size=preferred_cell_size,
             free_flow_speed=free_flow_speed,
             jam_density=jam_density,
         )
