@@ -111,7 +111,6 @@ if __name__ == "__main__":
     )
 
     # Diagnostic
-
     print("Demand keys:", sorted(origin_demands.keys()))
     print("Missing:", [k for k in origin_ids if k not in origin_demands])
 
@@ -142,6 +141,7 @@ if __name__ == "__main__":
         time_step_minutes=1.0,
         free_flow_speed=road_params["motorway"]["free_flow_speed"],
         jam_density=road_params["motorway"]["jam_density"],
+        preferred_cell_size=preferred_cell_size,
     )
 
     # plot the network
