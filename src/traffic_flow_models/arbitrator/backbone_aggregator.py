@@ -430,7 +430,6 @@ class BackboneStateAggregator:
         dt: float | None = None,
         duration: float | None = None,
         preferred_cell_size: float | None = None,
-        model_type: str | None = None,
         free_flow_speed: float | None = None,
         jam_density: float | None = None,
     ) -> str:
@@ -452,6 +451,17 @@ class BackboneStateAggregator:
                 ``time_step_minutes`` is used.
             time_step_minutes: Grid resolution in minutes when
                 ``query_times_hours`` is not supplied (default 1.0).
+            dt: Optional timestep in hours. If ``None`` it is derived from
+                ``time_step_minutes`` (dt = time_step_minutes / 60.0).
+            duration: Optional total simulation duration in hours. If
+                ``None`` it defaults to ``self.max_time / 3600.0``.
+            preferred_cell_size: Optional preferred cell size (units depend on
+                the network configuration); used to populate metadata when
+                known.
+            free_flow_speed: Optional free-flow speed in km/h used when
+                deriving densities.
+            jam_density: Optional jam density in veh/km/lane used when
+                converting occupancy to density.
 
         Returns:
             The resolved ``output_path`` string.
@@ -544,7 +554,8 @@ class BackboneStateAggregator:
 
         # Build metadata matching Simulation.save_results exact fields.
         # Use provided values where available, otherwise sensible placeholders.
-        _model_type = model_type if model_type is not None else "MICRO"
+        # model_type is fixed for aggregator outputs
+        _model_type = "MICRO"
         _dt = dt
         _duration = duration
         _pref_cell = preferred_cell_size
@@ -640,6 +651,8 @@ class BackboneStateAggregator:
             query_times_hours: Optional explicit time grid (hours).
             time_step_minutes: Grid resolution when ``query_times_hours`` is
                 not provided.
+            preferred_cell_size: Optional preferred cell size to hint cell
+                discretization in metadata (units as per network configuration).
 
         Returns:
             Path to the written JSON file.
@@ -674,8 +687,7 @@ class BackboneStateAggregator:
             time_step_minutes=time_step_minutes,
             dt=(time_step_minutes / 60.0) if time_step_minutes is not None else None,
             duration=(self.max_time / 3600.0) if self.max_time is not None else None,
-            preferred_cell_size=preferred_cell_size,
-            model_type="MICRO",
+            preferred_cell_size=None,
             free_flow_speed=free_flow_speed,
             jam_density=jam_density,
         )
