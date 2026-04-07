@@ -14,9 +14,6 @@ from traffic_flow_models import (
     NetworkArbitrator,
 )
 
-# choose model: "CTM" or "METANET"
-MODEL = "CTM"
-
 if __name__ == "__main__":
     args = argparse.ArgumentParser(description="Run the Zurich demo scenario.")
     args.add_argument(
@@ -33,6 +30,13 @@ if __name__ == "__main__":
         "--vehicle-demand",
         type=int,
         help="Vehicle demand for the Zurich scenario (default: 20000)",
+    )
+    args.add_argument(
+        "--model",
+        type=str,
+        choices=["CTM", "METANET"],
+        default="CTM",
+        help="Traffic flow model to use for the simulation (default: CTM)",
     )
     parsed_args = args.parse_args()
 
@@ -88,8 +92,6 @@ if __name__ == "__main__":
         diverge_node_info,
         backbone_node_ids,
     ) = pipeline.get_consolidated_network()
-
-    # Diagnostic
     print(f"Origins:  {len(origin_ids)} → {origin_ids}")
     print(f"Onramps:  {len(onramp_ids)} → {onramp_ids}")
     print(f"Offramps: {len(offramp_ids)} → {offramp_ids}")
@@ -114,8 +116,6 @@ if __name__ == "__main__":
         origin_ids=origin_ids,
         sumo_network_path=pipeline.net_file,
     )
-
-    # Diagnostic
     print("Demand keys:", sorted(origin_demands.keys()))
     print("Missing:", [k for k in origin_ids if k not in origin_demands])
 
@@ -154,7 +154,7 @@ if __name__ == "__main__":
     network.plot(save_path="results/zurich/network.png", show=plot_enabled)
 
     # run a simulation of the network using the selected model
-    if MODEL.upper() == "CTM":
+    if parsed_args.model.upper() == "CTM":
         ctm = CTM()
         sim = Simulation(network=network, model=ctm)
         time, states, disturbances = sim.run(
@@ -170,7 +170,7 @@ if __name__ == "__main__":
             results_dir=results_dir,
         )
 
-    elif MODEL.upper() == "METANET":
+    elif parsed_args.model.upper() == "METANET":
         # Use the backbone state file for ground-truth states and forward the
         # callable disturbance functions (origin_demands, splits) to the
         # calibrator. The calibrator will build the disturbance history by
@@ -216,7 +216,9 @@ if __name__ == "__main__":
         )
 
     else:
-        raise ValueError(f"Unknown MODEL: {MODEL}. Choose 'CTM' or 'METANET'.")
+        raise ValueError(
+            f"Unknown MODEL: {parsed_args.model}. Choose 'CTM' or 'METANET'."
+        )
 
     # compute performance metrics and illustrate them
     VKT, VHT, avg_speed = sim.compute_metrics(
