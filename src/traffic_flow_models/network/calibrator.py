@@ -17,7 +17,7 @@ from scipy.stats import qmc
 from numpy.typing import NDArray
 from matplotlib.lines import Line2D
 from scipy.optimize import OptimizeResult
-from typing import TYPE_CHECKING, Tuple, Union
+from typing import TYPE_CHECKING, Tuple, Union, Callable
 from traffic_flow_models.network import (
     Origin,
     Onramp,
@@ -493,6 +493,17 @@ class Calibrator:
         save_dir: str | None = None,
         convergence_title: str | None = None,
         correlation_title: str | None = None,
+        # If True (default) use disturbance time series saved in the ground-truth
+        # file. If False, the caller must provide callable disturbance inputs
+        # via the arguments below (origin_demands_fn, turning_rates_fn,
+        # flow_boundary_conditions_fn, density_boundary_conditions_fn).
+        use_disturbance_from_file: bool = True,
+        origin_demands_fn: dict[str, Callable[[float], float]] | None = None,
+        turning_rates_fn: dict[str, Callable[[float], dict[str, float]]] | None = None,
+        flow_boundary_conditions_fn: dict[str, Callable[[float], float]] | None = None,
+        density_boundary_conditions_fn: (
+            dict[str, Callable[[float], float]] | None
+        ) = None,
     ) -> Tuple["METANETParams", OptimizeResult, NDArray[np.float64]]:
         """Calibrate model parameters using ground truth simulation data.
 
@@ -814,9 +825,89 @@ class Calibrator:
         if verbose:
             print(f"Loading ground truth data from {ground_truth_filepath}")
 
+        # load the simulation results from the corresponding file - depending on the flag
+        # regarding the provided structure of disturbance components, either load the full
+        # simulation data (state and disturbance histories) from the file, or only the state
+        # history with disturbance quantities passed as separate functions to this method
         time_array, state_history, disturbance_history, _ = Simulation.load_results(
-            filepath=ground_truth_filepath, network=self.network
+            filepath=ground_truth_filepath,
+            network=self.network,
+            load_mainline_only=(not use_disturbance_from_file),
         )
+
+        # if the caller supplied callable disturbances, build the disturbance
+        # history by sampling those callables on the simulation grid. This
+        # replaces the file-based disturbance history when requested.
+        if not use_disturbance_from_file:
+            if (
+                origin_demands_fn is None
+                or turning_rates_fn is None
+                or flow_boundary_conditions_fn is None
+                or density_boundary_conditions_fn is None
+            ):
+                raise ValueError(
+                    "When use_disturbance_from_file=False you must provide all required disturbance functions: origin_demands_fn, turning_rates_fn, flow_boundary_conditions_fn, density_boundary_conditions_fn"
+                )
+
+            # disturbance vectors are defined on the disturbance time grid
+            # which corresponds to `time_array[:-1]` (one fewer than state timesteps)
+            times = np.array(time_array, dtype=float)
+            if times.size >= 2:
+                sample_times = times[:-1]
+            else:
+                sample_times = times
+
+            disturbance_vecs: list[NDArray[np.float64]] = []
+
+            for t in sample_times:
+                # build per-timestep disturbance dictionaries by sampling
+                origin_dem_t: dict[str, float] = {}
+                for oid, fn in origin_demands_fn.items():
+                    origin_dem_t[oid] = float(fn(float(t)))
+
+                # turning rates: prepare a per-node mapping; supply defaults
+                # of 1.0 for single-outgoing-link nodes when not provided
+                turning_rates_t: dict[str, dict[str, float]] = {}
+                for node in self.network.list_nodes():
+                    if turning_rates_fn and node.id in turning_rates_fn:
+                        node_rates = turning_rates_fn[node.id](float(t))
+                    else:
+                        # default SISO nodes to 1.0 on their single outgoing link
+                        if len(node.outgoing) == 1:
+                            node_rates = {node.outgoing[0].id: 1.0}
+                        else:
+                            raise ValueError(
+                                f"Turning-rate function for node {node.id} not provided and node has multiple outgoing links"
+                            )
+
+                    # ensure numeric types
+                    turning_rates_t[node.id] = {
+                        k: float(v) for k, v in node_rates.items()
+                    }
+
+                # boundary conditions: sample provided callables or fall back to zeros
+                flow_bc_t: dict[str, float] = {}
+                density_bc_t: dict[str, float] = {}
+                if flow_boundary_conditions_fn is not None:
+                    for did, fn in flow_boundary_conditions_fn.items():
+                        flow_bc_t[did] = float(fn(float(t)))
+                if density_boundary_conditions_fn is not None:
+                    for did, fn in density_boundary_conditions_fn.items():
+                        density_bc_t[did] = float(fn(float(t)))
+
+                # pack into disturbance vector using network helper
+                d_t = self.network.network_dict_to_disturbance_vec(
+                    origin_demand_dict=origin_dem_t,
+                    turning_rate_dict=turning_rates_t,
+                    flow_boundary_condition_dict=flow_bc_t,
+                    density_boundary_condition_dict=density_bc_t,
+                )
+
+                disturbance_vecs.append(d_t)
+
+            disturbance_history = (
+                np.column_stack(disturbance_vecs) if disturbance_vecs else np.array([])
+            )
 
         num_timesteps = len(time_array)
         if verbose:

@@ -4,10 +4,12 @@ from datetime import datetime
 
 from traffic_flow_models import (
     CTM,
+    METANET,
     SUMOPipeline,
     SUMOSimulation,
     DemandAggregator,
     Simulation,
+    Calibrator,
     BackboneStateAggregator,
     NetworkArbitrator,
 )
@@ -28,6 +30,13 @@ if __name__ == "__main__":
         "--vehicle-demand",
         type=int,
         help="Vehicle demand for the Zurich scenario (default: 20000)",
+    )
+    args.add_argument(
+        "--model",
+        type=str,
+        choices=["CTM", "METANET"],
+        default="CTM",
+        help="Traffic flow model to use for the simulation (default: CTM)",
     )
     parsed_args = args.parse_args()
 
@@ -83,8 +92,6 @@ if __name__ == "__main__":
         diverge_node_info,
         backbone_node_ids,
     ) = pipeline.get_consolidated_network()
-
-    # Diagnostic
     print(f"Origins:  {len(origin_ids)} → {origin_ids}")
     print(f"Onramps:  {len(onramp_ids)} → {onramp_ids}")
     print(f"Offramps: {len(offramp_ids)} → {offramp_ids}")
@@ -109,8 +116,6 @@ if __name__ == "__main__":
         origin_ids=origin_ids,
         sumo_network_path=pipeline.net_file,
     )
-
-    # Diagnostic
     print("Demand keys:", sorted(origin_demands.keys()))
     print("Missing:", [k for k in origin_ids if k not in origin_demands])
 
@@ -120,6 +125,7 @@ if __name__ == "__main__":
     splits = pipeline.compute_splits(window_size_minutes=2.0)
 
     # TODO: replace these, once they can be obtained from data
+    # TODO: once they are available through data, also make sure that the load_results function in the simulation module is updated accordingly
     destination_density_bc = {dest_id: lambda _t: 10.0 for dest_id in destination_ids}
     destination_flow_bc = {dest_id: lambda _t: 6000.0 for dest_id in destination_ids}
 
@@ -147,21 +153,72 @@ if __name__ == "__main__":
     # plot the network
     network.plot(save_path="results/zurich/network.png", show=plot_enabled)
 
-    # run a simulation of the network using the CTM model
-    ctm = CTM()
-    sim = Simulation(network=network, model=ctm)
-    time, states, disturbances = sim.run(
-        duration=duration,
-        dt=dt,
-        preferred_cell_size=preferred_cell_size,
-        origin_demands=origin_demands,
-        turning_rates=splits,
-        destination_density_bc=destination_density_bc,
-        destination_flow_bc=destination_flow_bc,
-        plot_results=True,
-        show_plots=plot_enabled,
-        results_dir=results_dir,
-    )
+    # run a simulation of the network using the selected model
+    if parsed_args.model.upper() == "CTM":
+        ctm = CTM()
+        sim = Simulation(network=network, model=ctm)
+        time, states, disturbances = sim.run(
+            duration=duration,
+            dt=dt,
+            preferred_cell_size=preferred_cell_size,
+            origin_demands=origin_demands,
+            turning_rates=splits,
+            destination_density_bc=destination_density_bc,
+            destination_flow_bc=destination_flow_bc,
+            plot_results=True,
+            show_plots=plot_enabled,
+            results_dir=results_dir,
+        )
+
+    elif parsed_args.model.upper() == "METANET":
+        # Use the backbone state file for ground-truth states and forward the
+        # callable disturbance functions (origin_demands, splits) to the
+        # calibrator. The calibrator will build the disturbance history by
+        # sampling these callables on the simulation time grid.
+        print("Running METANET calibration using backbone aggregated states...")
+        calibrator = Calibrator(network=network)
+        metanet_model = METANET()
+        calibrated_params, result, _ = calibrator.calibrate_model_params(
+            ground_truth_filepath=backbone_state_path,
+            model=metanet_model,
+            initial_params=None,
+            window_size=30,
+            stride=15,
+            model_options={"link_specific_alpha": False},
+            regularization_weight=0.01,
+            verbose=True,
+            use_parameter_search=False,
+            save_dir=results_dir,
+            use_disturbance_from_file=False,  # we will provide disturbance callables instead of using the file-based disturbances
+            origin_demands_fn=origin_demands,
+            turning_rates_fn=splits,
+            # TODO: once the values are available through data, remove these two arguments and ensure that they are correctly read from the corresponding file
+            flow_boundary_conditions_fn=destination_flow_bc,
+            density_boundary_conditions_fn=destination_density_bc,
+        )
+
+        print(
+            "Calibration complete — running METANET simulation with calibrated parameters"
+        )
+        metanet = METANET()
+        sim = Simulation(network=network, model=metanet, model_params=calibrated_params)
+        time, states, disturbances = sim.run(
+            duration=duration,
+            dt=dt,
+            preferred_cell_size=preferred_cell_size,
+            origin_demands=origin_demands,
+            turning_rates=splits,
+            destination_density_bc=destination_density_bc,
+            destination_flow_bc=destination_flow_bc,
+            plot_results=True,
+            show_plots=plot_enabled,
+            results_dir=results_dir,
+        )
+
+    else:
+        raise ValueError(
+            f"Unknown MODEL: {parsed_args.model}. Choose 'CTM' or 'METANET'."
+        )
 
     # compute performance metrics and illustrate them
     VKT, VHT, avg_speed = sim.compute_metrics(

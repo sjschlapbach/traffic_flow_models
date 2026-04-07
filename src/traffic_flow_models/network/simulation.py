@@ -1193,6 +1193,7 @@ class Simulation:
         cls,
         filepath: str,
         network: "Network",
+        load_mainline_only: bool = False,
     ) -> Tuple[
         NDArray[np.float64],
         NDArray[np.float64],
@@ -1201,22 +1202,26 @@ class Simulation:
     ]:
         """Load simulation results from a JSON file with validation.
 
-        Reads a JSON file created by `save_results` and validates
-        that all required fields are present and contain valid numerical data.
-        Returns the reconstructed time array, state history, disturbance history,
-        and metadata (if present in the file).
+        Reads a JSON file created by `save_results` and validates that all required
+        fields are present and contain valid numerical data. When
+        ``load_mainline_only`` is True, the function expects the file to contain
+        only mainline `flows`, `densities`, and `speeds` together with boundary
+        conditions in `disturbance_time_series` (flow/density). In that mode
+        missing onramp/offramp/origin flows and queue values as well as missing
+        disturbance entries (origin demands / turning rates) are filled with
+        sensible defaults so the returned packed vectors remain consistent with
+        the provided `network`.
 
         Args:
             filepath: Path to the JSON file containing simulation results.
             network: Network instance to use for validating structure against saved data.
+            load_mainline_only: If True, only require and load mainline quantities
+                (flows/densities/speeds and boundary conditions). Other
+                quantities (queues, demands, turning rates) will be filled with
+                default values when absent.
 
         Returns:
-            Tuple of (time_array, state_history, disturbance_history, metadata) where:
-            - time_array: 1-D NumPy array of time points
-            - state_history: 2-D NumPy array of state vectors over time
-            - disturbance_history: 2-D NumPy array of disturbances over time
-            - metadata: Dictionary containing simulation metadata (model type, parameters,
-              critical densities, link properties) or None if not present in file
+            Tuple of (time_array, state_history, disturbance_history, metadata).
 
         Raises:
             ValueError: If required fields are missing or data validation fails.
@@ -1237,28 +1242,37 @@ class Simulation:
                     f"Missing required field '{field}' in simulation results file."
                 )
 
-        # validate state_time_series structure
-        state_required = [
-            "flows",
-            "densities",
-            "speeds",
-            "origin_queues",
-            "onramp_queues",
-            "offramp_queues",
-        ]
+        # depending on the load mode, only a subset of state/disturbance fields
+        # are required. When mainline-only mode is selected we only require the
+        # mainline fields and the boundary-condition components.
+        if load_mainline_only:
+            state_required = ["flows", "densities", "speeds"]
+            disturbance_required = [
+                "flow_boundary_conditions",
+                "density_boundary_conditions",
+            ]
+        else:
+            state_required = [
+                "flows",
+                "densities",
+                "speeds",
+                "origin_queues",
+                "onramp_queues",
+                "offramp_queues",
+            ]
+            disturbance_required = [
+                "origin_demands",
+                "turning_rates",
+                "flow_boundary_conditions",
+                "density_boundary_conditions",
+            ]
+
         for field in state_required:
             if field not in data["state_time_series"]:
                 raise ValueError(
                     f"Missing required field '{field}' in state_time_series."
                 )
 
-        # validate disturbance_time_series structure
-        disturbance_required = [
-            "origin_demands",
-            "turning_rates",
-            "flow_boundary_conditions",
-            "density_boundary_conditions",
-        ]
         for field in disturbance_required:
             if field not in data["disturbance_time_series"]:
                 raise ValueError(
@@ -1275,78 +1289,188 @@ class Simulation:
         # reconstruct state dictionaries for validation and conversion
         state_series = data["state_time_series"]
 
-        # validate that all link IDs in saved data match network structure
+        # validate that required per-link entries exist for the given network
         for node in network.list_nodes():
             for link in node.incoming:
                 if isinstance(link, Origin):
-                    if link.id not in state_series["origin_queues"]:
+                    if not load_mainline_only and link.id not in state_series.get(
+                        "origin_queues", {}
+                    ):
                         raise ValueError(
                             f"Origin queue data for '{link.id}' not found in saved results."
                         )
                 elif isinstance(link, Onramp):
-                    if link.id not in state_series["flows"]:
+                    if not load_mainline_only and link.id not in state_series.get(
+                        "flows", {}
+                    ):
                         raise ValueError(
                             f"Flow data for onramp '{link.id}' not found in saved results."
                         )
-                    if link.id not in state_series["onramp_queues"]:
+                    if not load_mainline_only and link.id not in state_series.get(
+                        "onramp_queues", {}
+                    ):
                         raise ValueError(
                             f"Onramp queue data for '{link.id}' not found in saved results."
                         )
 
             for link in node.outgoing:
                 if isinstance(link, MotorwayLink):
-                    if link.id not in state_series["flows"]:
+                    if link.id not in state_series.get("flows", {}):
                         raise ValueError(
                             f"Flow data for motorway link '{link.id}' not found in saved results."
                         )
-                    if link.id not in state_series["densities"]:
+                    if link.id not in state_series.get("densities", {}):
                         raise ValueError(
                             f"Density data for motorway link '{link.id}' not found in saved results."
                         )
-                    if link.id not in state_series["speeds"]:
+                    if link.id not in state_series.get("speeds", {}):
                         raise ValueError(
                             f"Speed data for motorway link '{link.id}' not found in saved results."
                         )
                 elif isinstance(link, Offramp):
-                    if link.id not in state_series["flows"]:
+                    if not load_mainline_only and link.id not in state_series.get(
+                        "flows", {}
+                    ):
                         raise ValueError(
                             f"Flow data for offramp '{link.id}' not found in saved results."
                         )
-                    if link.id not in state_series["offramp_queues"]:
+                    if not load_mainline_only and link.id not in state_series.get(
+                        "offramp_queues", {}
+                    ):
                         raise ValueError(
                             f"Offramp queue data for '{link.id}' not found in saved results."
                         )
                 elif isinstance(link, Destination):
-                    if link.id not in state_series["flows"]:
+                    if not load_mainline_only and link.id not in state_series.get(
+                        "flows", {}
+                    ):
                         raise ValueError(
                             f"Flow data for destination '{link.id}' not found in saved results."
                         )
 
-        # reconstruct state_history by iterating through timesteps
-        # first, get state size from network
+        # Reconstruct state history timestep-by-timestep. We iterate over the
+        # network topology so missing non-mainline fields can be populated with
+        # defaults when ``load_mainline_only`` is True.
         state_dicts = []
         for t in range(num_timesteps):
-            flows_t = {
-                str(id): np.array(v[t], dtype=np.float64)
-                for id, v in state_series["flows"].items()
-            }
-            densities_t = {
-                str(id): np.array(v[t], dtype=np.float64)
-                for id, v in state_series["densities"].items()
-            }
-            speeds_t = {
-                str(id): np.array(v[t], dtype=np.float64)
-                for id, v in state_series["speeds"].items()
-            }
-            origin_queues_t = {
-                str(id): float(v[t]) for id, v in state_series["origin_queues"].items()
-            }
-            onramp_queues_t = {
-                str(id): float(v[t]) for id, v in state_series["onramp_queues"].items()
-            }
-            offramp_queues_t = {
-                str(id): float(v[t]) for id, v in state_series["offramp_queues"].items()
-            }
+            flows_t: dict[str, NDArray[np.float64]] = {}
+            densities_t: dict[str, NDArray[np.float64]] = {}
+            speeds_t: dict[str, NDArray[np.float64]] = {}
+            origin_queues_t: dict[str, float] = {}
+            onramp_queues_t: dict[str, float] = {}
+            offramp_queues_t: dict[str, float] = {}
+
+            for node in network.list_nodes():
+                # incoming links (origins / onramps)
+                for link in node.incoming:
+                    # flow for incoming links: present in file for full mode,
+                    # absent for mainline-only files -> default to [0.0]
+                    if link.id in state_series.get("flows", {}):
+                        flows_t[str(link.id)] = np.array(
+                            state_series["flows"][link.id][t], dtype=np.float64
+                        )
+                    else:
+                        flows_t[str(link.id)] = np.array([0.0], dtype=np.float64)
+
+                    # queues: origins and onramps
+                    if isinstance(link, Origin):
+                        if link.id in state_series.get("origin_queues", {}):
+                            origin_queues_t[str(link.id)] = float(
+                                state_series["origin_queues"][link.id][t]
+                            )
+                        else:
+                            if load_mainline_only:
+                                origin_queues_t[str(link.id)] = 0.0
+                            else:
+                                raise ValueError(
+                                    f"Origin queue data for '{link.id}' not found in saved results."
+                                )
+
+                    if isinstance(link, Onramp):
+                        if link.id in state_series.get("onramp_queues", {}):
+                            onramp_queues_t[str(link.id)] = float(
+                                state_series["onramp_queues"][link.id][t]
+                            )
+                        else:
+                            if load_mainline_only:
+                                onramp_queues_t[str(link.id)] = 0.0
+                            else:
+                                raise ValueError(
+                                    f"Onramp queue data for '{link.id}' not found in saved results."
+                                )
+
+                # outgoing links
+                for link in node.outgoing:
+                    if isinstance(link, MotorwayLink):
+                        if link.id in state_series.get("flows", {}):
+                            flows_t[str(link.id)] = np.array(
+                                state_series["flows"][link.id][t], dtype=np.float64
+                            )
+                        else:
+                            raise ValueError(
+                                f"Flow data for motorway link '{link.id}' not found in saved results."
+                            )
+
+                        if link.id in state_series.get("densities", {}):
+                            densities_t[str(link.id)] = np.array(
+                                state_series["densities"][link.id][t], dtype=np.float64
+                            )
+                        else:
+                            raise ValueError(
+                                f"Density data for motorway link '{link.id}' not found in saved results."
+                            )
+
+                        if link.id in state_series.get("speeds", {}):
+                            speeds_t[str(link.id)] = np.array(
+                                state_series["speeds"][link.id][t], dtype=np.float64
+                            )
+                        else:
+                            raise ValueError(
+                                f"Speed data for motorway link '{link.id}' not found in saved results."
+                            )
+
+                    elif isinstance(link, Offramp):
+                        if link.id in state_series.get("flows", {}):
+                            flows_t[str(link.id)] = np.array(
+                                state_series["flows"][link.id][t], dtype=np.float64
+                            )
+                        else:
+                            # absent in mainline-only files -> default to zero
+                            if load_mainline_only:
+                                flows_t[str(link.id)] = np.array(
+                                    [0.0], dtype=np.float64
+                                )
+                            else:
+                                raise ValueError(
+                                    f"Flow data for offramp '{link.id}' not found in saved results."
+                                )
+
+                        if link.id in state_series.get("offramp_queues", {}):
+                            offramp_queues_t[str(link.id)] = float(
+                                state_series["offramp_queues"][link.id][t]
+                            )
+                        else:
+                            if load_mainline_only:
+                                offramp_queues_t[str(link.id)] = 0.0
+                            else:
+                                raise ValueError(
+                                    f"Offramp queue data for '{link.id}' not found in saved results."
+                                )
+
+                    elif isinstance(link, Destination):
+                        if link.id in state_series.get("flows", {}):
+                            flows_t[str(link.id)] = np.array(
+                                state_series["flows"][link.id][t], dtype=np.float64
+                            )
+                        else:
+                            if load_mainline_only:
+                                flows_t[str(link.id)] = np.array(
+                                    [0.0], dtype=np.float64
+                                )
+                            else:
+                                raise ValueError(
+                                    f"Flow data for destination '{link.id}' not found in saved results."
+                                )
 
             # validate numerical data using existing validation (for first timestep)
             if t == 0:
@@ -1392,31 +1516,67 @@ class Simulation:
 
         state_history = np.column_stack(state_vecs)
 
-        # reconstruct disturbance_history similarly
+        # Reconstruct disturbance history
+        # disturbance series timeline should align with state timeline:
+        # disturbances represent inputs between state timesteps, therefore
+        # their length is expected to be `len(time_array) - 1`.
         disturbance_series = data["disturbance_time_series"]
-        num_dist_timesteps = (
-            len(next(iter(disturbance_series["origin_demands"].values())))
-            if disturbance_series["origin_demands"]
-            else 0
-        )
+        num_dist_timesteps = max(0, num_timesteps - 1)
 
         disturbance_vecs = []
         for t in range(num_dist_timesteps):
-            origin_demands_t = {
-                k: float(v[t]) for k, v in disturbance_series["origin_demands"].items()
-            }
-            turning_rates_t = {
-                node_id: {lk: float(rates[t]) for lk, rates in inner.items()}
-                for node_id, inner in disturbance_series["turning_rates"].items()
-            }
-            flow_bc_t = {
-                k: float(v[t])
-                for k, v in disturbance_series["flow_boundary_conditions"].items()
-            }
-            density_bc_t = {
-                k: float(v[t])
-                for k, v in disturbance_series["density_boundary_conditions"].items()
-            }
+            # origin demands
+            origin_demands_t: dict[str, float] = {}
+            if disturbance_series.get("origin_demands"):
+                for k, v in disturbance_series["origin_demands"].items():
+                    origin_demands_t[k] = float(v[t])
+            else:
+                # default zero demands when not present (mainline-only files)
+                for node in network.list_nodes():
+                    for link in node.incoming:
+                        if isinstance(link, Origin):
+                            origin_demands_t[link.id] = 0.0
+
+            # turning rates
+            turning_rates_t: dict[str, dict[str, float]] = {}
+            if disturbance_series.get("turning_rates"):
+                for node_id, inner in disturbance_series["turning_rates"].items():
+                    turning_rates_t[node_id] = {
+                        lk: float(vals[t]) for lk, vals in inner.items()
+                    }
+            else:
+                # default: equal split across outgoing links for each node
+                for node in network.list_nodes():
+                    outgoing = list(node.outgoing)
+                    if len(outgoing) == 0:
+                        turning_rates_t[node.id] = {}
+                    else:
+                        share = 1.0 / len(outgoing)
+                        turning_rates_t[node.id] = {
+                            lk.id: float(share) for lk in outgoing
+                        }
+
+            # boundary conditions (flow / density)
+            flow_bc_t: dict[str, float] = {}
+            if disturbance_series.get("flow_boundary_conditions"):
+                for k, v in disturbance_series["flow_boundary_conditions"].items():
+                    flow_bc_t[k] = float(v[t])
+            else:
+                # fallback zeros for missing boundary conditions
+                for node in network.list_nodes():
+                    for link in node.outgoing:
+                        if isinstance(link, Destination):
+                            flow_bc_t[link.id] = 0.0
+
+            density_bc_t: dict[str, float] = {}
+            if disturbance_series.get("density_boundary_conditions"):
+                for k, v in disturbance_series["density_boundary_conditions"].items():
+                    density_bc_t[k] = float(v[t])
+            else:
+                for node in network.list_nodes():
+                    for link in node.outgoing:
+                        if isinstance(link, Destination):
+                            density_bc_t[link.id] = 0.0
 
             # validate numerical data using existing validation (for first timestep)
             if t == 0:
