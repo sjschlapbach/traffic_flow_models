@@ -20,7 +20,6 @@ from demo.scenarios import (
 
 if __name__ == "__main__":
     # ! simulation configuration parameters
-    scenario = "A"
     alinea_ramp_control = False
     alinea_gain = 5.0
     dt = 10.0 / 3600
@@ -38,9 +37,17 @@ if __name__ == "__main__":
         action="store_true",
         help="Generate video visualization of simulation results",
     )
+    parser.add_argument(
+        "--scenario",
+        type=str,
+        choices=["A", "B", "C", "D"],
+        default="A",
+        help="Select the scenario to simulate (default: A)",
+    )
     args = parser.parse_args()
     plot_enabled = not args.no_plot
     generate_video = args.generate_video
+    scenario = args.scenario
 
     # select the appropriate scenario functions
     if scenario == "A":
