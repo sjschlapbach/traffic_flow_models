@@ -791,7 +791,7 @@ class METANET:
                 # offramp link: the store-and-forward model does not model density / speed on offramps
                 # -> free flow conditions are assumed for traffic entering this link from the mainline
                 # -> if the boundary condition is too restrictive, a virtual queue will form on the offramp
-                node_downstream_density = casadi.SX(10.0)
+                node_downstream_density = casadi.SX(0)
                 node_downstream_jam_density = None  # no downstream jam density defined -> handling on calling level required
                 node_downstream_backward_wave_speed = None  # no downstream backward wave speed defined -> handling on calling level required
 
@@ -804,9 +804,8 @@ class METANET:
             elif isinstance(out_link, Onramp):
                 # for onramps no downstream supply of space restrictions should be imposed
                 # -> all inflow from the virtual upstream origin should be consumed
-                node_downstream_density = casadi.SX(
-                    0
-                )  # free-flow conditions downstream of the node
+                # free-flow conditions downstream of the node
+                node_downstream_density = casadi.SX(0)
                 node_downstream_jam_density = None  # no downstream jam density defined -> handling on calling level required
                 node_downstream_backward_wave_speed = None  # no downstream backward wave speed defined -> handling on calling level required
 
