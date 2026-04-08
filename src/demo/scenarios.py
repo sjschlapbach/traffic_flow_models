@@ -285,8 +285,9 @@ def setup_network_c2() -> tuple[Network, dict]:
 
 def setup_network_c3() -> tuple[Network, dict]:
     """
-    Variant of scenario C where a custom controller selects between two fixed
-    metering rates depending on the unrestricted onramp flow.
+    Variant of scenario C where a custom controller inspects the current downstream
+    flow and decides on a metering rate accordingly according to a switching rule
+    between two fixed metering rates.
 
     The supplied custom function inspects the current onramp (unrestricted)
     flow and returns a CasADi expression with either a low or high fixed

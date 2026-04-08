@@ -78,8 +78,10 @@ class CustomController:
             result = self.controller_fn(flows, densities)
 
         # if the result is a CasADi object, return it directly
-        if isinstance(result, (casadi.SX, casadi.DM)):
+        if isinstance(result, casadi.SX):
             return result
+        elif isinstance(result, casadi.DM):
+            return casadi.SX(result)
         try:
             return casadi.SX(result)
         except Exception as exc:  # pragma: no cover - defensive
