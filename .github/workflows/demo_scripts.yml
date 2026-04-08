@@ -37,10 +37,26 @@ jobs:
           netconvert --version
       - name: Plot simple network structure
         run: python -m src.demo.plot_demo_network --no-plot
-      - name: Run CTM simulation demo
-        run: python -m src.demo.ctm_simulation --no-plot
-      - name: Run METANET simulation demo
-        run: python -m src.demo.metanet_simulation --no-plot
+      - name: Run CTM simulation demos
+        run: |
+          python -m src.demo.ctm_simulation --no-plot --scenario A
+          python -m src.demo.ctm_simulation --no-plot --scenario B
+          python -m src.demo.ctm_simulation --no-plot --scenario C
+          python -m src.demo.ctm_simulation --no-plot --scenario C1
+          python -m src.demo.ctm_simulation --no-plot --scenario C2
+          python -m src.demo.ctm_simulation --no-plot --scenario C3
+          python -m src.demo.ctm_simulation --no-plot --scenario C4
+          python -m src.demo.ctm_simulation --no-plot --scenario D
+      - name: Run METANET simulation demos
+        run: |
+          python -m src.demo.metanet_simulation --no-plot --scenario A
+          python -m src.demo.metanet_simulation --no-plot --scenario B
+          python -m src.demo.metanet_simulation --no-plot --scenario C
+          python -m src.demo.metanet_simulation --no-plot --scenario C1
+          python -m src.demo.metanet_simulation --no-plot --scenario C2
+          python -m src.demo.metanet_simulation --no-plot --scenario C3
+          python -m src.demo.metanet_simulation --no-plot --scenario C4
+          python -m src.demo.metanet_simulation --no-plot --scenario D
       - name: Run METANET calibration demo
         run: python -m src.demo.metanet_calibration
       - name: Run Zurich demo scenario with SUMO pipeline
