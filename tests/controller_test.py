@@ -1,7 +1,13 @@
 import casadi
 import numpy as np
+from typing import Mapping
 
-from traffic_flow_models import FlowController, AlineaController, Onramp
+from traffic_flow_models import (
+    FlowController,
+    AlineaController,
+    Onramp,
+    CustomController,
+)
 from traffic_flow_models.model.helpers import store_and_forward_update
 
 
@@ -146,3 +152,43 @@ def test_alinea_attributes_and_compute():
     densities = {"m1": casadi.SX([1000.0])}
     regulated2 = c2.compute_regulated_flow(flows=flows, densities=densities)
     assert _eval([regulated2])[0] == 0.0
+
+
+def test_custom_controller_callable_and_numeric_conversion():
+    # controller that uses flows to compute rate (CasADi expression)
+    def fn_casadi(
+        flows: Mapping[str, casadi.SX], _: Mapping[str, casadi.SX]
+    ) -> casadi.SX:
+        return flows["r1"][0] * casadi.SX(2.0)
+
+    cc = CustomController(onramp_id="r1", controller_fn=fn_casadi)
+    flows = {"r1": casadi.SX([10.0])}
+    densities = {"m1": casadi.SX([0.0])}
+    regulated = cc.compute_regulated_flow(flows=flows, densities=densities)
+    assert _eval([regulated])[0] == 20.0
+
+    # controller that returns a plain numeric value (should be converted)
+    def fn_numeric(_: dict[str, casadi.SX], __: dict[str, casadi.SX]) -> float:
+        return 333.0
+
+    cc2 = CustomController(onramp_id="r1", controller_fn=fn_numeric)  # type: ignore
+    regulated2 = cc2.compute_regulated_flow(flows=flows, densities=densities)
+    assert _eval([regulated2])[0] == 333.0
+
+
+def test_custom_controller_with_params():
+    # controller that reads a rate from the params dict
+    def fn_with_params(
+        flows: Mapping[str, casadi.SX],
+        _: Mapping[str, casadi.SX],
+        params: dict[str, float],
+    ) -> casadi.SX:
+        return casadi.SX(params.get("rate", 0.0))
+
+    cc = CustomController(
+        onramp_id="r1", controller_fn=fn_with_params, params={"rate": 777.0}
+    )
+    flows = {"r1": casadi.SX([10.0])}
+    densities = {"m1": casadi.SX([0.0])}
+    regulated = cc.compute_regulated_flow(flows=flows, densities=densities)
+    assert _eval([regulated])[0] == 777.0

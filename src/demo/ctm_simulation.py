@@ -15,6 +15,8 @@ from demo.scenarios import (
     setup_network_c,
     setup_network_c1,
     setup_network_c2,
+    setup_network_c3,
+    setup_network_c4,
     mainline_demand_d,
     onramp_demand_d,
     setup_network_d,
@@ -42,7 +44,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--scenario",
         type=str,
-        choices=["A", "B", "C", "C1", "C2", "D"],
+        choices=["A", "B", "C", "C1", "C2", "C3", "C4", "D"],
         default="A",
         help="Select the scenario to simulate (default: A). The subversions (if available) contain different ramp metering controllers for the on-ramp(s) in the scenario.",
     )
@@ -72,6 +74,14 @@ if __name__ == "__main__":
         mainline_demand = mainline_demand_c
         onramp_demand = onramp_demand_c
         setup_network = setup_network_c2
+    elif scenario == "C3":
+        mainline_demand = mainline_demand_c
+        onramp_demand = onramp_demand_c
+        setup_network = setup_network_c3
+    elif scenario == "C4":
+        mainline_demand = mainline_demand_c
+        onramp_demand = onramp_demand_c
+        setup_network = setup_network_c4
     elif scenario == "D":
         mainline_demand = mainline_demand_d
         onramp_demand = onramp_demand_d
