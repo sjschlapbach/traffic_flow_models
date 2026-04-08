@@ -710,13 +710,22 @@ class CTM:
                         flows=flows,
                     )
 
+                    # if a controller is defined for the on-ramp, compute the maximum flow according to ramp
+                    # metering (i.e. the controller output) and include it in the minimum
+                    if inc.controller is not None:
+                        r_k = inc.controller.compute_regulated_flow(
+                            flows=flows, densities=densities
+                        )
+                    else:
+                        r_k = casadi.SX(casadi.inf)
+
                     # onramps are also modeled as store-and-forward links (as origins), but additionally
                     # have a finite capacity, which needs to be taken into account when computing the
                     # desired flow / flow on the onramp without considering downstream supply of space restrictions
                     # -> since onramps are indirectly connected to their demand through a node & origin, the
                     #    inflow from the upstream node (unconstrained) represents the demand
                     next_flows[inc.id] = casadi.fmin(
-                        inc.Qc,
+                        casadi.fmin(inc.Qc, r_k),
                         upstream_node_outflow_link + (onramp_queues[inc.id] / dt),
                     )
                     total_node_inflow += next_flows[inc.id]

@@ -1,5 +1,5 @@
 import casadi
-from typing import Tuple, Union
+from typing import Tuple, Union, Optional
 
 from traffic_flow_models.network import Node, Origin, Onramp, Offramp, MotorwayLink
 
@@ -12,6 +12,7 @@ def store_and_forward_update(
     demand: casadi.SX,
     queue: casadi.SX,
     dt: float,
+    metering_rate: Optional[casadi.SX] = None,
 ) -> Tuple[casadi.SX, casadi.SX]:
     """Compute inflow and updated virtual input queue using the store-and-forward model.
 
@@ -29,7 +30,7 @@ def store_and_forward_update(
         demand: External demand entering the segment (CasADi SX, vehicles / time).
         queue: Current virtual input queue length (CasADi SX, vehicles).
         dt: Simulation timestep (time).
-
+        metering_rate: Optional metering rate (CasADi SX, vehicles / time).
     Returns:
         A tuple ``(inflow, updated_queue)`` where:
         - ``inflow`` (CasADi SX): computed inflow entering the segment
@@ -38,9 +39,14 @@ def store_and_forward_update(
         - ``updated_queue`` (CasADi SX): new virtual queue after applying the
           inflow over the timestep, computed as ``queue + dt*(demand - inflow)``.
     """
+    safe_metering_rate: casadi.SX = (
+        metering_rate if metering_rate is not None else casadi.SX(casadi.inf)
+    )
     qin_demand: casadi.SX = demand + queue / dt
     qin_supply: casadi.SX = backward_wave_speed * (jam_density - density)
-    inflow: casadi.SX = casadi.fmin(casadi.fmin(capacity, qin_demand), qin_supply)
+    inflow: casadi.SX = casadi.fmin(
+        casadi.fmin(casadi.fmin(capacity, safe_metering_rate), qin_demand), qin_supply
+    )
     updated_queue: casadi.SX = update_queue(
         queue_length=queue, demand=demand, flow=inflow, dt=dt
     )
