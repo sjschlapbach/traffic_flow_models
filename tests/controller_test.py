@@ -174,3 +174,21 @@ def test_custom_controller_callable_and_numeric_conversion():
     cc2 = CustomController(onramp_id="r1", controller_fn=fn_numeric)  # type: ignore
     regulated2 = cc2.compute_regulated_flow(flows=flows, densities=densities)
     assert _eval([regulated2])[0] == 333.0
+
+
+def test_custom_controller_with_params():
+    # controller that reads a rate from the params dict
+    def fn_with_params(
+        flows: Mapping[str, casadi.SX],
+        _: Mapping[str, casadi.SX],
+        params: dict[str, float],
+    ) -> casadi.SX:
+        return casadi.SX(params.get("rate", 0.0))
+
+    cc = CustomController(
+        onramp_id="r1", controller_fn=fn_with_params, params={"rate": 777.0}
+    )
+    flows = {"r1": casadi.SX([10.0])}
+    densities = {"m1": casadi.SX([0.0])}
+    regulated = cc.compute_regulated_flow(flows=flows, densities=densities)
+    assert _eval([regulated])[0] == 777.0

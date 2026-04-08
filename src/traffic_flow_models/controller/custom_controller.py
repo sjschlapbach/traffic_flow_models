@@ -1,5 +1,6 @@
 import casadi
-from typing import Callable
+import inspect
+from typing import Callable, Any
 
 
 class CustomController:
@@ -15,15 +16,17 @@ class CustomController:
     def __init__(
         self,
         onramp_id: str,
-        controller_fn: Callable[
-            [dict[str, casadi.SX], dict[str, casadi.SX]], casadi.SX
-        ],
+        controller_fn: Callable[..., casadi.SX],
+        params: dict[str, Any] | None = None,
     ) -> None:
         if not callable(controller_fn):
             raise TypeError("controller_fn must be callable")
 
         self.onramp_id: str = onramp_id
         self.controller_fn = controller_fn
+
+        # store a mutable params dict for use by the controller function
+        self.params: dict = dict(params) if params is not None else {}
 
     def compute_regulated_flow(
         self, flows: dict[str, casadi.SX], densities: dict[str, casadi.SX]
@@ -37,9 +40,44 @@ class CustomController:
         Returns:
             CasADi SX expression representing the metering rate.
         """
-        result = self.controller_fn(flows, densities)
+        # Inspect the callable signature to decide how to pass params.
+        # - If the function accepts a third positional argument (or *args),
+        #   pass params as the third positional argument.
+        # - If the function accepts **kwargs or defines a parameter named
+        #   'params' (including keyword-only), pass params as a keyword arg.
+        try:
+            sig = inspect.signature(self.controller_fn)
+            params_list = list(sig.parameters.values())
+            positional = [
+                p
+                for p in params_list
+                if p.kind
+                in (
+                    inspect.Parameter.POSITIONAL_ONLY,
+                    inspect.Parameter.POSITIONAL_OR_KEYWORD,
+                )
+            ]
+            has_var_pos = any(
+                p.kind == inspect.Parameter.VAR_POSITIONAL for p in params_list
+            )
+            has_var_kw = any(
+                p.kind == inspect.Parameter.VAR_KEYWORD for p in params_list
+            )
+            has_named_params = any(p.name == "params" for p in params_list)
+        except (ValueError, TypeError):
+            has_var_pos = has_var_kw = has_named_params = False
+            positional = []
 
-        # if the result is not a CasADi object, try to convert it to SX
+        if has_var_pos or len(positional) >= 3:
+            # accepts a third positional argument
+            result = self.controller_fn(flows, densities, self.params)
+        elif has_var_kw or has_named_params:
+            # accepts params via keyword
+            result = self.controller_fn(flows, densities, params=self.params)
+        else:
+            result = self.controller_fn(flows, densities)
+
+        # if the result is a CasADi object, return it directly
         if isinstance(result, (casadi.SX, casadi.DM)):
             return result
         try:
