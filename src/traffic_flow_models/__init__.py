@@ -23,6 +23,7 @@ from .model.metanet import METANET, METANETParams, METANETSymbolicParams
 # re-export controller components
 from .controller.flow_controller import FlowController
 from .controller.alinea import AlineaController
+from .controller.custom_controller import CustomController
 
 # re-export simulation and pipeline components
 from .simulator.sumo_simulation import SUMOSimulation
@@ -53,6 +54,7 @@ __all__ = [
     "METANETParams",
     "METANETSymbolicParams",
     "FlowController",
+    "CustomController",
     "AlineaController",
     "SUMOSimulation",
     "SUMOPipeline",

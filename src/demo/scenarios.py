@@ -8,7 +8,9 @@ from traffic_flow_models import (
     Origin,
     FlowController,
     AlineaController,
+    CustomController,
 )
+import casadi
 
 
 def demand(time: float, t1: float, t2: float, end: float, max: float) -> float:
@@ -277,6 +279,41 @@ def setup_network_c2() -> tuple[Network, dict]:
         density_setpoint=30.0,
     )
 
+    return net, metadata
+
+
+def setup_network_c3() -> tuple[Network, dict]:
+    """
+    Variant of scenario C where a custom controller selects between two fixed
+    metering rates depending on the unrestricted onramp flow.
+
+    The supplied custom function inspects the current onramp (unrestricted)
+    flow and returns a CasADi expression with either a low or high fixed
+    metering rate (here 600 or 900 vehicles per time unit).
+    """
+
+    net, metadata = setup_network_c()
+
+    # find the relevant node in the network
+    onramp_node = net.get_node("nonr")
+    if onramp_node is None:
+        raise ValueError("Onramp node 'nonr' not found in the network.")
+
+    # get the onramp link
+    onramp = onramp_node.outgoing[0]
+    if not isinstance(onramp, Onramp):
+        raise TypeError("Expected 'nonr' node to have an Onramp as outgoing link.")
+
+    # custom metering logic: decide based on downstream motorway flow (m2)
+    def metering_fn(flows: dict[str, casadi.SX], _: dict[str, casadi.SX]) -> casadi.SX:
+        downstream_flow = flows["m2"][0]
+
+        # if downstream flow < 2100 veh/h -> allow 900, otherwise 600
+        return casadi.if_else(
+            downstream_flow < casadi.SX(2100.0), casadi.SX(900.0), casadi.SX(600.0)
+        )
+
+    onramp.controller = CustomController(onramp_id=onramp.id, controller_fn=metering_fn)
     return net, metadata
 
 
