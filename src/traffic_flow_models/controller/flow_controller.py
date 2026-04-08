@@ -18,7 +18,7 @@ class FlowController:
     def compute_regulated_flow(
         self, flows: dict[str, casadi.SX], densities: dict[str, casadi.SX]
     ) -> casadi.SX:
-        """Compute the regulated onramp flow using the ALINEA feedback law.
+        """Return the fixed regulated onramp flow.
 
         Args:
             flows: Dictionary mapping link IDs to their current flow values (Casadi SX).
