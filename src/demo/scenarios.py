@@ -1,11 +1,13 @@
 from traffic_flow_models import (
+    Network,
+    Node,
     MotorwayLink,
     Onramp,
     Offramp,
     Destination,
     Origin,
-    Node,
-    Network,
+    FlowController,
+    AlineaController,
 )
 
 
@@ -211,6 +213,69 @@ def setup_network_c() -> tuple[Network, dict]:
         "destination_ids": [destination.id],
         "splits": splits,
     }
+
+    return net, metadata
+
+
+def setup_network_c1() -> tuple[Network, dict]:
+    """
+    Create a variant of scenario C with a fixed-rate ramp metering controller.
+
+    An instance of the FlowController will be attached to the onramp, automatically
+    capping its outflow at 900 vehicles per hour regardless of the traffic condition
+    on the mainline.
+    """
+
+    net, metadata = setup_network_c()
+
+    # find the relevant node in the network
+    onramp_node = net.get_node("nonr")
+    if onramp_node is None:
+        raise ValueError("Onramp node 'nonr' not found in the network.")
+
+    # get the onramp link
+    onramp = onramp_node.outgoing[0]
+    if not isinstance(onramp, Onramp):
+        raise TypeError("Expected 'nonr' node to have an Onramp as outgoing link.")
+
+    # attach a fixed-rate flow controller to the onramp
+    onramp.controller = FlowController(onramp_id=onramp.id, flow=900)
+
+    return net, metadata
+
+
+def setup_network_c2() -> tuple[Network, dict]:
+    """
+    Create a variant of scenario C with an ALINEA ramp metering controller.
+
+    An instance of the AlineaController will be attached to the onramp, regulating
+    the inflow from the on-ramp into the mainline segment based on the current density
+    in the first cell of the downstream motorway link (m2) and a target critical density.
+
+    The target critical density is fixed to an estimated value of 30 veh/km/lane here.
+    The feedback gain is set to a value of 5.0 to avoid oscillations.
+    """
+
+    net, metadata = setup_network_c()
+
+    # find the relevant node in the network
+    onramp_node = net.get_node("nonr")
+    if onramp_node is None:
+        raise ValueError("Onramp node 'nonr' not found in the network.")
+
+    # get the onramp link
+    onramp = onramp_node.outgoing[0]
+    if not isinstance(onramp, Onramp):
+        raise TypeError("Expected 'nonr' node to have an Onramp as outgoing link.")
+
+    # attach an ALINEA flow controller to the onramp
+    onramp.controller = AlineaController(
+        onramp_id=onramp.id,
+        measurement_link_id="m2",
+        measurement_cell_idx=0,
+        gain=5.0,
+        density_setpoint=30.0,
+    )
 
     return net, metadata
 

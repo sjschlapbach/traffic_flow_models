@@ -1364,9 +1364,19 @@ class METANET:
                     # get the origin outflow
                     origin_outflow = flows[upstream_node.incoming[0].id]
 
-                    # TODO: include possibility here for ramp metering controller (e.g. through ramp metering rate input)
+                    # if a controller is defined for the on-ramp, compute the regulated outflow
+                    if inc.controller is not None:
+                        r_k = inc.controller.compute_regulated_flow(
+                            flows=flows, densities=densities
+                        )
+                    else:
+                        r_k = casadi.SX(casadi.inf)
+
+                    # compute the next-step on-ramp flow, respecting queue demand, capacity constraints,
+                    # downstream traffic conditions and, if defined, the metering rate from a potential controller
                     next_inflow, next_queue = store_and_forward_update(
                         capacity=inc.Qc,
+                        metering_rate=r_k,
                         jam_density=(
                             node_virtual_downstream_jam_density
                             if node_virtual_downstream_jam_density is not None

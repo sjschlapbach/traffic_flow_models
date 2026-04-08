@@ -21,6 +21,7 @@ from .model.ctm import CTM
 from .model.metanet import METANET, METANETParams, METANETSymbolicParams
 
 # re-export controller components
+from .controller.flow_controller import FlowController
 from .controller.alinea import AlineaController
 
 # re-export simulation and pipeline components
@@ -51,6 +52,7 @@ __all__ = [
     "METANET",
     "METANETParams",
     "METANETSymbolicParams",
+    "FlowController",
     "AlineaController",
     "SUMOSimulation",
     "SUMOPipeline",
