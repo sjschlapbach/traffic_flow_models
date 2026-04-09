@@ -783,6 +783,7 @@ class NetworkArbitrator:
             if is_ramp and u_str in onramp_source_nodes:
                 link = Onramp(
                     id=str(data["id"]),
+                    length=data["length"],
                     lanes=data["lanes"],
                     lane_capacity=params["lane_capacity"],
                     free_flow_speed=params["free_flow_speed"],

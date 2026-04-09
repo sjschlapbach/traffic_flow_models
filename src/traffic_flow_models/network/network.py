@@ -3,6 +3,7 @@ from __future__ import annotations
 import math
 import json
 import casadi
+import warnings
 import numpy as np
 import networkx as nx
 import matplotlib.pyplot as plt
@@ -13,6 +14,7 @@ from typing import (
     Callable,
     Tuple,
 )
+from collections import deque
 
 
 from traffic_flow_models.network import (
@@ -47,6 +49,25 @@ class Network:
 
         for n in nodes:
             self.add_node(n)
+
+        # After construction, populate onramp neighbor relations so that newly
+        # created Network instances have their `upstream_onramps` and
+        # `downstream_onramps` attributes set on any contained Onramp objects.
+        # This provides a sensible default and prevents callers from having to
+        # remember to call `update_all_onramp_neighbors()` themselves.
+        try:
+            self.update_all_onramp_neighbors()
+        except Exception:
+            # Be conservative: do not raise during construction if neighbor
+            # discovery fails for some reason; callers may call the update
+            # helper explicitly later.
+            warnings.warn(
+                "[WARNING] Failed to set onramp neighbor relations during Network construction. "
+                "This may be due to missing destination_node_id attributes on onramps or other issues with the network structure. "
+                "Please call `update_all_onramp_neighbors()` explicitly after construction to attempt to set onramp neighbor relations.",
+                stacklevel=2,
+            )
+            pass
 
     def __len__(self) -> int:
         """Return the number of nodes in the network.
@@ -84,8 +105,10 @@ class Network:
             getattr(n, "id", None) == getattr(node, "id", None) for n in self._nodes
         ):
             raise ValueError(f"Node with id {node.id} already present in network.")
-
         self._nodes.append(node)
+
+        # keep onramp neighbor relations in sync after topology mutation.
+        self.update_all_onramp_neighbors()
 
     def remove_node(self, node_id: str) -> None:
         """
@@ -100,6 +123,10 @@ class Network:
         for n in self.list_nodes():
             if getattr(n, "id", None) == node_id:
                 self._nodes.remove(n)
+
+                # keep onramp neighbor relations in sync after topology mutation.
+                self.update_all_onramp_neighbors()
+
                 return
 
         raise ValueError(f"No node with id {node_id} found in network.")
@@ -418,6 +445,139 @@ class Network:
                         )
 
         return d
+
+    def set_onramp_relations(
+        self, target_onramp: Onramp, max_upstream: int = 5, max_downstream: int = 5
+    ) -> tuple[list[Onramp], list[Onramp]]:
+        """Find upstream and downstream Onramp objects for a given onramp.
+
+        Traverses only motorway links upstream and downstream from the merge
+        node of the target onramp and collects encountered Onramp instances.
+
+        Returns a tuple `(upstream_onramps, downstream_onramps)` with at most
+        `max_upstream` and `max_downstream` entries respectively.
+        """
+        # raise an error if the destination node id is not set for the target onramp
+        if target_onramp.destination_node_id is None:
+            raise ValueError(
+                f"Target onramp {target_onramp.id} does not have a destination_node_id set."
+            )
+
+        # locate merge node (node where the onramp appears in incoming links)
+        merge_node = self.get_node(target_onramp.destination_node_id)
+        if merge_node is None:
+            raise ValueError(
+                f"Destination node with id {target_onramp.destination_node_id} not found in network."
+            )
+
+        # helper to find node ids that contain a given motorway link in outgoing/incoming
+        def nodes_with_outgoing_link(link):
+            return [n for n in self.list_nodes() if link in n.outgoing]
+
+        def nodes_with_incoming_link(link):
+            return [n for n in self.list_nodes() if link in n.incoming]
+
+        # UPSTREAM: walk upstream along motorway links and collect onramps
+        upstream_onramps: list[Onramp] = []
+        visited_nodes: set[str] = set()
+        q = deque()
+
+        # start from nodes that feed motorway links into the merge node
+        for link in merge_node.incoming:
+            if isinstance(link, MotorwayLink):
+                for upstream_node in nodes_with_outgoing_link(link):
+                    if upstream_node.id not in visited_nodes:
+                        visited_nodes.add(upstream_node.id)
+                        q.append(upstream_node)
+
+        while q and len(upstream_onramps) < max_upstream:
+            node = q.popleft()
+            # collect onramps that feed into this node
+            for inc in node.incoming:
+                if isinstance(inc, Onramp) and inc is not target_onramp:
+                    if inc not in upstream_onramps:
+                        upstream_onramps.append(inc)
+                        if len(upstream_onramps) >= max_upstream:
+                            break
+
+            # continue upstream along motorway links
+            for link in node.incoming:
+                if isinstance(link, MotorwayLink):
+                    for prev in nodes_with_outgoing_link(link):
+                        if prev.id not in visited_nodes:
+                            visited_nodes.add(prev.id)
+                            q.append(prev)
+
+        # DOWNSTREAM: walk downstream along motorway links and collect onramps
+        downstream_onramps: list[Onramp] = []
+        visited_nodes = set()
+        q = deque()
+
+        for link in merge_node.outgoing:
+            if isinstance(link, MotorwayLink):
+                for next_node in nodes_with_incoming_link(link):
+                    if next_node.id not in visited_nodes:
+                        visited_nodes.add(next_node.id)
+                        q.append(next_node)
+
+        while q and len(downstream_onramps) < max_downstream:
+            node = q.popleft()
+            for inc in node.incoming:
+                if isinstance(inc, Onramp) and inc is not target_onramp:
+                    if inc not in downstream_onramps:
+                        downstream_onramps.append(inc)
+                        if len(downstream_onramps) >= max_downstream:
+                            break
+
+            for link in node.outgoing:
+                if isinstance(link, MotorwayLink):
+                    for nxt in nodes_with_incoming_link(link):
+                        if nxt.id not in visited_nodes:
+                            visited_nodes.add(nxt.id)
+                            q.append(nxt)
+
+        # only keep upstream onramps that are unique
+        unique_upstream_onramps = []
+        downstream_seen_ids = set()
+        for o in upstream_onramps:
+            if o.id not in downstream_seen_ids:
+                unique_upstream_onramps.append(o)
+                downstream_seen_ids.add(o.id)
+        unique_upstream_onramps = unique_upstream_onramps[:max_upstream]
+
+        # remove any overlap (no onramp should be in both lists)
+        up_ids = {o.id for o in unique_upstream_onramps}
+        downstream_onramps = [o for o in downstream_onramps if o.id not in up_ids]
+
+        # only keep downstream onramps that are unique
+        unique_downstream_onramps = []
+        seen_ids = set()
+        for o in downstream_onramps:
+            if o.id not in seen_ids:
+                unique_downstream_onramps.append(o)
+                seen_ids.add(o.id)
+        unique_downstream_onramps = unique_downstream_onramps[:max_downstream]
+
+        return unique_upstream_onramps, unique_downstream_onramps
+
+    def update_all_onramp_neighbors(
+        self, max_upstream: int = 5, max_downstream: int = 5
+    ) -> None:
+        """Find and assign neighbor onramps for all onramps in the network.
+
+        This populates each Onramp's `upstream_onramps` and `downstream_onramps`
+        attributes by calling `set_onramp_relations`.
+        """
+        for node in self.list_nodes():
+            for link in node.incoming:
+                if isinstance(link, Onramp):
+                    up, down = self.set_onramp_relations(
+                        link, max_upstream, max_downstream
+                    )
+
+                    # assign neighbor lists directly on the Onramp (single source of truth)
+                    link.upstream_onramps = up
+                    link.downstream_onramps = down
 
     def state_vec_to_network_dict(
         self,
@@ -1204,6 +1364,7 @@ class Network:
             return {
                 "type": "Onramp",
                 "id": link.id,
+                "length": link.length,
                 "lanes": link.lanes,
                 "lane_capacity": link.Qc_lane,
                 "free_flow_speed": link.vf,
@@ -1313,6 +1474,7 @@ class Network:
                 )
             elif l_type == "Onramp":
                 link_obj = Onramp(
+                    length=entry["length"],
                     lanes=entry["lanes"],
                     lane_capacity=entry["lane_capacity"],
                     free_flow_speed=entry["free_flow_speed"],

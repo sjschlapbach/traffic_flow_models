@@ -77,7 +77,9 @@ class TestNetwork:
         """Origin must feed onramp through a node, onramp merges into motorway."""
         origin_main = Origin()
         origin_ramp = Origin()
-        onr = Onramp(lanes=1, lane_capacity=1800, free_flow_speed=90, jam_density=170)
+        onr = Onramp(
+            length=0.5, lanes=1, lane_capacity=1800, free_flow_speed=90, jam_density=170
+        )
         main1 = MotorwayLink(
             length=1.0,
             lanes=2,
@@ -228,7 +230,11 @@ class TestNetwork:
         """Test that a node connected to an onramp can only have one motorway link as outgoing."""
         # create a node with Onramp outgoing and two MotorwayLinks outgoing (invalid)
         onramp = Onramp(
-            lanes=1, lane_capacity=2000, free_flow_speed=100, jam_density=180
+            length=0.5,
+            lanes=1,
+            lane_capacity=2000,
+            free_flow_speed=100,
+            jam_density=180,
         )
         main1 = MotorwayLink(
             length=1.0, lanes=2, lane_capacity=1500, free_flow_speed=80, jam_density=140
@@ -255,7 +261,13 @@ class TestNetwork:
         main = MotorwayLink(
             length=1.0, lanes=1, lane_capacity=1500, free_flow_speed=80, jam_density=140
         )
-        onr = Onramp(lanes=1, lane_capacity=2000, free_flow_speed=100, jam_density=180)
+        onr = Onramp(
+            length=0.5,
+            lanes=1,
+            lane_capacity=2000,
+            free_flow_speed=100,
+            jam_density=180,
+        )
         dest = Destination()
 
         node_upstream = Node(id="up", incoming=[onr], outgoing=[main])
@@ -611,7 +623,11 @@ class TestNetwork:
         )
         origin = Origin()
         onramp = Onramp(
-            lanes=1, lane_capacity=2000, free_flow_speed=100, jam_density=180
+            length=0.5,
+            lanes=1,
+            lane_capacity=2000,
+            free_flow_speed=100,
+            jam_density=180,
         )
         dest1 = Destination()
         offramp = Offramp(
@@ -695,7 +711,11 @@ class TestNetwork:
         )
         origin = Origin()
         onramp = Onramp(
-            lanes=1, lane_capacity=2000, free_flow_speed=100, jam_density=180
+            length=0.5,
+            lanes=1,
+            lane_capacity=2000,
+            free_flow_speed=100,
+            jam_density=180,
         )
         dest1 = Destination()
         offramp = Offramp(
@@ -862,7 +882,11 @@ class TestNetwork:
         )
         origin = Origin()
         onramp = Onramp(
-            lanes=1, lane_capacity=2000, free_flow_speed=100, jam_density=180
+            length=0.5,
+            lanes=1,
+            lane_capacity=2000,
+            free_flow_speed=100,
+            jam_density=180,
         )
         offramp = Offramp(
             lanes=1, lane_capacity=2000, free_flow_speed=100, jam_density=180
@@ -1572,6 +1596,7 @@ class TestNetwork:
         )
         origin = Origin(id="origin_1")
         onramp = Onramp(
+            length=0.5,
             lanes=1,
             lane_capacity=2000,
             free_flow_speed=100,
@@ -1946,7 +1971,11 @@ class TestNetwork:
                 jam_density=180,
             )
             onramp = Onramp(
-                lanes=1, lane_capacity=1500, free_flow_speed=80, jam_density=140
+                length=0.5,
+                lanes=1,
+                lane_capacity=1500,
+                free_flow_speed=80,
+                jam_density=140,
             )
             dest2 = Destination()
 
@@ -1973,7 +2002,7 @@ class TestNetwork:
             jam_density=180,
         )
         onramp = Onramp(
-            lanes=1, lane_capacity=1500, free_flow_speed=80, jam_density=140
+            length=0.5, lanes=1, lane_capacity=1500, free_flow_speed=80, jam_density=140
         )
         main2 = MotorwayLink(
             length=2.0,

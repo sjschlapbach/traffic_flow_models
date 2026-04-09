@@ -14,7 +14,9 @@ class TestNode:
         m_in = MotorwayLink(
             length=1.0, lanes=1, lane_capacity=1500, free_flow_speed=80, jam_density=140
         )
-        on = Onramp(lanes=1, lane_capacity=1000, free_flow_speed=80, jam_density=150)
+        on = Onramp(
+            length=0.5, lanes=1, lane_capacity=1000, free_flow_speed=80, jam_density=150
+        )
         org = Origin()
 
         m_out = MotorwayLink(
@@ -63,7 +65,9 @@ class TestNode:
         m1 = MotorwayLink(
             length=1.0, lanes=1, lane_capacity=1500, free_flow_speed=80, jam_density=140
         )
-        o1 = Onramp(lanes=2, lane_capacity=1200, free_flow_speed=90, jam_density=160)
+        o1 = Onramp(
+            length=0.5, lanes=2, lane_capacity=1200, free_flow_speed=90, jam_density=160
+        )
         m2 = MotorwayLink(
             length=1.0, lanes=1, lane_capacity=1500, free_flow_speed=80, jam_density=140
         )
@@ -112,7 +116,9 @@ class TestNode:
         m2 = MotorwayLink(
             length=1.0, lanes=1, lane_capacity=1500, free_flow_speed=80, jam_density=140
         )
-        o1 = Onramp(lanes=1, lane_capacity=1000, free_flow_speed=80, jam_density=150)
+        o1 = Onramp(
+            length=0.5, lanes=1, lane_capacity=1000, free_flow_speed=80, jam_density=150
+        )
         d1 = Destination(id=None)
 
         n = Node(id="n4")

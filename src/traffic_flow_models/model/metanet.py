@@ -1367,7 +1367,9 @@ class METANET:
                     # if a controller is defined for the on-ramp, compute the regulated outflow
                     if inc.controller is not None:
                         r_k = inc.controller.compute_regulated_flow(
-                            flows=flows, densities=densities
+                            onramp_queues=onramp_queues,
+                            flows=flows,
+                            densities=densities,
                         )
                     else:
                         r_k = casadi.SX(casadi.inf)
