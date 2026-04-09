@@ -244,7 +244,7 @@ def setup_network_c1() -> tuple[Network, dict]:
         raise TypeError("Expected 'nonr' node to have an Onramp as outgoing link.")
 
     # attach a fixed-rate flow controller to the onramp
-    onramp.controller = FlowController(onramp_id=onramp.id, flow=900)
+    onramp.controller = FlowController(onramp, flow=900)
 
     return net, metadata
 
@@ -275,7 +275,7 @@ def setup_network_c2() -> tuple[Network, dict]:
 
     # attach an ALINEA flow controller to the onramp
     onramp.controller = AlineaController(
-        onramp_id=onramp.id,
+        onramp,
         measurement_link_id="m2",
         measurement_cell_idx=0,
         gain=5.0,
@@ -317,7 +317,7 @@ def setup_network_c3() -> tuple[Network, dict]:
             downstream_flow < casadi.SX(2100.0), casadi.SX(900.0), casadi.SX(600.0)
         )
 
-    onramp.controller = CustomController(onramp_id=onramp.id, controller_fn=metering_fn)
+    onramp.controller = CustomController(onramp, controller_fn=metering_fn)
     return net, metadata
 
 
@@ -351,7 +351,7 @@ def setup_network_c4() -> tuple[Network, dict]:
         return casadi.if_else(downstream_flow < threshold, high, low)
 
     onramp.controller = CustomController(
-        onramp_id=onramp.id,
+        onramp,
         controller_fn=metering_fn,
         params={"threshold": 2050.0, "high": 900.0, "low": 600.0},
     )

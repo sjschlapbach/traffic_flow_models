@@ -1,10 +1,14 @@
 import casadi
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from traffic_flow_models.network.onramp import Onramp
 
 
 class AlineaController:
     def __init__(
         self,
-        onramp_id: str,
+        onramp: "Onramp",
         measurement_link_id: str,
         measurement_cell_idx: int,
         gain: float,
@@ -13,7 +17,7 @@ class AlineaController:
         """Create an ALINEA controller instance.
 
         Args:
-            onramp_id: ID of the on-ramp to which the controller is attached
+            onramp: Onramp object to which the controller is attached.
             measurement_link_id: ID of the link where the density measurement is taken for feedback
             measurement_cell_idx: Index of the cell on the measurement link where the density is measured
             gain: ALINEA controller gain parameter (typically between 70 and
@@ -31,7 +35,7 @@ class AlineaController:
         if measurement_cell_idx < 0:
             raise ValueError("Measurement cell index must be non-negative.")
 
-        self.onramp_id: str = onramp_id
+        self.onramp = onramp
         self.measurement_link_id: str = measurement_link_id
         self.measurement_cell: int = measurement_cell_idx
 
@@ -55,18 +59,15 @@ class AlineaController:
             The regulated onramp flow (vehicles per time unit).
         """
         measured_density = densities[self.measurement_link_id][self.measurement_cell]
-        previous_flow = flows[self.onramp_id][
+        previous_flow = flows[self.onramp.id][
             0
         ]  # on-ramps only store a single flow value
 
         if measured_density is None or previous_flow is None:
             raise ValueError(
-                f"Missing flow or density information for controller on onramp {self.onramp_id}"
+                f"Missing flow or density information for controller on onramp {self.onramp.id}"
             )
 
-        flow_adjustment = self.gain * (
-            self.density_setpoint
-            - densities[self.measurement_link_id][self.measurement_cell]
-        )
+        flow_adjustment = self.gain * (self.density_setpoint - measured_density)
         regulated_flow = previous_flow + flow_adjustment
         return casadi.fmax(regulated_flow, casadi.SX(0.0))  # ensure non-negative flow

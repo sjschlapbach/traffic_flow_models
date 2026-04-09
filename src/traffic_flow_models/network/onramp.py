@@ -1,5 +1,5 @@
 import uuid
-from typing import Union
+from typing import Union, Literal
 
 from traffic_flow_models.controller import (
     FlowController,
@@ -73,7 +73,15 @@ class Onramp:
         self.Qc: float = lane_capacity * lanes  # total capacity in vehicles per hour
         self.vf: float = free_flow_speed  # in kilometers per hour
         self.rho_jam: float = jam_density  # in vehicles per kilometer per lane
+
         self.controller = controller  # optional ramp metering controller
+        self.control_status: Literal["unset", "hero_master", "hero_slave"] = (
+            "unset"  # control status for use in coordinated ramp metering
+        )
+
+        # neighbor onramps for coordinated ramp metering (populated by Network helper)
+        self.upstream_onramps: list[Onramp] = []
+        self.downstream_onramps: list[Onramp] = []
 
         self.origin_node_id: str | None = origin_node_id
         self.destination_node_id: str | None = destination_node_id

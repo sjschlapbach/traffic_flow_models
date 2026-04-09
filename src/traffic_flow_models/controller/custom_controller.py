@@ -1,6 +1,9 @@
 import casadi
 import inspect
-from typing import Callable, Any
+from typing import Callable, Any, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from traffic_flow_models.network.onramp import Onramp
 
 
 class CustomController:
@@ -15,14 +18,14 @@ class CustomController:
 
     def __init__(
         self,
-        onramp_id: str,
+        onramp: "Onramp",
         controller_fn: Callable[..., casadi.SX],
         params: dict[str, Any] | None = None,
     ) -> None:
         if not callable(controller_fn):
             raise TypeError("controller_fn must be callable")
 
-        self.onramp_id: str = onramp_id
+        self.onramp = onramp
         self.controller_fn = controller_fn
 
         # store a mutable params dict for use by the controller function

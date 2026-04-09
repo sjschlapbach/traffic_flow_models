@@ -38,11 +38,19 @@ def _eval(exprs):
 
 
 def test_flowcontroller_attributes_and_compute():
-    c = FlowController(onramp_id="r1", flow=900.0)
-    assert c.onramp_id == "r1"
+    onr = Onramp(
+        length=0.5,
+        lanes=1,
+        lane_capacity=1500,
+        free_flow_speed=80,
+        jam_density=140,
+        id="r1",
+    )
+    c = FlowController(onramp=onr, flow=900.0)
+    assert c.onramp is onr
     assert _eval([c.flow])[0] == 900.0
 
-    c2 = FlowController(onramp_id="r1", flow=750.0)
+    c2 = FlowController(onramp=onr, flow=750.0)
     flows = {"r1": casadi.SX([100.0])}
     densities = {"m1": casadi.SX([10.0])}
     onramp_queues = {"r1": casadi.SX([5.0])}
@@ -96,31 +104,33 @@ def test_store_and_forward_without_metering_rate():
 
 
 def test_onramp_accepts_controllers_and_compute():
-    fc = FlowController(onramp_id="r1", flow=500.0)
-    ar = AlineaController(
-        onramp_id="r1",
-        measurement_link_id="m1",
-        measurement_cell_idx=0,
-        gain=2.0,
-        density_setpoint=10.0,
-    )
-
     onramp_fc = Onramp(
         length=0.5,
         lanes=1,
         lane_capacity=1500,
         free_flow_speed=80,
         jam_density=140,
-        controller=fc,
+        id="r1",
     )
+    fc = FlowController(onramp=onramp_fc, flow=500.0)
+    onramp_fc.controller = fc
+
     onramp_al = Onramp(
         length=0.5,
         lanes=1,
         lane_capacity=1500,
         free_flow_speed=80,
         jam_density=140,
-        controller=ar,
+        id="r2",
     )
+    ar = AlineaController(
+        onramp=onramp_al,
+        measurement_link_id="m1",
+        measurement_cell_idx=0,
+        gain=2.0,
+        density_setpoint=10.0,
+    )
+    onramp_al.controller = ar
 
     assert isinstance(onramp_fc.controller, FlowController)
     assert isinstance(onramp_al.controller, AlineaController)
@@ -135,8 +145,16 @@ def test_onramp_accepts_controllers_and_compute():
 
 
 def test_alinea_attributes_and_compute():
+    onr = Onramp(
+        length=0.5,
+        lanes=1,
+        lane_capacity=1500,
+        free_flow_speed=80,
+        jam_density=140,
+        id="r1",
+    )
     c = AlineaController(
-        onramp_id="r1",
+        onramp=onr,
         measurement_link_id="m1",
         measurement_cell_idx=0,
         gain=2.0,
@@ -159,7 +177,7 @@ def test_alinea_attributes_and_compute():
 
     # non-negative behaviour
     c2 = AlineaController(
-        onramp_id="r1",
+        onramp=onr,
         measurement_link_id="m1",
         measurement_cell_idx=0,
         gain=1.0,
@@ -181,7 +199,15 @@ def test_custom_controller_callable_and_numeric_conversion():
     ) -> casadi.SX:
         return flows["r1"][0] * casadi.SX(2.0)
 
-    cc = CustomController(onramp_id="r1", controller_fn=fn_casadi)
+    onr2 = Onramp(
+        length=0.5,
+        lanes=1,
+        lane_capacity=1500,
+        free_flow_speed=80,
+        jam_density=140,
+        id="r1",
+    )
+    cc = CustomController(onramp=onr2, controller_fn=fn_casadi)
     flows = {"r1": casadi.SX([10.0])}
     densities = {"m1": casadi.SX([0.0])}
     onramp_queues = {"r1": casadi.SX([5.0])}
@@ -194,7 +220,7 @@ def test_custom_controller_callable_and_numeric_conversion():
     def fn_numeric(_: dict[str, casadi.SX], __: dict[str, casadi.SX]) -> float:
         return 333.0
 
-    cc2 = CustomController(onramp_id="r1", controller_fn=fn_numeric)  # type: ignore
+    cc2 = CustomController(onramp=onr2, controller_fn=fn_numeric)  # type: ignore
     regulated2 = cc2.compute_regulated_flow(
         onramp_queues=onramp_queues, flows=flows, densities=densities
     )
@@ -210,8 +236,16 @@ def test_custom_controller_with_params():
     ) -> casadi.SX:
         return casadi.SX(params.get("rate", 0.0))
 
+    onr3 = Onramp(
+        length=0.5,
+        lanes=1,
+        lane_capacity=1500,
+        free_flow_speed=80,
+        jam_density=140,
+        id="r1",
+    )
     cc = CustomController(
-        onramp_id="r1", controller_fn=fn_with_params, params={"rate": 777.0}
+        onramp=onr3, controller_fn=fn_with_params, params={"rate": 777.0}
     )
     flows = {"r1": casadi.SX([10.0])}
     densities = {"m1": casadi.SX([0.0])}
