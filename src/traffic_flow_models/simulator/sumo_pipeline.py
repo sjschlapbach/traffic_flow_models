@@ -21,6 +21,9 @@ from traffic_flow_models.network.network import (
     Offramp,
 )
 from traffic_flow_models import Simulation
+import logging
+
+logging.basicConfig(level=logging.DEBUG)
 
 
 def skip_if_exists(attr_name):
@@ -416,14 +419,16 @@ class SUMOPipeline:
         dict[str, Callable[[float], float]], dict[str, Callable[[float], float]]
     ]:
 
+        logger = logging.getLogger(__name__)
+
+        _FALLBACK_FLOW: float = 6000.0
+        _FALLBACK_DENSITY: float = 10.0
+
         if self.consolidated_network is None:
             raise ValueError(
                 "consolidated_network is not initialized. "
                 "Call create_consolidated_network() before build_destination_boundary_conditions()."
             )
-
-        _FALLBACK_FLOW: float = 6000.0
-        _FALLBACK_DENSITY: float = 10.0
 
         with open(backbone_state_path, "r", encoding="utf-8") as fh:
             backbone_state = json.load(fh)
@@ -436,6 +441,13 @@ class SUMOPipeline:
             "state_time_series"
         ]["densities"]
         t_arr = np.array(time_array)
+
+        logger.debug(
+            "backbone_state loaded: %d time steps, %d flow edges, %d density edges",
+            len(time_array),
+            len(flows_ts),
+            len(densities_ts),
+        )
 
         node_by_id = {node.id: node for node in self.consolidated_network}
 
@@ -478,9 +490,19 @@ class SUMOPipeline:
                 if isinstance(incoming, MotorwayLink):
                     upstream_link = incoming
                     link_source = "backbone (direct)"
+                    logger.debug(
+                        "dest '%s' → direct MotorwayLink '%s'",
+                        dest_id,
+                        incoming.id,
+                    )
                     break
 
                 if isinstance(incoming, Offramp):
+                    logger.debug(
+                        "dest '%s' → Offramp '%s', walking upstream to backbone",
+                        dest_id,
+                        incoming.id,
+                    )
                     offramp_origin = node_by_id.get(incoming.origin_node_id)
                     if offramp_origin is None:
                         raise ValueError(
@@ -493,6 +515,12 @@ class SUMOPipeline:
                         if isinstance(upstream, MotorwayLink):
                             upstream_link = upstream
                             link_source = f"backbone (via offramp '{incoming.id}')"
+                            logger.debug(
+                                "dest '%s' → Offramp '%s' → MotorwayLink '%s'",
+                                dest_id,
+                                incoming.id,
+                                upstream.id,
+                            )
                             break
 
                     if upstream_link is None:
@@ -512,14 +540,47 @@ class SUMOPipeline:
             density_series = _last_cell_series(upstream_link.id, densities_ts)
 
             if flow_series is None:
-                raise ValueError(
+                import warnings
+
+                warnings.warn(
                     f"[build_destination_bc] Link '{upstream_link.id}' ({link_source}) "
-                    f"not found in backbone state flows for destination '{dest_id}'."
+                    f"has no detector coverage in backbone state for destination '{dest_id}'. "
+                    f"Flow BC will use fallback constant {_FALLBACK_FLOW} veh/h."
                 )
             if density_series is None:
-                raise ValueError(
+                import warnings
+
+                warnings.warn(
                     f"[build_destination_bc] Link '{upstream_link.id}' ({link_source}) "
-                    f"not found in backbone state densities for destination '{dest_id}'."
+                    f"has no detector coverage in backbone state for destination '{dest_id}'. "
+                    f"Density BC will use fallback constant {_FALLBACK_DENSITY} veh/km."
+                )
+
+            if flow_series:
+                non_zero = sum(1 for v in flow_series if v > 0)
+                logger.debug(
+                    "dest '%s' link '%s' flow series: %d steps, %d non-zero, "
+                    "min=%.1f max=%.1f mean=%.1f veh/h",
+                    dest_id,
+                    upstream_link.id,
+                    len(flow_series),
+                    non_zero,
+                    min(flow_series),
+                    max(flow_series),
+                    sum(flow_series) / len(flow_series),
+                )
+            if density_series:
+                non_zero = sum(1 for v in density_series if v > 0)
+                logger.debug(
+                    "dest '%s' link '%s' density series: %d steps, %d non-zero, "
+                    "min=%.4f max=%.4f mean=%.4f veh/km/lane",
+                    dest_id,
+                    upstream_link.id,
+                    len(density_series),
+                    non_zero,
+                    min(density_series),
+                    max(density_series),
+                    sum(density_series) / len(density_series),
                 )
 
             destination_flow_bc[dest_id] = _make_interp(flow_series, _FALLBACK_FLOW)
@@ -530,6 +591,11 @@ class SUMOPipeline:
             print(
                 f"  [dest BC] '{dest_id}' ← link '{upstream_link.id}' ({link_source})"
             )
+
+        logger.debug(
+            "build_destination_boundary_conditions complete: %d destinations resolved",
+            len(destination_flow_bc),
+        )
 
         return destination_flow_bc, destination_density_bc
 

@@ -69,7 +69,7 @@ class TestSUMOSimulation:
         called = {}
 
         monkeypatch.setattr(
-            "subprocess.run", lambda cmd, check: called.__setitem__("cmd", cmd)
+            "subprocess.run", lambda cmd, **kwargs: called.__setitem__("cmd", cmd)
         )
 
         # simulate that stats file exists so print_summary would be attempted
