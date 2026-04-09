@@ -67,16 +67,9 @@ class SUMOSimulation:
         Executes the SUMO simulation using the configuration file and prints
         a summary of results if statistics are available.
         """
-        # TODO: remove "result ="
-        result = subprocess.run(
+        subprocess.run(
             ["sumo", "-c", self.cfg_file, "--no-step-log=true"],
-            capture_output=True,
-            text=True,
         )
-        # Diagnostic
-        if result.returncode != 0:
-            print(f"SUMO error:\n{result.stderr[:1000]}")
-            return
 
         if os.path.exists(self.stats_file):
             self.print_summary()

@@ -416,6 +416,12 @@ class SUMOPipeline:
         dict[str, Callable[[float], float]], dict[str, Callable[[float], float]]
     ]:
 
+        if self.consolidated_network is None:
+            raise ValueError(
+                "consolidated_network is not initialized. "
+                "Call create_consolidated_network() before build_destination_boundary_conditions()."
+            )
+
         _FALLBACK_FLOW: float = 6000.0
         _FALLBACK_DENSITY: float = 10.0
 
