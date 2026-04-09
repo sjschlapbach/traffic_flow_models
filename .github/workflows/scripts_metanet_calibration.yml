@@ -9,7 +9,7 @@ on:
     types: [opened, synchronize]
 
 jobs:
-  scripts:
+  run:
     runs-on: ubuntu-latest
     strategy:
       matrix:
