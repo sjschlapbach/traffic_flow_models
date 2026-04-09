@@ -447,15 +447,17 @@ class Network:
         return d
 
     def set_onramp_relations(
-        self, target_onramp: Onramp, max_upstream: int = 5, max_downstream: int = 5
+        self, target_onramp: Onramp, max_range_onramps: int = 5
     ) -> tuple[list[Onramp], list[Onramp]]:
         """Find upstream and downstream Onramp objects for a given onramp.
 
-        Traverses only motorway links upstream and downstream from the merge
-        node of the target onramp and collects encountered Onramp instances.
+        Traverses motorway links upstream and downstream from the merge node of
+        the target onramp and collects encountered Onramp instances.
 
-        Returns a tuple `(upstream_onramps, downstream_onramps)` with at most
-        `max_upstream` and `max_downstream` entries respectively.
+        The function returns two lists `(upstream_onramps, downstream_onramps)`
+        with at most `max_range_onramps` entries each. Lists are truncated to
+        the same length to provide a symmetric view for coordinated
+        controllers.
         """
         # raise an error if the destination node id is not set for the target onramp
         if target_onramp.destination_node_id is None:
@@ -490,14 +492,14 @@ class Network:
                         visited_nodes.add(upstream_node.id)
                         q.append(upstream_node)
 
-        while q and len(upstream_onramps) < max_upstream:
+        while q and len(upstream_onramps) < max_range_onramps:
             node = q.popleft()
             # collect onramps that feed into this node
             for inc in node.incoming:
                 if isinstance(inc, Onramp) and inc is not target_onramp:
                     if inc not in upstream_onramps:
                         upstream_onramps.append(inc)
-                        if len(upstream_onramps) >= max_upstream:
+                        if len(upstream_onramps) >= max_range_onramps:
                             break
 
             # continue upstream along motorway links
@@ -520,13 +522,13 @@ class Network:
                         visited_nodes.add(next_node.id)
                         q.append(next_node)
 
-        while q and len(downstream_onramps) < max_downstream:
+        while q and len(downstream_onramps) < max_range_onramps:
             node = q.popleft()
             for inc in node.incoming:
                 if isinstance(inc, Onramp) and inc is not target_onramp:
                     if inc not in downstream_onramps:
                         downstream_onramps.append(inc)
-                        if len(downstream_onramps) >= max_downstream:
+                        if len(downstream_onramps) >= max_range_onramps:
                             break
 
             for link in node.outgoing:
@@ -536,33 +538,16 @@ class Network:
                             visited_nodes.add(nxt.id)
                             q.append(nxt)
 
-        # only keep upstream onramps that are unique
-        unique_upstream_onramps = []
-        downstream_seen_ids = set()
-        for o in upstream_onramps:
-            if o.id not in downstream_seen_ids:
-                unique_upstream_onramps.append(o)
-                downstream_seen_ids.add(o.id)
-        unique_upstream_onramps = unique_upstream_onramps[:max_upstream]
+        # Truncate raw discovery results to the requested maxima. We do NOT
+        # enforce uniqueness between upstream and downstream lists here: an
+        # onramp may legitimately appear in both lists depending on topology
+        # (e.g. circular motorway segments).
+        upstream_trunc = upstream_onramps[:max_range_onramps]
+        downstream_trunc = downstream_onramps[:max_range_onramps]
 
-        # remove any overlap (no onramp should be in both lists)
-        up_ids = {o.id for o in unique_upstream_onramps}
-        downstream_onramps = [o for o in downstream_onramps if o.id not in up_ids]
+        return upstream_trunc, downstream_trunc
 
-        # only keep downstream onramps that are unique
-        unique_downstream_onramps = []
-        seen_ids = set()
-        for o in downstream_onramps:
-            if o.id not in seen_ids:
-                unique_downstream_onramps.append(o)
-                seen_ids.add(o.id)
-        unique_downstream_onramps = unique_downstream_onramps[:max_downstream]
-
-        return unique_upstream_onramps, unique_downstream_onramps
-
-    def update_all_onramp_neighbors(
-        self, max_upstream: int = 5, max_downstream: int = 5
-    ) -> None:
+    def update_all_onramp_neighbors(self, max_range_onramps: int = 5) -> None:
         """Find and assign neighbor onramps for all onramps in the network.
 
         This populates each Onramp's `upstream_onramps` and `downstream_onramps`
@@ -571,9 +556,7 @@ class Network:
         for node in self.list_nodes():
             for link in node.incoming:
                 if isinstance(link, Onramp):
-                    up, down = self.set_onramp_relations(
-                        link, max_upstream, max_downstream
-                    )
+                    up, down = self.set_onramp_relations(link, max_range_onramps)
 
                     # assign neighbor lists directly on the Onramp (single source of truth)
                     link.upstream_onramps = up

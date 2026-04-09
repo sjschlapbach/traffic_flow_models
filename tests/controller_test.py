@@ -1,12 +1,12 @@
 import casadi
 import numpy as np
-from typing import Mapping
 
 from traffic_flow_models import (
     FlowController,
     AlineaController,
     Onramp,
     CustomController,
+    HeroController,
 )
 from traffic_flow_models.model.helpers import store_and_forward_update
 
@@ -55,7 +55,7 @@ def test_flowcontroller_attributes_and_compute():
     densities = {"m1": casadi.SX([10.0])}
     onramp_queues = {"r1": casadi.SX([5.0])}
     regulated = c2.compute_regulated_flow(
-        onramp_queues=onramp_queues, flows=flows, densities=densities
+        onramp_queues=onramp_queues, flows=flows, densities=densities, dt=1.0
     )
     assert _eval([regulated])[0] == 750.0
 
@@ -139,7 +139,7 @@ def test_onramp_accepts_controllers_and_compute():
     densities = {"m1": casadi.SX([0.0])}
     onramp_queues = {"r1": casadi.SX([5.0])}
     regulated = onramp_fc.controller.compute_regulated_flow(
-        onramp_queues=onramp_queues, flows=flows, densities=densities
+        onramp_queues=onramp_queues, flows=flows, densities=densities, dt=1.0
     )
     assert _eval([regulated])[0] == 500.0
 
@@ -167,7 +167,7 @@ def test_alinea_attributes_and_compute():
     densities = {"m1": casadi.SX([5.0])}
     onramp_queues = {"r1": casadi.SX([5.0])}
     regulated = c.compute_regulated_flow(
-        onramp_queues=onramp_queues, flows=flows, densities=densities
+        onramp_queues=onramp_queues, flows=flows, densities=densities, dt=1.0
     )
     val = _eval([regulated])[0]
     prev_val = _eval([flows["r1"]])[0]
@@ -187,7 +187,7 @@ def test_alinea_attributes_and_compute():
     densities = {"m1": casadi.SX([1000.0])}
     onramp_queues = {"r1": casadi.SX([5.0])}
     regulated2 = c2.compute_regulated_flow(
-        onramp_queues=onramp_queues, flows=flows, densities=densities
+        onramp_queues=onramp_queues, flows=flows, densities=densities, dt=1.0
     )
     assert _eval([regulated2])[0] == 0.0
 
@@ -214,7 +214,7 @@ def test_custom_controller_callable_and_numeric_conversion():
     densities = {"m1": casadi.SX([0.0])}
     onramp_queues = {"r1": casadi.SX([5.0])}
     regulated = cc.compute_regulated_flow(
-        onramp_queues=onramp_queues, flows=flows, densities=densities
+        onramp_queues=onramp_queues, flows=flows, densities=densities, dt=1.0
     )
     assert _eval([regulated])[0] == 20.0
 
@@ -226,7 +226,7 @@ def test_custom_controller_callable_and_numeric_conversion():
 
     cc2 = CustomController(onramp=onr2, controller_fn=fn_numeric)  # type: ignore
     regulated2 = cc2.compute_regulated_flow(
-        onramp_queues=onramp_queues, flows=flows, densities=densities
+        onramp_queues=onramp_queues, flows=flows, densities=densities, dt=1.0
     )
     assert _eval([regulated2])[0] == 333.0
 
@@ -256,6 +256,90 @@ def test_custom_controller_with_params():
     densities = {"m1": casadi.SX([0.0])}
     onramp_queues = {"r1": casadi.SX([5.0])}
     regulated = cc.compute_regulated_flow(
-        onramp_queues=onramp_queues, flows=flows, densities=densities
+        onramp_queues=onramp_queues, flows=flows, densities=densities, dt=1.0
     )
     assert _eval([regulated])[0] == 777.0
+
+
+def test_hero_activation_and_master_slave_assignment():
+    # create three onramps and a simple neighbour relation
+    master = Onramp(
+        length=0.5,
+        lanes=1,
+        lane_capacity=1500,
+        free_flow_speed=80,
+        jam_density=100,
+        id="rm",
+    )
+    up = Onramp(
+        length=0.5,
+        lanes=1,
+        lane_capacity=1000,
+        free_flow_speed=60,
+        jam_density=100,
+        id="ru",
+    )
+    down = Onramp(
+        length=0.5,
+        lanes=1,
+        lane_capacity=1000,
+        free_flow_speed=60,
+        jam_density=100,
+        id="rd",
+    )
+
+    # set neighbour lists manually
+    master.upstream_onramps = [up]
+    master.downstream_onramps = [down]
+
+    # attach HERO controllers to each onramp (distinct instances)
+    cm = HeroController(
+        onramp=master, activation_threshold=0.5, deactivation_threshold=0.4
+    )
+    cu = HeroController(onramp=up, activation_threshold=0.5, deactivation_threshold=0.4)
+    cd = HeroController(
+        onramp=down, activation_threshold=0.5, deactivation_threshold=0.4
+    )
+    master.controller = cm
+    up.controller = cu
+    down.controller = cd
+
+    # queues: master exceeds activation threshold (jam_capacity = rho_jam*length*lanes = 50 -> threshold 25)
+    flows = {"rm": casadi.SX([100.0]), "ru": casadi.SX([50.0]), "rd": casadi.SX([50.0])}
+    densities = {}
+    onramp_queues = {
+        "rm": casadi.SX([30.0]),
+        "ru": casadi.SX([1.0]),
+        "rd": casadi.SX([1.0]),
+    }
+
+    # perform regulation call for master -> should activate and mark neighbours as slaves
+    regulated = master.controller.compute_regulated_flow(
+        onramp_queues=onramp_queues, flows=flows, densities=densities, dt=1.0
+    )
+    assert master.control_status == "hero_master"
+    assert up.control_status == "hero_slave"
+    assert down.control_status == "hero_slave"
+
+    # slaves should report reduced/capped rates when invoked
+    reg_u = up.controller.compute_regulated_flow(
+        onramp_queues, flows, densities, dt=1.0
+    )
+    reg_d = down.controller.compute_regulated_flow(
+        onramp_queues, flows, densities, dt=1.0
+    )
+    # ensure values are CasADi expressions and numeric when evaluated
+    val_u = _eval([reg_u])[0]
+    val_d = _eval([reg_d])[0]
+    assert isinstance(val_u, float)
+    assert isinstance(val_d, float)
+
+    # if a downstream onramp was already active, activation should do nothing
+    # reset statuses
+    master.control_status = "unset"
+    down.control_status = "hero_master"
+    # master queue still high; since a downstream is active, do nothing
+    regulated2 = master.controller.compute_regulated_flow(
+        onramp_queues=onramp_queues, flows=flows, densities=densities, dt=1.0
+    )
+    assert master.control_status == "unset"

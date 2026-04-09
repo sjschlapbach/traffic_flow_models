@@ -9,6 +9,7 @@ from traffic_flow_models import (
     FlowController,
     AlineaController,
     CustomController,
+    HeroController,
 )
 import casadi
 from typing import Any, Callable
@@ -489,4 +490,201 @@ def setup_network_d() -> tuple[Network, dict, dict]:
     }
 
     origin_demands = {origin.id: mainline_demand_d, origin_onr.id: onramp_demand_d}
+    return net, metadata, origin_demands
+
+
+def _build_e_base(N_ONRAMPS: int = 8) -> tuple[Network, dict, dict]:
+    """Build network with N_ONRAMPS, per-onramp origins, and bottleneck.
+
+    Returns (network, metadata, origin_demands).
+    """
+    # create motorway links: upstream links are two-lane, bottleneck is single-lane
+    links: list[MotorwayLink] = []
+    for i in range(N_ONRAMPS + 3):
+        # place a bottleneck immediately after the last onramp (index == N_ONRAMPS)
+        if i == N_ONRAMPS + 1:
+            links.append(
+                MotorwayLink(
+                    id=f"m{i}",
+                    length=1.0,
+                    lanes=1,  # bottleneck: single lane
+                    lane_capacity=1500,
+                    free_flow_speed=100,
+                    jam_density=120,
+                )
+            )
+        else:
+            links.append(
+                MotorwayLink(
+                    id=f"m{i}",
+                    length=1.0,
+                    lanes=2,
+                    lane_capacity=1500,
+                    free_flow_speed=100,
+                    jam_density=120,
+                )
+            )
+
+    # create N_ONRAMPS onramps
+    onramps = [
+        Onramp(
+            id=f"r{i+1}",
+            length=0.5,
+            lanes=1,
+            lane_capacity=1000,
+            free_flow_speed=80,
+            jam_density=100,
+            controller=None,
+        )
+        for i in range(N_ONRAMPS)
+    ]
+
+    # create origins: one mainline origin + one origin per onramp
+    main_origin = Origin(id="origin")
+    onr_origins = [Origin(id=f"origin_onr_{i+1}") for i in range(N_ONRAMPS)]
+
+    destination = Destination(id="destination")
+
+    # build nodes: origin -> m0 -> node1(with r1) -> m1 -> node2(with r2) ...
+    nodes: list[Node] = []
+    nodes.append(Node(id="n0", incoming=[main_origin], outgoing=[links[0]]))
+
+    for i in range(1, N_ONRAMPS + 1):
+        # nonr node that connects the onramp origin to the onramp
+        nonr = Node(
+            id=f"nonr_{i}", incoming=[onr_origins[i - 1]], outgoing=[onramps[i - 1]]
+        )
+        nodes.append(nonr)
+
+        # mainline merging node receiving motorway link and onramp
+        nodes.append(
+            Node(
+                id=f"n{i}", incoming=[links[i - 1], onramps[i - 1]], outgoing=[links[i]]
+            )
+        )
+
+    # node after the last onramp (connects to the bottleneck link)
+    nodes.append(
+        Node(
+            id=f"n{N_ONRAMPS+1}",
+            incoming=[links[N_ONRAMPS]],
+            outgoing=[links[N_ONRAMPS + 1]],
+        )
+    )
+    # final nodes to destination
+    nodes.append(
+        Node(
+            id=f"n{N_ONRAMPS+3}",
+            incoming=[links[N_ONRAMPS + 1]],
+            outgoing=[links[N_ONRAMPS + 2]],
+        )
+    )
+    nodes.append(
+        Node(
+            id=f"n{N_ONRAMPS+2}",
+            incoming=[links[N_ONRAMPS + 2]],
+            outgoing=[destination],
+        )
+    )
+
+    net = Network(nodes=nodes)
+
+    # demands: one mainline demand and per-onramp demands
+    def hero_mainline_demand(time: float) -> float:
+        return demand(time, 300 / 3600, 2700 / 3600, 3600 / 3600, 1000.0)
+
+    def hero_onramp_small(time: float) -> float:
+        return demand(time, 300 / 3600, 2700 / 3600, 3600 / 3600, 100.0)
+
+    def hero_onramp_big(time: float) -> float:
+        return demand(time, 300 / 3600, 2700 / 3600, 3600 / 3600, 600.0)
+
+    origin_demands: dict[str, Callable[[float], float]] = {}
+    origin_demands[main_origin.id] = hero_mainline_demand
+    for i, o in enumerate(onr_origins):
+        if i < N_ONRAMPS - 1:
+            origin_demands[o.id] = hero_onramp_small
+        else:
+            origin_demands[o.id] = hero_onramp_big
+
+    splits = {n.id: {out.id: 1.0 for out in n.outgoing} for n in nodes}
+
+    metadata = {
+        "origin_ids": [main_origin.id] + [o.id for o in onr_origins],
+        "onramp_ids": [r.id for r in onramps],
+        "motorway_ids": [l.id for l in links],
+        "offramp_ids": [],
+        "destination_ids": [destination.id],
+        "splits": splits,
+    }
+
+    return net, metadata, origin_demands
+
+
+def setup_network_e() -> tuple[Network, dict, dict]:
+    """Scenario E: baseline (no ramp metering controllers)."""
+    net, metadata, origin_demands = _build_e_base(N_ONRAMPS=8)
+    return net, metadata, origin_demands
+
+
+def setup_network_e1() -> tuple[Network, dict, dict]:
+    """Scenario E1: attach ALINEA controllers to all onramps."""
+    net, metadata, origin_demands = _build_e_base(N_ONRAMPS=8)
+
+    # attach ALINEA to each onramp using the downstream motorway link as measurement
+    for i, r_id in enumerate(metadata["onramp_ids"]):
+        # find onramp object by id
+        onr = next(
+            (
+                l
+                for n in net.list_nodes()
+                for l in n.incoming
+                if getattr(l, "id", None) == r_id and isinstance(l, Onramp)
+            ),
+            None,
+        )
+        if onr is None:
+            continue
+
+        # measurement link is the motorway link immediately downstream
+        measurement_link_id = f"m{i+1}"
+        onr.controller = AlineaController(
+            onramp=onr,
+            measurement_link_id=measurement_link_id,
+            measurement_cell_idx=0,
+            gain=5.0,
+            density_setpoint=30.0,
+        )
+
+    return net, metadata, origin_demands
+
+
+def setup_network_e2() -> tuple[Network, dict, dict]:
+    """Scenario E2: attach HERO controllers to all onramps."""
+    net, metadata, origin_demands = _build_e_base(N_ONRAMPS=8)
+    for r_id in metadata["onramp_ids"]:
+        onr = next(
+            (
+                l
+                for n in net.list_nodes()
+                for l in n.incoming
+                if getattr(l, "id", None) == r_id and isinstance(l, Onramp)
+            ),
+            None,
+        )
+
+        if onr is None:
+            continue
+
+        print("ONRAMP ID:", r_id)
+        onr.controller = HeroController(
+            onramp=onr,
+            measurement_link_id=f"m{int(r_id[1])}",
+            measurement_cell_idx=0,
+            gain=5.0,
+            density_setpoint=30.0,
+            activation_threshold=0.6,
+            deactivation_threshold=0.45,
+        )
+
     return net, metadata, origin_demands
