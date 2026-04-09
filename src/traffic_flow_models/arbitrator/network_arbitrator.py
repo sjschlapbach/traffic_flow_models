@@ -263,6 +263,7 @@ class NetworkArbitrator:
             destination_ids,
             diverge_node_info,
             backbone_node_ids,
+            backbone_sumo_edge_ids, 
         ) = self.instantiate_network()
         self._log_network_statistics(macroscopic_network)
 
@@ -275,6 +276,7 @@ class NetworkArbitrator:
             self.road_params,
             diverge_node_info,
             backbone_node_ids,
+            backbone_sumo_edge_ids, 
         )
 
     def parse_sumo_xml(self) -> None:
@@ -536,6 +538,11 @@ class NetworkArbitrator:
                         "speed": min(d_in["speed"], d_out["speed"]),
                         "lanes": d_in["lanes"],
                         "type": d_in.get("type", "default"),
+                        "constituent_ids": (
+                            d_in.get("constituent_ids") or [d_in["id"]]
+                        ) + (
+                            d_out.get("constituent_ids") or [d_out["id"]]
+                        ),
                     }
 
                     self.graph.add_edge(u, v, **new_attr)
@@ -745,6 +752,7 @@ class NetworkArbitrator:
         # offramp sink:  out_degree=0, all incoming edges are motorway_link
         onramp_source_nodes: set[str] = set()
         offramp_sink_nodes: set[str] = set()
+        backbone_sumo_edge_ids: set[str] = set()
 
         for nid in self.graph.nodes():
             if self.graph.in_degree(nid) == 0:
@@ -817,6 +825,10 @@ class NetworkArbitrator:
                     link.add_cell(length=cell_len)
                     total_cells += 1
 
+                # collect every original SUMO edge ID that was merged into this link
+                for eid in (data.get("constituent_ids") or [data["id"]]):
+                    backbone_sumo_edge_ids.add(str(eid))
+
             # connect link to nodes
             macro_nodes[u].add_outgoing(link)
             macro_nodes[v].add_incoming(link)
@@ -837,9 +849,10 @@ class NetworkArbitrator:
 
             if not node_obj.incoming:
                 if any(isinstance(l, Onramp) for l in node_obj.outgoing):
-                    for l in node_obj.outgoing:
-                        onramp_ids.append(l.id)
-                    # onramp_ids.append(nid_str)
+                    onramp_ids.append(nid_str)
+                    #for l in node_obj.outgoing:
+                    #    onramp_ids.append(l.id)
+                   
 
                     orig = Origin(id=f"origin_{nid}", destination_node_id=nid_str)
                     origin_ids.append(orig.id)
@@ -874,6 +887,7 @@ class NetworkArbitrator:
             destination_ids,
             diverge_node_info,
             backbone_node_ids,
+            backbone_sumo_edge_ids, 
         )
 
     def _log_network_statistics(self, network: Network) -> None:

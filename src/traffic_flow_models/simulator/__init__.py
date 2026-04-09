@@ -5,8 +5,10 @@ Empty package for consistency with the project layout.
 
 from .sumo_pipeline import SUMOPipeline
 from .sumo_simulation import SUMOSimulation
+from .demand import UrbanDemandModel
 
 __all__ = [
     "SUMOPipeline",
     "SUMOSimulation",
+    "UrbanDemandModel"
 ]

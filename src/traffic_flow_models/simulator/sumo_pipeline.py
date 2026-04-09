@@ -12,6 +12,8 @@ from traffic_flow_models.arbitrator.network_arbitrator import (
     NetworkArbitrator,
     RoadParamsConfig,
 )
+from traffic_flow_models.simulator.demand import UrbanDemandModel
+
 from traffic_flow_models.network.network import Network
 
 
@@ -155,46 +157,57 @@ class SUMOPipeline:
         print(f"{self.net_file} file generated.")
 
     # @skip_if_exists('rou_file')
+    # def generate_demand(self, vehicle_count: int) -> None:
+    #     """Generate traffic demand and create route file.
+
+    #     Creates random trips using SUMO's randomTrips.py tool and generates
+    #     a route file with the specified vehicle count.
+
+    #     Args:
+    #         vehicle_count: Number of vehicles to generate in the simulation.
+    #     """
+    #     if "SUMO_HOME" not in os.environ:
+    #         print("Error: Please set the 'SUMO_HOME' environment variable.")
+    #         return
+
+    #     random_trips = os.path.join(os.environ["SUMO_HOME"], "tools", "randomTrips.py")
+
+    #     cmd = [
+    #         sys.executable,
+    #         random_trips,
+    #         "-n",
+    #         self.net_file,
+    #         "-o",
+    #         "temp_trips.xml",
+    #         "--route-file",
+    #         self.rou_file,
+    #         "--period",
+    #         str(3600 / vehicle_count),
+    #         "--fringe-factor",
+    #         "10",
+    #         "--validate",
+    #         "--remove-loops",
+    #     ]
+
+    #     try:
+    #         subprocess.run(cmd, check=True)
+    #         print(f"{self.rou_file} file generated.")
+
+    #         if os.path.exists("temp_trips.xml"):
+    #             os.remove("temp_trips.xml")
+    #     except subprocess.CalledProcessError as e:
+    #         print(f"An error occurred while generating demand: {e}")
+
     def generate_demand(self, vehicle_count: int) -> None:
-        """Generate traffic demand and create route file.
+        model = UrbanDemandModel(
+            net_file=self.net_file,
+            rou_file=self.rou_file,
+            fringe_factor=10,  # or 1 for urban grids
+            seed=42,
+        )
+        model.generate_demand(vehicle_count)
+        print(f"{self.rou_file} file generated.")
 
-        Creates random trips using SUMO's randomTrips.py tool and generates
-        a route file with the specified vehicle count.
-
-        Args:
-            vehicle_count: Number of vehicles to generate in the simulation.
-        """
-        if "SUMO_HOME" not in os.environ:
-            print("Error: Please set the 'SUMO_HOME' environment variable.")
-            return
-
-        random_trips = os.path.join(os.environ["SUMO_HOME"], "tools", "randomTrips.py")
-
-        cmd = [
-            sys.executable,
-            random_trips,
-            "-n",
-            self.net_file,
-            "-o",
-            "temp_trips.xml",
-            "--route-file",
-            self.rou_file,
-            "--period",
-            str(3600 / vehicle_count),
-            "--fringe-factor",
-            "10",
-            "--validate",
-            "--remove-loops",
-        ]
-
-        try:
-            subprocess.run(cmd, check=True)
-            print(f"{self.rou_file} file generated.")
-
-            if os.path.exists("temp_trips.xml"):
-                os.remove("temp_trips.xml")
-        except subprocess.CalledProcessError as e:
-            print(f"An error occurred while generating demand: {e}")
 
     def create_consolidated_network(
         self,
@@ -244,6 +257,7 @@ class SUMOPipeline:
             self.road_params,
             self.diverge_node_info,
             self.backbone_node_ids,
+            self.backbone_edge_ids,
         ) = self.arbitrator.run()
 
         return (
@@ -255,6 +269,7 @@ class SUMOPipeline:
             self.road_params,
             self.diverge_node_info,
             self.backbone_node_ids,
+             self.backbone_edge_ids,
         )
 
     def generate_detectors(self, cell_size: float) -> Tuple[str, str, str]:
@@ -302,6 +317,7 @@ class SUMOPipeline:
             offramp_ids=self.offramp_ids,
             destination_ids=self.destination_ids,
             backbone_node_ids=self.backbone_node_ids,
+            backbone_sumo_edge_ids=self.backbone_edge_ids,
             output_dir=self.output_dir,
             diverge_node_info=(
                 self.diverge_node_info if self.diverge_node_info is not None else {}
@@ -401,6 +417,7 @@ class SUMOPipeline:
         list[str],
         list[str],
         list[str],
+        list[str],
         RoadParamsConfig,
         dict[str, list[str]],
         set[str],
@@ -434,6 +451,7 @@ class SUMOPipeline:
             or self.offramp_ids is None
             or self.destination_ids is None
             or self.backbone_node_ids is None
+            or self.backbone_edge_ids is None
             or self.road_params is None
             or self.diverge_node_info is None
         ):
@@ -448,4 +466,5 @@ class SUMOPipeline:
             self.road_params,
             self.diverge_node_info,
             self.backbone_node_ids,
+            self.backbone_edge_ids
         )

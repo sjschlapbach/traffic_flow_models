@@ -207,10 +207,7 @@ class DemandAggregator:
 
         # use only origin nodes as boundaries to prevent catchment area overlap
         raw_origin_nodes = {oid.replace("origin_", "") for oid in origin_ids}
-        all_entry_points: dict[str, str] = {
-            origin_id: origin_id.replace("origin_", "") for origin_id in origin_ids
-        }
-
+    
         for demand_key, raw_node_id in tqdm(
             list(all_entry_points.items()),
             desc="Aggregating entry points",
@@ -386,6 +383,8 @@ class DemandAggregator:
                 upstream_nodes.add(node)
 
         return upstream_nodes
+
+    
 
     def _aggregate_demand(self, node_set: set[str]) -> list[Tuple[float, int]]:
         """Aggregate vehicle counts from multiple nodes.

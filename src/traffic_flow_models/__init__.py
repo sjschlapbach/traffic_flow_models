@@ -28,6 +28,7 @@ from .controller.custom_controller import CustomController
 # re-export simulation and pipeline components
 from .simulator.sumo_simulation import SUMOSimulation
 from .simulator.sumo_pipeline import SUMOPipeline
+from .simulator.demand import UrbanDemandModel
 
 # re-export arbitrator components
 from .arbitrator import (
@@ -63,4 +64,5 @@ __all__ = [
     "DemandAggregator",
     "TurningRateAggregator",
     "BackboneStateAggregator",
+    "UrbanDemandModel"
 ]

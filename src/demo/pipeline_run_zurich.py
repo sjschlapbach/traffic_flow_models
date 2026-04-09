@@ -91,6 +91,7 @@ if __name__ == "__main__":
         road_params,
         diverge_node_info,
         backbone_node_ids,
+        backbone_edge_ids,
     ) = pipeline.get_consolidated_network()
     print(f"Origins:  {len(origin_ids)} → {origin_ids}")
     print(f"Onramps:  {len(onramp_ids)} → {onramp_ids}")

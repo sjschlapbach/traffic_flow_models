@@ -86,9 +86,7 @@ class BackboneStateAggregator:
         self.window_size_sec: float = window_size_minutes * 60
 
         # raw readings: {det_id: [(begin_sec, count, speed_kmh, occupancy_pct), ...]}
-        self.detector_intervals: defaultdict[str, list[DetectorInterval]] = defaultdict[
-            str, list[DetectorInterval]
-        ](list)
+        self.detector_intervals: defaultdict[str, list[DetectorInterval]] = defaultdict(list)
         self.detector_mapping: dict[str, DetectorMetadata] = {}
 
         # spatially aggregated per edge: {edge_id: [(begin_sec, count, speed_kmh, occupancy_pct, n_lanes, exposure_sec), ...]}
@@ -147,7 +145,7 @@ class BackboneStateAggregator:
             self.max_time = max(self.max_time, end)
 
     def reset_state(self) -> None:
-        self.detector_intervals = defaultdict[str, list[DetectorInterval]](list)
+        self.detector_intervals: defaultdict[str, list[DetectorInterval]] = defaultdict(list)
         self.detector_mapping = {}
         self.edge_intervals = defaultdict[str, list[EdgeInterval]](list)
         self.max_time = 0.0
@@ -712,7 +710,8 @@ class BackboneStateAggregator:
         print("BACKBONE STATE AGGREGATION SUMMARY:")
         print(f"  Backbone edges instrumented: {len(self.edge_intervals)}")
         print(f"  Total vehicles observed:     {total_vehicles}")
-        print(f"  Edges with valid state fns:  {len(state_functions)}")
+        unique_edges = len({k.rsplit('_cell', 1)[0] for k in state_functions})
+        print(f"  Unique edges with valid state fns: {unique_edges}")
         print(
             f"  Edges skipped (no traffic):  "
             f"{len(self.edge_intervals) - len(state_functions)}"

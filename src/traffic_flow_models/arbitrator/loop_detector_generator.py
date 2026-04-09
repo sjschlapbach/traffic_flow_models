@@ -37,6 +37,7 @@ class LoopDetectorGenerator:
         output_dir: str,
         diverge_node_info: dict[str, list[str]],
         backbone_node_ids: set[str],
+        backbone_sumo_edge_ids: set[str],
         target_cell_length_km: float,
         detection_freq: int = 15,
         detector_filename: str = "detector.xml",
@@ -61,6 +62,7 @@ class LoopDetectorGenerator:
         self.sumo_network_path: str = sumo_network_path
         self.origin_ids: list[str] = origin_ids
         self.onramp_ids: list[str] = onramp_ids
+        self.offramp_ids: list[str] = offramp_ids
         self.destination_ids: list[str] = destination_ids
         self.output_dir: str = output_dir
         self.diverge_node_info: dict[str, list[str]] = diverge_node_info or {}
@@ -70,6 +72,7 @@ class LoopDetectorGenerator:
         self.output_xml_filename: str = output_xml_filename
 
         self.backbone_nodes = backbone_node_ids
+        self.backbone_sumo_edge_ids = backbone_sumo_edge_ids
         self.target_cell_length_km = target_cell_length_km
         self.interface_edges: list = []
         self.edge_detectors: list[dict] = []
@@ -115,7 +118,7 @@ class LoopDetectorGenerator:
             if edge_id is None:
                 raise ValueError("Edge is missing 'id' attribute")
 
-            is_motorway_mainline = edge_type == "motorway"
+            is_motorway_mainline = "highway.motorway" in edge_type and "motorway_link" not in edge_type
             is_motorway_link = "motorway_link" in edge_type
             is_backbone_edge = is_motorway_mainline or is_motorway_link
 
@@ -237,11 +240,7 @@ class LoopDetectorGenerator:
             from_node = edge.get("from")
             to_node = edge.get("to")
 
-            # only instrument edges that directly connect two macro backbone nodes
-            if (
-                from_node not in self.backbone_nodes
-                or to_node not in self.backbone_nodes
-            ):
+            if edge_id not in self.backbone_sumo_edge_ids:
                 continue
 
             lanes = edge.findall("lane")
