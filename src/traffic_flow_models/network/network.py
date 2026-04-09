@@ -107,17 +107,8 @@ class Network:
             raise ValueError(f"Node with id {node.id} already present in network.")
         self._nodes.append(node)
 
-        # Keep onramp neighbor relations in sync after topology mutation.
-        # Recompute all onramp neighbors; if this fails, warn but do not raise
-        # so callers can choose to recover or call the helper explicitly.
-        try:
-            self.update_all_onramp_neighbors()
-        except Exception:
-            warnings.warn(
-                "[WARNING] Failed to update onramp neighbor relations after adding node. "
-                "Call `update_all_onramp_neighbors()` manually if needed.",
-                stacklevel=2,
-            )
+        # keep onramp neighbor relations in sync after topology mutation.
+        self.update_all_onramp_neighbors()
 
     def remove_node(self, node_id: str) -> None:
         """
@@ -133,15 +124,8 @@ class Network:
             if getattr(n, "id", None) == node_id:
                 self._nodes.remove(n)
 
-                # Keep onramp neighbor relations in sync after topology mutation.
-                try:
-                    self.update_all_onramp_neighbors()
-                except Exception:
-                    warnings.warn(
-                        "[WARNING] Failed to update onramp neighbor relations after removing node. "
-                        "Call `update_all_onramp_neighbors()` manually if needed.",
-                        stacklevel=2,
-                    )
+                # keep onramp neighbor relations in sync after topology mutation.
+                self.update_all_onramp_neighbors()
 
                 return
 
