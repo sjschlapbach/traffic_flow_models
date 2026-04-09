@@ -5,6 +5,7 @@ import shutil
 import osmnx as ox
 from functools import wraps
 import matplotlib.pyplot as plt
+import numpy as np
 from typing import Optional, Tuple, Callable
 from traffic_flow_models.arbitrator.loop_detector_generator import LoopDetectorGenerator
 from traffic_flow_models.arbitrator.turning_rate_aggregator import TurningRateAggregator
@@ -12,7 +13,8 @@ from traffic_flow_models.arbitrator.network_arbitrator import (
     NetworkArbitrator,
     RoadParamsConfig,
 )
-from traffic_flow_models.network.network import Network
+from traffic_flow_models.network.network import Network, Destination, MotorwayLink
+from traffic_flow_models import Simulation
 
 
 def skip_if_exists(attr_name):
@@ -392,6 +394,107 @@ class SUMOPipeline:
                     )
 
         return detector_based_splits
+
+    def build_destination_boundary_conditions(
+        self,
+        backbone_state_path: str,
+    ) -> Tuple[
+        dict[str, Callable[[float], float]],
+        dict[str, Callable[[float], float]],
+    ]:
+        """Build destination boundary condition callables from backbone state data.
+ 
+        For each destination, walks the network topology to find the upstream
+        MotorwayLink and reads the flow and density of its last cell from the
+        backbone state file produced by ``BackboneStateAggregator.run()``.
+        Returns time-interpolating callables suitable for passing directly to
+        ``Simulation.run()`` and ``Calibrator.calibrate_model_params()``.
+ 
+        This method is the downstream counterpart to ``compute_splits()`` and
+        ``DemandAggregator.run()`` — all three together fully specify the
+        boundary conditions required by the macroscopic simulation.
+ 
+        Args:
+            backbone_state_path: Path to the backbone_state.json written by
+                ``BackboneStateAggregator.run()``.
+ 
+        Returns:
+            A tuple ``(destination_flow_bc, destination_density_bc)`` where each
+            is a dict mapping destination ID to a callable ``f(t) -> float`` that
+            returns the boundary value at simulation time ``t`` (in hours).
+ 
+        Raises:
+            ValueError: If the consolidated network has not been created yet.
+        """
+        if self.consolidated_network is None or self.destination_ids is None:
+            raise ValueError(
+                "Please first generate the consolidated network using "
+                "create_consolidated_network() before building boundary conditions."
+            )
+ 
+        # load backbone state via the same interface used by the Calibrator
+        time_h, state_history, _, _ = Simulation.load_results(
+            filepath=backbone_state_path, network=self.consolidated_network
+        )
+        T = len(time_h)
+ 
+        # map each Destination link ID -> the last upstream MotorwayLink.
+        # origin_node_id on the Destination identifies the node it is attached
+        # to; the upstream MotorwayLink is the last incoming link of that node.
+        node_by_id = {node.id: node for node in self.consolidated_network}
+        dest_to_upstream_link: dict[str, MotorwayLink] = {}
+        for node in self.consolidated_network:
+            for link in node.outgoing:
+                if not isinstance(link, Destination):
+                    continue
+                host_node = node_by_id.get(link.origin_node_id)
+                if host_node is None:
+                    continue
+                upstream = [l for l in host_node.incoming if isinstance(l, MotorwayLink)]
+                if upstream:
+                    dest_to_upstream_link[link.id] = upstream[-1]
+ 
+        destination_flow_bc: dict[str, Callable[[float], float]] = {}
+        destination_density_bc: dict[str, Callable[[float], float]] = {}
+ 
+        for dest_id in self.destination_ids:
+            link = dest_to_upstream_link.get(dest_id)
+ 
+            if link is None:
+                print(
+                    f"  Warning: no upstream MotorwayLink found for destination "
+                    f"'{dest_id}' — using constant fallback values."
+                )
+                destination_flow_bc[dest_id] = lambda _t: 6000.0
+                destination_density_bc[dest_id] = lambda _t: 10.0
+                continue
+ 
+            # extract the last-cell flow and density for every backbone timestep
+            flow_series = np.empty(T)
+            density_series = np.empty(T)
+            for t_idx in range(T):
+                state_dict = self.consolidated_network.state_vec_to_network_dict(
+                    state_history[:, t_idx]
+                )
+                link_state = state_dict.get(link.id, {})
+                rho = link_state.get("density", [10.0])
+                q = link_state.get("flow", [6000.0])
+                density_series[t_idx] = rho[-1] if len(rho) > 0 else 10.0
+                flow_series[t_idx] = q[-1] if len(q) > 0 else 6000.0
+ 
+            # build interpolating callables.
+            # default-argument capture (_th, _q, _rho) avoids the late-binding
+            # closure pitfall when creating lambdas inside a loop.
+            destination_flow_bc[dest_id] = (
+                lambda t, _th=time_h, _q=flow_series: float(np.interp(t, _th, _q))
+            )
+            destination_density_bc[dest_id] = (
+                lambda t, _th=time_h, _rho=density_series: float(
+                    np.interp(t, _th, _rho)
+                )
+            )
+ 
+        return destination_flow_bc, destination_density_bc
 
     def get_consolidated_network(
         self,

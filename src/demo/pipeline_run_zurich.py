@@ -126,8 +126,9 @@ if __name__ == "__main__":
 
     # TODO: replace these, once they can be obtained from data
     # TODO: once they are available through data, also make sure that the load_results function in the simulation module is updated accordingly
-    destination_density_bc = {dest_id: lambda _t: 10.0 for dest_id in destination_ids}
-    destination_flow_bc = {dest_id: lambda _t: 6000.0 for dest_id in destination_ids}
+    # destination_density_bc = {dest_id: lambda _t: 10.0 for dest_id in destination_ids}
+    # destination_flow_bc = {dest_id: lambda _t: 6000.0 for dest_id in destination_ids}
+
 
     # initialize the results directory
     timestamp = datetime.now().strftime("simulation_results_%Y-%m-%d_%H%M%S")
@@ -148,6 +149,12 @@ if __name__ == "__main__":
         free_flow_speed=road_params["motorway"]["free_flow_speed"],
         jam_density=road_params["motorway"]["jam_density"],
         preferred_cell_size=preferred_cell_size,
+    )
+
+    destination_flow_bc, destination_density_bc = (
+        pipeline.build_destination_boundary_conditions(
+            backbone_state_path=backbone_state_path
+        )
     )
 
     # plot the network

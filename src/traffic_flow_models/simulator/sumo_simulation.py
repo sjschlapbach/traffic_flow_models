@@ -46,6 +46,9 @@ class SUMOSimulation:
                 {f'<additional-files value="{os.path.basename(self.detector_file)}"/>' if self.detector_file is not None else ''}
                 <route-files value="{os.path.basename(self.rou_file)}"/>
             </input>
+            <time>
+                <end value="86400"/>
+            </time>
             <output>
             <statistic-output value="{os.path.basename(self.stats_file)}"/>
             </output>
@@ -64,9 +67,14 @@ class SUMOSimulation:
         Executes the SUMO simulation using the configuration file and prints
         a summary of results if statistics are available.
         """
-        subprocess.run(
-            ["sumo", "-c", self.cfg_file, "--no-step-log", "true"], check=True
+        # TODO: remove "result ="
+        result = subprocess.run(
+            ["sumo", "-c", self.cfg_file, "--no-step-log=true"], capture_output=True, text = True 
         )
+        #Diagnostic
+        if result.returncode != 0:
+            print(f"SUMO error:\n{result.stderr[:1000]}")
+            return
 
         if os.path.exists(self.stats_file):
             self.print_summary()
