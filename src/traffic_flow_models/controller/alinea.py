@@ -20,10 +20,8 @@ class AlineaController:
             onramp: Onramp object to which the controller is attached.
             measurement_link_id: ID of the link where the density measurement is taken for feedback
             measurement_cell_idx: Index of the cell on the measurement link where the density is measured
-            gain: ALINEA controller gain parameter (typically between 70 and
-                150).
-            density_setpoint: Desired downstream density setpoint (vehicles per length
-                per lane).
+            gain: ALINEA controller gain parameter (positive scalar).
+            density_setpoint: Desired downstream density setpoint (vehicles per length per lane).
         """
 
         if density_setpoint < 0.0:
