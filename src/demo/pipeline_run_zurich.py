@@ -38,6 +38,12 @@ if __name__ == "__main__":
         default="CTM",
         help="Traffic flow model to use for the simulation (default: CTM)",
     )
+    args.add_argument(
+        "--backbone-vehicle-count",
+        type=int,
+        default=0,
+        help="Number of additional vehicles to place directly on backbone origin edges.",
+    )
     parsed_args = args.parse_args()
 
     # scenario definitions
@@ -81,7 +87,11 @@ if __name__ == "__main__":
     detector_def_file, detector_output_file, spec_file = pipeline.generate_detectors(
         cell_size=preferred_cell_size
     )
-    pipeline.generate_demand(vehicle_count=vehicle_demand)
+    pipeline.generate_demand(
+        vehicle_count=vehicle_demand,
+        duration_seconds=duration * 3600,
+        backbone_vehicle_count=parsed_args.backbone_vehicle_count,
+    )
     (
         network,
         origin_ids,

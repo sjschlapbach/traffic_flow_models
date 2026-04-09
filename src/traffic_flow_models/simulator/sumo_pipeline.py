@@ -4,6 +4,9 @@ import sys
 import shutil
 import osmnx as ox
 from functools import wraps
+import logging
+import random
+import xml.etree.ElementTree as ET
 import matplotlib.pyplot as plt
 from typing import Optional, Tuple, Callable
 from traffic_flow_models.arbitrator.loop_detector_generator import LoopDetectorGenerator
@@ -155,21 +158,45 @@ class SUMOPipeline:
         print(f"{self.net_file} file generated.")
 
     # @skip_if_exists('rou_file')
-    def generate_demand(self, vehicle_count: int) -> None:
-        """Generate traffic demand and create route file.
+    def generate_demand(
+        self,
+        vehicle_count: int,
+        duration_seconds: float,
+        backbone_vehicle_count: int = 0,
+        seed: int = 42,
+    ) -> None:
+        """Generate traffic demand combining random trips and backbone-direct demand.
 
-        Creates random trips using SUMO's randomTrips.py tool and generates
-        a route file with the specified vehicle count.
+        Creates random trips using SUMO's randomTrips.py tool and optionally
+        adds vehicles departing directly from backbone origin inflow edges.
+        Both sets of vehicles are merged into a single route file, with
+        backbone vehicles spread uniformly across the simulation duration.
 
         Args:
-            vehicle_count: Number of vehicles to generate in the simulation.
+            vehicle_count: Number of random vehicles to generate across the
+                full SUMO network.
+            duration_seconds: Simulation duration in seconds. Used to spread
+                backbone departures uniformly over time.
+            backbone_vehicle_count: Number of additional vehicles to place
+                directly on backbone origin inflow edges. Default 0 (disabled).
+            seed: Random seed for backbone trip generation.
+
+        Raises:
+            ValueError: If backbone_vehicle_count > 0 but consolidated_network
+                is not initialized.
         """
+
+        logger = logging.getLogger(__name__)
+
         if "SUMO_HOME" not in os.environ:
             print("Error: Please set the 'SUMO_HOME' environment variable.")
             return
 
         random_trips = os.path.join(os.environ["SUMO_HOME"], "tools", "randomTrips.py")
 
+        # ------------------------------------------------------------------
+        # 1. Generate random trips as before
+        # ------------------------------------------------------------------
         cmd = [
             sys.executable,
             random_trips,
@@ -189,12 +216,133 @@ class SUMOPipeline:
 
         try:
             subprocess.run(cmd, check=True)
-            print(f"{self.rou_file} file generated.")
-
+            print(f"{self.rou_file} generated ({vehicle_count} random vehicles).")
             if os.path.exists("temp_trips.xml"):
                 os.remove("temp_trips.xml")
         except subprocess.CalledProcessError as e:
-            print(f"An error occurred while generating demand: {e}")
+            print(f"An error occurred while generating random demand: {e}")
+            return
+
+        # ------------------------------------------------------------------
+        # 2. Optionally inject backbone-direct vehicles
+        # ------------------------------------------------------------------
+        if backbone_vehicle_count <= 0:
+            return
+
+        if self.consolidated_network is None:
+            raise ValueError(
+                "consolidated_network is not initialized. "
+                "Call create_consolidated_network() before using backbone_vehicle_count > 0."
+            )
+
+        from traffic_flow_models.network import Origin, Destination
+
+        rng = random.Random(seed)
+
+        # collect backbone origin and destination node IDs
+        backbone_origin_node_ids: set[str] = set()
+        backbone_destination_node_ids: set[str] = set()
+
+        for node in self.consolidated_network:
+            for link in node.incoming:
+                if isinstance(link, Origin):
+                    backbone_origin_node_ids.add(link.destination_node_id)
+            for link in node.outgoing:
+                if isinstance(link, Destination):
+                    backbone_destination_node_ids.add(link.origin_node_id)
+
+        logger.debug(
+            "Backbone origin nodes: %d, destination nodes: %d",
+            len(backbone_origin_node_ids),
+            len(backbone_destination_node_ids),
+        )
+
+        # find inflow/outflow edges from the SUMO network XML
+        tree = ET.parse(self.net_file)
+        root = tree.getroot()
+
+        origin_inflow_edges: list[str] = []
+        destination_outflow_edges: list[str] = []
+
+        for edge in root.findall("edge"):
+            if edge.get("function") == "internal":
+                continue
+            edge_id = edge.get("id")
+            edge_type = edge.get("type", "").lower()
+            from_node = edge.get("from")
+            to_node = edge.get("to")
+            is_motorway = "motorway" in edge_type
+
+            if not is_motorway and to_node in backbone_origin_node_ids:
+                origin_inflow_edges.append(edge_id)
+                logger.debug("Backbone inflow edge: '%s' → node '%s'", edge_id, to_node)
+
+            if not is_motorway and from_node in backbone_destination_node_ids:
+                destination_outflow_edges.append(edge_id)
+                logger.debug(
+                    "Backbone outflow edge: '%s' ← node '%s'", edge_id, from_node
+                )
+
+        if not origin_inflow_edges:
+            raise ValueError(
+                "No backbone inflow edges found in SUMO network. "
+                "Check that the SUMO network and consolidated network are consistent."
+            )
+        if not destination_outflow_edges:
+            raise ValueError("No backbone outflow edges found in SUMO network.")
+
+        # build backbone trips spread uniformly over the simulation duration
+        interval = duration_seconds / backbone_vehicle_count
+        backbone_trips: list[ET.Element] = []
+
+        for i in range(backbone_vehicle_count):
+            depart_time = i * interval
+            from_edge = rng.choice(origin_inflow_edges)
+            to_edge = rng.choice(destination_outflow_edges)
+
+            attempts = 0
+            while to_edge == from_edge and attempts < 10:
+                to_edge = rng.choice(destination_outflow_edges)
+                attempts += 1
+
+            trip = ET.Element("trip")
+            trip.set("id", f"backbone_veh_{i}")
+            trip.set("depart", f"{depart_time:.2f}")
+            trip.set("from", from_edge)
+            trip.set("to", to_edge)
+            trip.set("departLane", "best")
+            trip.set("departSpeed", "max")
+            backbone_trips.append(trip)
+
+        logger.debug(
+            "Generated %d backbone trips over %.1fs (interval=%.2fs)",
+            backbone_vehicle_count,
+            duration_seconds,
+            interval,
+        )
+
+        # ------------------------------------------------------------------
+        # 3. Merge backbone trips into the existing route file
+        # ------------------------------------------------------------------
+        existing_tree = ET.parse(self.rou_file)
+        existing_root = existing_tree.getroot()
+
+        for trip in backbone_trips:
+            existing_root.append(trip)
+
+        # re-sort all trips and vehicles by depart time so SUMO does not
+        # complain about non-monotonic departure order
+        children = list(existing_root)
+        children.sort(key=lambda el: float(el.get("depart", "0")))
+        existing_root[:] = children
+
+        ET.indent(existing_root, space="  ")
+        existing_tree.write(self.rou_file, encoding="utf-8", xml_declaration=True)
+
+        print(
+            f"{self.rou_file} updated with {backbone_vehicle_count} backbone vehicles "
+            f"({vehicle_count + backbone_vehicle_count} total)."
+        )
 
     def create_consolidated_network(
         self,
