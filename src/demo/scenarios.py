@@ -9,7 +9,6 @@ from traffic_flow_models import (
     FlowController,
     AlineaController,
     CustomController,
-    HeroController,
 )
 import casadi
 from typing import Any, Callable
