@@ -1,4 +1,4 @@
-name: METANET Calibration (Script)
+name: METANET Calibration
 
 on:
   push:
@@ -9,7 +9,7 @@ on:
     types: [opened, synchronize]
 
 jobs:
-  run:
+  run-script:
     runs-on: ubuntu-latest
     strategy:
       matrix:
