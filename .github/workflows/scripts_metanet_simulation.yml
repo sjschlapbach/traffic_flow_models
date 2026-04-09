@@ -1,4 +1,4 @@
-name: (Scripts) METANET Simulations
+name: METANET Simulations (Script)
 
 on:
   push:

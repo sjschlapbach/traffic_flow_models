@@ -1,4 +1,4 @@
-name: (Scripts) SUMO Pipeline
+name: SUMO Pipeline (Script)
 
 on:
   push:

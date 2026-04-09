@@ -1,4 +1,4 @@
-name: (Scripts) METANET Calibration
+name: METANET Calibration (Script)
 
 on:
   push:

@@ -1,4 +1,4 @@
-name: (Scripts) CTM Simulations
+name: CTM Simulations (Script)
 
 on:
   push:
