@@ -6,6 +6,7 @@ import osmnx as ox
 from functools import wraps
 import matplotlib.pyplot as plt
 import numpy as np
+import json
 from typing import Optional, Tuple, Callable
 from traffic_flow_models.arbitrator.loop_detector_generator import LoopDetectorGenerator
 from traffic_flow_models.arbitrator.turning_rate_aggregator import TurningRateAggregator
@@ -13,7 +14,12 @@ from traffic_flow_models.arbitrator.network_arbitrator import (
     NetworkArbitrator,
     RoadParamsConfig,
 )
-from traffic_flow_models.network.network import Network, Destination, MotorwayLink
+from traffic_flow_models.network.network import (
+    Network,
+    Destination,
+    MotorwayLink,
+    Offramp,
+)
 from traffic_flow_models import Simulation
 
 
@@ -296,6 +302,13 @@ class SUMOPipeline:
                 "Network parameters must be initialized before generating detectors"
             )
 
+        motorway_links = [
+            link
+            for node in self.consolidated_network
+            for link in node.outgoing
+            if isinstance(link, MotorwayLink)
+        ]
+
         # generate detectors
         generator = LoopDetectorGenerator(
             sumo_network_path=self.net_file,
@@ -309,6 +322,7 @@ class SUMOPipeline:
                 self.diverge_node_info if self.diverge_node_info is not None else {}
             ),
             target_cell_length_km=cell_size,
+            motorway_links=motorway_links,
         )
         self.detector_file, self.detector_output_file, self.detector_spec_path = (
             generator.generate()
@@ -398,102 +412,119 @@ class SUMOPipeline:
     def build_destination_boundary_conditions(
         self,
         backbone_state_path: str,
-    ) -> Tuple[
-        dict[str, Callable[[float], float]],
-        dict[str, Callable[[float], float]],
+    ) -> tuple[
+        dict[str, Callable[[float], float]], dict[str, Callable[[float], float]]
     ]:
-        """Build destination boundary condition callables from backbone state data.
- 
-        For each destination, walks the network topology to find the upstream
-        MotorwayLink and reads the flow and density of its last cell from the
-        backbone state file produced by ``BackboneStateAggregator.run()``.
-        Returns time-interpolating callables suitable for passing directly to
-        ``Simulation.run()`` and ``Calibrator.calibrate_model_params()``.
- 
-        This method is the downstream counterpart to ``compute_splits()`` and
-        ``DemandAggregator.run()`` — all three together fully specify the
-        boundary conditions required by the macroscopic simulation.
- 
-        Args:
-            backbone_state_path: Path to the backbone_state.json written by
-                ``BackboneStateAggregator.run()``.
- 
-        Returns:
-            A tuple ``(destination_flow_bc, destination_density_bc)`` where each
-            is a dict mapping destination ID to a callable ``f(t) -> float`` that
-            returns the boundary value at simulation time ``t`` (in hours).
- 
-        Raises:
-            ValueError: If the consolidated network has not been created yet.
-        """
-        if self.consolidated_network is None or self.destination_ids is None:
-            raise ValueError(
-                "Please first generate the consolidated network using "
-                "create_consolidated_network() before building boundary conditions."
-            )
- 
-        # load backbone state via the same interface used by the Calibrator
-        time_h, state_history, _, _ = Simulation.load_results(
-            filepath=backbone_state_path, network=self.consolidated_network
-        )
-        T = len(time_h)
- 
-        # map each Destination link ID -> the last upstream MotorwayLink.
-        # origin_node_id on the Destination identifies the node it is attached
-        # to; the upstream MotorwayLink is the last incoming link of that node.
+
+        _FALLBACK_FLOW: float = 6000.0
+        _FALLBACK_DENSITY: float = 10.0
+
+        with open(backbone_state_path, "r", encoding="utf-8") as fh:
+            backbone_state = json.load(fh)
+
+        time_array: list[float] = backbone_state["time_array"]
+        flows_ts: dict[str, list[list[float]]] = backbone_state["state_time_series"][
+            "flows"
+        ]
+        densities_ts: dict[str, list[list[float]]] = backbone_state[
+            "state_time_series"
+        ]["densities"]
+        t_arr = np.array(time_array)
+
         node_by_id = {node.id: node for node in self.consolidated_network}
-        dest_to_upstream_link: dict[str, MotorwayLink] = {}
-        for node in self.consolidated_network:
-            for link in node.outgoing:
-                if not isinstance(link, Destination):
-                    continue
-                host_node = node_by_id.get(link.origin_node_id)
-                if host_node is None:
-                    continue
-                upstream = [l for l in host_node.incoming if isinstance(l, MotorwayLink)]
-                if upstream:
-                    dest_to_upstream_link[link.id] = upstream[-1]
- 
+
+        def _last_cell_series(
+            link_id: str,
+            ts: dict[str, list[list[float]]],
+        ) -> list[float] | None:
+            rows = ts.get(link_id)
+            if not rows:
+                return None
+            extracted = [row[-1] for row in rows if row]
+            return extracted if extracted else None
+
+        def _make_interp(
+            series: list[float] | None,
+            fallback: float,
+        ) -> Callable[[float], float]:
+            if not series or len(series) != len(time_array):
+                return lambda _t, _f=fallback: _f
+            v_arr = np.array(series)
+            return lambda t, _t=t_arr, _v=v_arr: float(np.interp(t, _t, _v))
+
         destination_flow_bc: dict[str, Callable[[float], float]] = {}
         destination_density_bc: dict[str, Callable[[float], float]] = {}
- 
+
         for dest_id in self.destination_ids:
-            link = dest_to_upstream_link.get(dest_id)
- 
-            if link is None:
-                print(
-                    f"  Warning: no upstream MotorwayLink found for destination "
-                    f"'{dest_id}' — using constant fallback values."
+            host_node_id = dest_id.removeprefix("dest_")
+            host_node = node_by_id.get(host_node_id)
+
+            if host_node is None:
+                raise ValueError(
+                    f"[build_destination_bc] Host node '{host_node_id}' for destination "
+                    f"'{dest_id}' not found in consolidated network."
                 )
-                destination_flow_bc[dest_id] = lambda _t: 6000.0
-                destination_density_bc[dest_id] = lambda _t: 10.0
-                continue
- 
-            # extract the last-cell flow and density for every backbone timestep
-            flow_series = np.empty(T)
-            density_series = np.empty(T)
-            for t_idx in range(T):
-                state_dict = self.consolidated_network.state_vec_to_network_dict(
-                    state_history[:, t_idx]
+
+            upstream_link: MotorwayLink | None = None
+            link_source: str = "unknown"
+
+            for incoming in host_node.incoming:
+                if isinstance(incoming, MotorwayLink):
+                    upstream_link = incoming
+                    link_source = "backbone (direct)"
+                    break
+
+                if isinstance(incoming, Offramp):
+                    offramp_origin = node_by_id.get(incoming.origin_node_id)
+                    if offramp_origin is None:
+                        raise ValueError(
+                            f"[build_destination_bc] Offramp '{incoming.id}' origin node "
+                            f"'{incoming.origin_node_id}' not found in consolidated network "
+                            f"(destination '{dest_id}')."
+                        )
+
+                    for upstream in offramp_origin.incoming:
+                        if isinstance(upstream, MotorwayLink):
+                            upstream_link = upstream
+                            link_source = f"backbone (via offramp '{incoming.id}')"
+                            break
+
+                    if upstream_link is None:
+                        raise ValueError(
+                            f"[build_destination_bc] No upstream MotorwayLink found behind "
+                            f"offramp '{incoming.id}' (destination '{dest_id}')."
+                        )
+                    break
+
+            if upstream_link is None:
+                raise ValueError(
+                    f"[build_destination_bc] Could not resolve upstream MotorwayLink for "
+                    f"destination '{dest_id}'."
                 )
-                link_state = state_dict.get(link.id, {})
-                rho = link_state.get("density", [10.0])
-                q = link_state.get("flow", [6000.0])
-                density_series[t_idx] = rho[-1] if len(rho) > 0 else 10.0
-                flow_series[t_idx] = q[-1] if len(q) > 0 else 6000.0
- 
-            # build interpolating callables.
-            # default-argument capture (_th, _q, _rho) avoids the late-binding
-            # closure pitfall when creating lambdas inside a loop.
-            destination_flow_bc[dest_id] = (
-                lambda t, _th=time_h, _q=flow_series: float(np.interp(t, _th, _q))
+
+            flow_series = _last_cell_series(upstream_link.id, flows_ts)
+            density_series = _last_cell_series(upstream_link.id, densities_ts)
+
+            if flow_series is None:
+                raise ValueError(
+                    f"[build_destination_bc] Link '{upstream_link.id}' ({link_source}) "
+                    f"not found in backbone state flows for destination '{dest_id}'."
+                )
+            if density_series is None:
+                raise ValueError(
+                    f"[build_destination_bc] Link '{upstream_link.id}' ({link_source}) "
+                    f"not found in backbone state densities for destination '{dest_id}'."
+                )
+
+            destination_flow_bc[dest_id] = _make_interp(flow_series, _FALLBACK_FLOW)
+            destination_density_bc[dest_id] = _make_interp(
+                density_series, _FALLBACK_DENSITY
             )
-            destination_density_bc[dest_id] = (
-                lambda t, _th=time_h, _rho=density_series: float(
-                    np.interp(t, _th, _rho)
-                )
+
+            print(
+                f"  [dest BC] '{dest_id}' ← link '{upstream_link.id}' ({link_source})"
             )
- 
+
         return destination_flow_bc, destination_density_bc
 
     def get_consolidated_network(

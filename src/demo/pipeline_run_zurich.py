@@ -129,7 +129,6 @@ if __name__ == "__main__":
     # destination_density_bc = {dest_id: lambda _t: 10.0 for dest_id in destination_ids}
     # destination_flow_bc = {dest_id: lambda _t: 6000.0 for dest_id in destination_ids}
 
-
     # initialize the results directory
     timestamp = datetime.now().strftime("simulation_results_%Y-%m-%d_%H%M%S")
     results_dir = f"results/{timestamp}"

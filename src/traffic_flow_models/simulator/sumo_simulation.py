@@ -69,9 +69,11 @@ class SUMOSimulation:
         """
         # TODO: remove "result ="
         result = subprocess.run(
-            ["sumo", "-c", self.cfg_file, "--no-step-log=true"], capture_output=True, text = True 
+            ["sumo", "-c", self.cfg_file, "--no-step-log=true"],
+            capture_output=True,
+            text=True,
         )
-        #Diagnostic
+        # Diagnostic
         if result.returncode != 0:
             print(f"SUMO error:\n{result.stderr[:1000]}")
             return
