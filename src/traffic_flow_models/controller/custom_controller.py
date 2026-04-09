@@ -29,13 +29,17 @@ class CustomController:
         self.params: dict = dict(params) if params is not None else {}
 
     def compute_regulated_flow(
-        self, flows: dict[str, casadi.SX], densities: dict[str, casadi.SX]
+        self,
+        onramp_queues: dict[str, casadi.SX],
+        flows: dict[str, casadi.SX],
+        densities: dict[str, casadi.SX],
     ) -> casadi.SX:
         """Call the user-supplied function to compute the metering rate.
 
         Args:
-            flows: Mapping link id -> CasADi SX vector for flows
-            densities: Mapping link id -> CasADi SX vector for densities
+            onramp_queues: Dictionary mapping on-ramp IDs to their current queue values (Casadi SX).
+            flows: Dictionary mapping link IDs to their current flow values (Casadi SX).
+            densities: Dictionary mapping link IDs to their current density values (Casadi SX).
 
         Returns:
             CasADi SX expression representing the metering rate.

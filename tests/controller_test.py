@@ -45,7 +45,10 @@ def test_flowcontroller_attributes_and_compute():
     c2 = FlowController(onramp_id="r1", flow=750.0)
     flows = {"r1": casadi.SX([100.0])}
     densities = {"m1": casadi.SX([10.0])}
-    regulated = c2.compute_regulated_flow(flows=flows, densities=densities)
+    onramp_queues = {"r1": casadi.SX([5.0])}
+    regulated = c2.compute_regulated_flow(
+        onramp_queues=onramp_queues, flows=flows, densities=densities
+    )
     assert _eval([regulated])[0] == 750.0
 
 
@@ -114,8 +117,9 @@ def test_onramp_accepts_controllers_and_compute():
 
     flows = {"r1": casadi.SX([0.0])}
     densities = {"m1": casadi.SX([0.0])}
+    onramp_queues = {"r1": casadi.SX([5.0])}
     regulated = onramp_fc.controller.compute_regulated_flow(
-        flows=flows, densities=densities
+        onramp_queues=onramp_queues, flows=flows, densities=densities
     )
     assert _eval([regulated])[0] == 500.0
 
@@ -133,7 +137,10 @@ def test_alinea_attributes_and_compute():
 
     flows = {"r1": casadi.SX([100.0])}
     densities = {"m1": casadi.SX([5.0])}
-    regulated = c.compute_regulated_flow(flows=flows, densities=densities)
+    onramp_queues = {"r1": casadi.SX([5.0])}
+    regulated = c.compute_regulated_flow(
+        onramp_queues=onramp_queues, flows=flows, densities=densities
+    )
     val = _eval([regulated])[0]
     prev_val = _eval([flows["r1"]])[0]
     meas_val = _eval([densities["m1"]])[0]
@@ -150,7 +157,10 @@ def test_alinea_attributes_and_compute():
     )
     flows = {"r1": casadi.SX([0.0])}
     densities = {"m1": casadi.SX([1000.0])}
-    regulated2 = c2.compute_regulated_flow(flows=flows, densities=densities)
+    onramp_queues = {"r1": casadi.SX([5.0])}
+    regulated2 = c2.compute_regulated_flow(
+        onramp_queues=onramp_queues, flows=flows, densities=densities
+    )
     assert _eval([regulated2])[0] == 0.0
 
 
@@ -164,7 +174,10 @@ def test_custom_controller_callable_and_numeric_conversion():
     cc = CustomController(onramp_id="r1", controller_fn=fn_casadi)
     flows = {"r1": casadi.SX([10.0])}
     densities = {"m1": casadi.SX([0.0])}
-    regulated = cc.compute_regulated_flow(flows=flows, densities=densities)
+    onramp_queues = {"r1": casadi.SX([5.0])}
+    regulated = cc.compute_regulated_flow(
+        onramp_queues=onramp_queues, flows=flows, densities=densities
+    )
     assert _eval([regulated])[0] == 20.0
 
     # controller that returns a plain numeric value (should be converted)
@@ -172,7 +185,9 @@ def test_custom_controller_callable_and_numeric_conversion():
         return 333.0
 
     cc2 = CustomController(onramp_id="r1", controller_fn=fn_numeric)  # type: ignore
-    regulated2 = cc2.compute_regulated_flow(flows=flows, densities=densities)
+    regulated2 = cc2.compute_regulated_flow(
+        onramp_queues=onramp_queues, flows=flows, densities=densities
+    )
     assert _eval([regulated2])[0] == 333.0
 
 
@@ -190,5 +205,8 @@ def test_custom_controller_with_params():
     )
     flows = {"r1": casadi.SX([10.0])}
     densities = {"m1": casadi.SX([0.0])}
-    regulated = cc.compute_regulated_flow(flows=flows, densities=densities)
+    onramp_queues = {"r1": casadi.SX([5.0])}
+    regulated = cc.compute_regulated_flow(
+        onramp_queues=onramp_queues, flows=flows, densities=densities
+    )
     assert _eval([regulated])[0] == 777.0

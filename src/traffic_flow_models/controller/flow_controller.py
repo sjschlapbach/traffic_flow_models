@@ -16,11 +16,15 @@ class FlowController:
         self.flow: casadi.SX = casadi.SX(flow)
 
     def compute_regulated_flow(
-        self, flows: dict[str, casadi.SX], densities: dict[str, casadi.SX]
+        self,
+        onramp_queues: dict[str, casadi.SX],
+        flows: dict[str, casadi.SX],
+        densities: dict[str, casadi.SX],
     ) -> casadi.SX:
         """Return the fixed regulated onramp flow.
 
         Args:
+            onramp_queues: Dictionary mapping on-ramp IDs to their current queue values (Casadi SX).
             flows: Dictionary mapping link IDs to their current flow values (Casadi SX).
             densities: Dictionary mapping link IDs to their current density values (Casadi SX).
 
