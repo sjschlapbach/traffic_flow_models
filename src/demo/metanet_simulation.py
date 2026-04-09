@@ -5,20 +5,13 @@ from datetime import datetime
 
 from traffic_flow_models import METANET, METANETParams, Simulation
 from demo.scenarios import (
-    mainline_demand_a,
-    mainline_demand_b,
-    mainline_demand_c,
-    onramp_demand_a,
-    onramp_demand_b,
-    onramp_demand_c,
-    setup_network_ab,
+    setup_network_a,
+    setup_network_b,
     setup_network_c,
     setup_network_c1,
     setup_network_c2,
     setup_network_c3,
     setup_network_c4,
-    mainline_demand_d,
-    onramp_demand_d,
     setup_network_d,
 )
 
@@ -63,52 +56,29 @@ if __name__ == "__main__":
 
     # select the appropriate scenario functions
     if scenario == "A":
-        mainline_demand = mainline_demand_a
-        onramp_demand = onramp_demand_a
-        setup_network = setup_network_ab
+        setup_network = setup_network_a
     elif scenario == "B":
-        mainline_demand = mainline_demand_b
-        onramp_demand = onramp_demand_b
-        setup_network = setup_network_ab
+        setup_network = setup_network_b
     elif scenario == "C":
-        mainline_demand = mainline_demand_c
-        onramp_demand = onramp_demand_c
         setup_network = setup_network_c
     elif scenario == "C1":
-        mainline_demand = mainline_demand_c
-        onramp_demand = onramp_demand_c
         setup_network = setup_network_c1
     elif scenario == "C2":
-        mainline_demand = mainline_demand_c
-        onramp_demand = onramp_demand_c
         setup_network = setup_network_c2
     elif scenario == "C3":
-        mainline_demand = mainline_demand_c
-        onramp_demand = onramp_demand_c
         setup_network = setup_network_c3
     elif scenario == "C4":
-        mainline_demand = mainline_demand_c
-        onramp_demand = onramp_demand_c
         setup_network = setup_network_c4
     elif scenario == "D":
-        mainline_demand = mainline_demand_d
-        onramp_demand = onramp_demand_d
         setup_network = setup_network_d
     else:
         raise ValueError(f"Scenario {scenario} is not defined.")
 
-    # initialize the network with the correct structure (optionally with ALINEA ramp metering)
-    network, metadata = setup_network()
+    # initialize the network and get the origin demand callables mapping
+    network, metadata, origin_demands = setup_network()
 
-    # build disturbance dictionaries expected by the new simulate signature
-    origin_ids = metadata.get("origin_ids", [])
     destination_ids = metadata.get("destination_ids", [])
     splits = metadata.get("splits", {})
-
-    origin_demands: dict[str, Callable[[float], float]] = {
-        "origin": mainline_demand,
-        "origin_onr": onramp_demand,
-    }
     destination_flow_bc: dict[str, Callable[[float], float]] = {
         did: (lambda _: 6000.0) for did in destination_ids
     }
