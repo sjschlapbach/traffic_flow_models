@@ -80,6 +80,7 @@ def setup_network_ab() -> tuple[Network, dict]:
     destination = Destination(id="destination")
     onr = Onramp(
         id="onramp",
+        length=0.5,
         lanes=1,
         lane_capacity=2000,
         free_flow_speed=100,
@@ -171,6 +172,7 @@ def setup_network_c() -> tuple[Network, dict]:
     destination = Destination(id="destination")
     onr = Onramp(
         id="onramp",
+        length=0.5,
         lanes=1,
         lane_capacity=2000,
         free_flow_speed=100,
@@ -408,6 +410,7 @@ def setup_network_d() -> tuple[Network, dict]:
     destination_offr = Destination(id="destination_offr")
     onr = Onramp(
         id="onramp",
+        length=0.5,
         lanes=1,
         lane_capacity=2000,
         free_flow_speed=100,

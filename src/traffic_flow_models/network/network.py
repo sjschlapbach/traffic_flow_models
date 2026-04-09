@@ -1204,6 +1204,7 @@ class Network:
             return {
                 "type": "Onramp",
                 "id": link.id,
+                "length": link.length,
                 "lanes": link.lanes,
                 "lane_capacity": link.Qc_lane,
                 "free_flow_speed": link.vf,
@@ -1313,6 +1314,7 @@ class Network:
                 )
             elif l_type == "Onramp":
                 link_obj = Onramp(
+                    length=entry["length"],
                     lanes=entry["lanes"],
                     lane_capacity=entry["lane_capacity"],
                     free_flow_speed=entry["free_flow_speed"],

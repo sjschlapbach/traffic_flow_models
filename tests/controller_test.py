@@ -106,10 +106,20 @@ def test_onramp_accepts_controllers_and_compute():
     )
 
     onramp_fc = Onramp(
-        lanes=1, lane_capacity=1500, free_flow_speed=80, jam_density=140, controller=fc
+        length=0.5,
+        lanes=1,
+        lane_capacity=1500,
+        free_flow_speed=80,
+        jam_density=140,
+        controller=fc,
     )
     onramp_al = Onramp(
-        lanes=1, lane_capacity=1500, free_flow_speed=80, jam_density=140, controller=ar
+        length=0.5,
+        lanes=1,
+        lane_capacity=1500,
+        free_flow_speed=80,
+        jam_density=140,
+        controller=ar,
     )
 
     assert isinstance(onramp_fc.controller, FlowController)

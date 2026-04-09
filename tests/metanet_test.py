@@ -152,7 +152,7 @@ class TestMETANET:
         origin = Origin()
         ramp_origin = Origin()
         onramp = Onramp(
-            lanes=1, lane_capacity=1000, free_flow_speed=60, jam_density=100
+            length=0.5, lanes=1, lane_capacity=1000, free_flow_speed=60, jam_density=100
         )
         destination = Destination()
 
@@ -438,7 +438,7 @@ class TestMETANET:
             jam_density=150,
         )
         onramp = Onramp(
-            lanes=1, lane_capacity=1000, free_flow_speed=60, jam_density=100
+            length=0.5, lanes=1, lane_capacity=1000, free_flow_speed=60, jam_density=100
         )
         origin = Origin()
         destination = Destination()

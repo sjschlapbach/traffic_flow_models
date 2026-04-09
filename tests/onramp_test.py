@@ -13,6 +13,7 @@ class TestOnramp:
         link.partition_link(preferred_cell_size=2.0, dt=0.001)
 
         onramp = Onramp(
+            length=0.5,
             lanes=2,
             lane_capacity=1800,
             free_flow_speed=90,
@@ -35,7 +36,11 @@ class TestOnramp:
         link.partition_link(preferred_cell_size=1.0, dt=0.001)
 
         onramp = Onramp(
-            lanes=3, lane_capacity=2000, free_flow_speed=100, jam_density=150
+            length=0.5,
+            lanes=3,
+            lane_capacity=2000,
+            free_flow_speed=100,
+            jam_density=150,
         )
         n = Node(incoming=[onramp], outgoing=[link])
 
