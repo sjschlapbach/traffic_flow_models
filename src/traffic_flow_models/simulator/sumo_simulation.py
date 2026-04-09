@@ -69,6 +69,8 @@ class SUMOSimulation:
         """
         subprocess.run(
             ["sumo", "-c", self.cfg_file, "--no-step-log=true"],
+            capture_output=True,
+            text=True,
         )
 
         if os.path.exists(self.stats_file):
