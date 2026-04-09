@@ -48,8 +48,8 @@ class CustomController:
             CasADi SX expression representing the metering rate.
         """
         # Inspect the callable signature to decide how to pass params.
-        # - If the function accepts a third positional argument (or *args),
-        #   pass params as the third positional argument.
+        # - If the function accepts a fourth positional argument (or *args),
+        #   pass params as the fourth positional argument.
         # - If the function accepts **kwargs or defines a parameter named
         #   'params' (including keyword-only), pass params as a keyword arg.
         try:
@@ -75,14 +75,16 @@ class CustomController:
             has_var_pos = has_var_kw = has_named_params = False
             positional = []
 
-        if has_var_pos or len(positional) >= 3:
-            # accepts a third positional argument
-            result = self.controller_fn(flows, densities, self.params)
+        if has_var_pos or len(positional) >= 4:
+            # accepts a fourth positional argument
+            result = self.controller_fn(onramp_queues, flows, densities, self.params)
         elif has_var_kw or has_named_params:
             # accepts params via keyword
-            result = self.controller_fn(flows, densities, params=self.params)
+            result = self.controller_fn(
+                onramp_queues, flows, densities, params=self.params
+            )
         else:
-            result = self.controller_fn(flows, densities)
+            result = self.controller_fn(onramp_queues, flows, densities)
 
         # if the result is a CasADi object, return it directly
         if isinstance(result, casadi.SX):

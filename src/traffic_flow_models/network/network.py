@@ -3,6 +3,7 @@ from __future__ import annotations
 import math
 import json
 import casadi
+import warnings
 import numpy as np
 import networkx as nx
 import matplotlib.pyplot as plt
@@ -60,6 +61,11 @@ class Network:
             # Be conservative: do not raise during construction if neighbor
             # discovery fails for some reason; callers may call the update
             # helper explicitly later.
+            warnings.warn(
+                "[WARNING] Failed to set onramp neighbor relations during Network construction. "
+                "This may be due to missing destination_node_id attributes on onramps or other issues with the network structure. "
+                "Please call `update_all_onramp_neighbors()` explicitly after construction to attempt to set onramp neighbor relations."
+            )
             pass
 
     def __len__(self) -> int:
@@ -553,8 +559,7 @@ class Network:
         """Find and assign neighbor onramps for all onramps in the network.
 
         This populates each Onramp's `upstream_onramps` and `downstream_onramps`
-        attributes by calling `set_onramp_relations` and propagates the lists to
-        any attached controller instances so controllers can read/modify them.
+        attributes by calling `set_onramp_relations`.
         """
         for node in self.list_nodes():
             for link in node.incoming:

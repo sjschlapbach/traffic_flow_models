@@ -195,7 +195,9 @@ def test_alinea_attributes_and_compute():
 def test_custom_controller_callable_and_numeric_conversion():
     # controller that uses flows to compute rate (CasADi expression)
     def fn_casadi(
-        flows: Mapping[str, casadi.SX], _: Mapping[str, casadi.SX]
+        onramp_queues: dict[str, casadi.SX],
+        flows: dict[str, casadi.SX],
+        _: dict[str, casadi.SX],
     ) -> casadi.SX:
         return flows["r1"][0] * casadi.SX(2.0)
 
@@ -217,7 +219,9 @@ def test_custom_controller_callable_and_numeric_conversion():
     assert _eval([regulated])[0] == 20.0
 
     # controller that returns a plain numeric value (should be converted)
-    def fn_numeric(_: dict[str, casadi.SX], __: dict[str, casadi.SX]) -> float:
+    def fn_numeric(
+        _: dict[str, casadi.SX], __: dict[str, casadi.SX], ___: dict[str, casadi.SX]
+    ) -> float:
         return 333.0
 
     cc2 = CustomController(onramp=onr2, controller_fn=fn_numeric)  # type: ignore
@@ -230,8 +234,9 @@ def test_custom_controller_callable_and_numeric_conversion():
 def test_custom_controller_with_params():
     # controller that reads a rate from the params dict
     def fn_with_params(
-        flows: Mapping[str, casadi.SX],
-        _: Mapping[str, casadi.SX],
+        onramp_queues: dict[str, casadi.SX],
+        flows: dict[str, casadi.SX],
+        densities: dict[str, casadi.SX],
         params: dict[str, float],
     ) -> casadi.SX:
         return casadi.SX(params.get("rate", 0.0))

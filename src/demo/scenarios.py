@@ -309,7 +309,11 @@ def setup_network_c3() -> tuple[Network, dict]:
         raise TypeError("Expected 'nonr' node to have an Onramp as outgoing link.")
 
     # custom metering logic: decide based on downstream motorway flow (m2)
-    def metering_fn(flows: dict[str, casadi.SX], _: dict[str, casadi.SX]) -> casadi.SX:
+    def metering_fn(
+        onramp_queues: dict[str, casadi.SX],
+        flows: dict[str, casadi.SX],
+        densities: dict[str, casadi.SX],
+    ) -> casadi.SX:
         downstream_flow = flows["m2"][0]
 
         # if downstream flow < 2100 veh/h -> allow 900, otherwise 600
@@ -342,7 +346,10 @@ def setup_network_c4() -> tuple[Network, dict]:
 
     # custom metering logic: decide based on downstream motorway flow (m2)
     def metering_fn(
-        flows: dict[str, casadi.SX], _: dict[str, casadi.SX], params: dict[str, Any]
+        onramp_queues: dict[str, casadi.SX],
+        flows: dict[str, casadi.SX],
+        densities: dict[str, casadi.SX],
+        params: dict[str, Any],
     ) -> casadi.SX:
         downstream_flow = flows["m2"][0]
         threshold = casadi.SX(params.get("threshold"))
