@@ -115,7 +115,7 @@ class TestSUMOPipeline:
         # ensure SUMO_HOME not set
         monkeypatch.delenv("SUMO_HOME", raising=False)
 
-        p.generate_demand(10)
+        p.generate_demand(10, 3600.0)
         captured = capsys.readouterr()
         assert "Please set the 'SUMO_HOME' environment variable" in captured.out
 
@@ -142,7 +142,7 @@ class TestSUMOPipeline:
         os.makedirs(os.path.dirname(p.net_file), exist_ok=True)
         open(p.net_file, "w").write("net")
 
-        p.generate_demand(20)
+        p.generate_demand(20, 3600.0)
         assert "cmd" in called
 
         # command should contain path to our fake randomTrips.py
