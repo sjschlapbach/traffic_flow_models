@@ -49,9 +49,9 @@ if __name__ == "__main__":
         type=str,
         default=None,
         help=(
-            "Piecewise-linear demand profile as space-separated 'time,fraction' pairs. "
+            "Piecewise-linear demand profile as a matrix of [time, fraction] pairs. "
             "Times are relative (0.0–1.0). Fractions must sum to 1.0. "
-            "Example: '0.0,0.3 0.3,0.5 0.8,0.2'. "
+            "Example: '[[0.0,0.3],[0.3,0.5],[0.8,0.2]]'. "
             "Default: uniform distribution."
         ),
     )

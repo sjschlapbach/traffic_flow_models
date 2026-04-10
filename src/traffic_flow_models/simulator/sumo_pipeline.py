@@ -421,27 +421,6 @@ class SUMOPipeline:
             f"Profile: {'uniform' if demand_profile is None else 'custom'}."
         )
 
-    @staticmethod
-    def parse_demand_profile(raw: str | None) -> list[tuple[float, float]] | None:
-        import json
-
-        if raw is None:
-            return None
-        try:
-            matrix = json.loads(raw)
-            profile = [(float(row[0]), float(row[1])) for row in matrix]
-        except (json.JSONDecodeError, IndexError, TypeError, ValueError):
-            raise ValueError(
-                f"Invalid demand profile format: '{raw}'. "
-                "Expected a matrix e.g. '[[0.0,0.3],[0.3,0.5],[0.8,0.2]]'"
-            )
-        total = sum(f for _, f in profile)
-        if abs(total - 1.0) > 1e-6:
-            raise ValueError(
-                f"demand_profile fractions must sum to 1.0, got {total:.6f}"
-            )
-        return profile
-
     def create_consolidated_network(
         self,
         min_link_length: float,
