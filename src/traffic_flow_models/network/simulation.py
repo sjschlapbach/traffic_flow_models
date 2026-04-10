@@ -1804,7 +1804,7 @@ class Simulation:
             )
 
         for t in range(num_timesteps - 1):
-            (origin_demands_t, turning_rates_t, _, _) = (
+            origin_demands_t, turning_rates_t, _, _ = (
                 self.network.disturbance_vec_to_network_dict(disturbance_history[:, t])
             )
 
