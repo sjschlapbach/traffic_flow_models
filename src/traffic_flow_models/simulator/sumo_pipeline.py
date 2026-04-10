@@ -216,19 +216,29 @@ class SUMOPipeline:
                 )
 
             departures: list[float] = []
-            for i in range(len(times) - 1):
+            for i in range(len(times)):
                 t_start = times[i]
-                t_end = times[i + 1]
+                # Use the next time point, or the end of simulation if this is the last bucket
+                t_end = times[i + 1] if (i + 1) < len(times) else duration_seconds
+
                 n = round(fractions[i] * count)
-                if n == 0:
+                if n <= 0:
                     continue
-                interval = (t_end - t_start) / n
-                for j in range(n):
-                    departures.append(t_start + j * interval)
+
+                # If the bucket is a single point in time (t_start == t_end),
+                # all vehicles in this bucket depart at that exact time.
+                if t_end > t_start:
+                    interval = (t_end - t_start) / n
+                    for j in range(n):
+                        departures.append(t_start + j * interval)
+                else:
+                    for _ in range(n):
+                        departures.append(t_start)
 
             # handle rounding — pad with departures near the end, or trim
             while len(departures) < count:
                 departures.append(duration_seconds - 1.0)
+
             departures = sorted(departures[:count])
 
             logger.debug(
