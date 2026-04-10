@@ -5,6 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "traffic_flow_models"
 version = "0.1.3"
+license = "MIT"
 description = "Traffic flow models and simulator"
 readme = "README.md"
 requires-python = ">=3.13"
