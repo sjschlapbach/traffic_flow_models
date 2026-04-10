@@ -2434,10 +2434,27 @@ class Simulation:
             ValueError: If nodes lack position information or metadata is missing
             ImportError: If opencv-python is not installed
         """
-        # load simulation results
-        time_array, state_history, _, metadata = self.load_results(
-            filepath=results_filepath, network=self.network
-        )
+        # inspect file to determine whether it is a microsimulation (mainline-only)
+        try:
+            with open(results_filepath, "r") as _f:
+                _data = json.load(_f)
+            _meta = _data.get("metadata", None)
+        except Exception:
+            _meta = None
+
+        # if the writer marked this file as MICRO, load in mainline-only mode
+        if (
+            _meta
+            and isinstance(_meta, dict)
+            and str(_meta.get("model_type", "")).upper() == "MICRO"
+        ):
+            time_array, state_history, _, metadata = self.load_results(
+                filepath=results_filepath, network=self.network, load_mainline_only=True
+            )
+        else:
+            time_array, state_history, _, metadata = self.load_results(
+                filepath=results_filepath, network=self.network
+            )
 
         if metadata is None:
             raise ValueError(
@@ -2445,8 +2462,47 @@ class Simulation:
                 "Only files with metadata can be visualized."
             )
 
-        critical_densities = metadata["critical_densities"]
-        link_properties = metadata["link_properties"]
+        # ensure numeric critical densities and jam densities for visualization
+        critical_densities = metadata.get("critical_densities", {})
+        link_properties = metadata.get("link_properties", {})
+        for lk_id, val in list(critical_densities.items()):
+            if not isinstance(val, (int, float)) or not np.isfinite(val):
+                jam_density = link_properties.get(lk_id, {}).get(
+                    "jam_density_density", None
+                )
+                try:
+                    jam_density = float(jam_density)
+                except Exception:
+                    jam_density = None
+                if jam_density is None or not np.isfinite(jam_density):
+                    jam_density = 150.0
+
+                # populate jam_density and a fallback critical density
+                metadata.setdefault("link_properties", {}).setdefault(lk_id, {})[
+                    "jam_density"
+                ] = jam_density
+                metadata.setdefault("critical_densities", {})[lk_id] = max(
+                    5.0, jam_density * 0.15
+                )
+
+        # ensure every link in link_properties has a critical density entry
+        for lk_id in metadata.get("link_properties", {}).keys():
+            if lk_id not in metadata.get("critical_densities", {}):
+                jam_density = metadata["link_properties"][lk_id].get(
+                    "jam_density", None
+                )
+                try:
+                    jam_density = float(jam_density)
+                except Exception:
+                    jam_density = None
+                if jam_density is None or not np.isfinite(jam_density):
+                    jam_density = 150.0
+                metadata["link_properties"].setdefault(lk_id, {})[
+                    "jam_density"
+                ] = jam_density
+                metadata.setdefault("critical_densities", {})[lk_id] = max(
+                    5.0, jam_density * 0.15
+                )
 
         # apply frame interpolation if requested
         if subsampling > 1:
@@ -2567,18 +2623,78 @@ class Simulation:
         if len(result_filepaths) == 0:
             raise ValueError("Must provide at least one result file")
 
-        # load all simulation results
+        # load all simulation results (auto-detect microsimulation/mainline-only files)
         simulations = []
         for filepath in result_filepaths:
-            time_array, state_history, _, metadata = self.load_results(
-                filepath=filepath, network=self.network
-            )
+            # inspect file metadata first to decide loading mode
+            try:
+                with open(filepath, "r") as _f:
+                    _raw = json.load(_f)
+                _meta = _raw.get("metadata", None)
+            except Exception:
+                _meta = None
+
+            if (
+                _meta
+                and isinstance(_meta, dict)
+                and str(_meta.get("model_type", "")).upper() == "MICRO"
+            ):
+                time_array, state_history, _, metadata = self.load_results(
+                    filepath=filepath, network=self.network, load_mainline_only=True
+                )
+            else:
+                # try normal load, fallback to mainline-only when validation complains
+                try:
+                    time_array, state_history, _, metadata = self.load_results(
+                        filepath=filepath, network=self.network
+                    )
+                except ValueError:
+                    time_array, state_history, _, metadata = self.load_results(
+                        filepath=filepath, network=self.network, load_mainline_only=True
+                    )
 
             if metadata is None:
                 raise ValueError(
                     f"Simulation results file '{filepath}' lacks metadata. "
                     "Only files with metadata can be visualized."
                 )
+
+            # normalize metadata: ensure critical densities and jam densities are numeric
+            krit = metadata.get("critical_densities", {})
+            link_props = metadata.get("link_properties", {})
+            for lk_id in list(krit.keys()):
+                val = krit.get(lk_id)
+                if not isinstance(val, (int, float)) or not np.isfinite(val):
+                    jam = link_props.get(lk_id, {}).get("jam_density", None)
+                    try:
+                        jam = float(jam)
+                    except Exception:
+                        jam = None
+                    if jam is None or not np.isfinite(jam):
+                        jam = 150.0
+                    metadata.setdefault("link_properties", {}).setdefault(lk_id, {})[
+                        "jam_density"
+                    ] = jam
+                    metadata.setdefault("critical_densities", {})[lk_id] = max(
+                        5.0, jam * 0.15
+                    )
+
+            # ensure every link in link_properties has a critical density entry
+            for lk_id in metadata.get("link_properties", {}).keys():
+                if lk_id not in metadata.get("critical_densities", {}):
+                    jam = metadata["link_properties"][lk_id].get("jam_density", None)
+                    try:
+                        jam = float(jam)
+                    except Exception:
+                        jam = None
+                    if jam is None or not np.isfinite(jam):
+                        jam = 150.0
+                    metadata["link_properties"].setdefault(lk_id, {})[
+                        "jam_density"
+                    ] = jam
+                    metadata.setdefault("critical_densities", {})[lk_id] = max(
+                        5.0, jam * 0.15
+                    )
 
             simulations.append(
                 {

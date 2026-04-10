@@ -241,3 +241,35 @@ if __name__ == "__main__":
             subsampling=1,
         )
         print(f"Video saved to: {video_path}")
+
+        # also generate a backbone (microsimulation) video when available
+        backbone_video_path = os.path.join(results_dir, "backbone_simulation.avi")
+        try:
+            print("\nGenerating backbone (microsimulation) video...")
+            sim.visualize(
+                results_filepath=backbone_state_path,
+                output_filepath=backbone_video_path,
+                fps=30,
+                subsampling=1,
+            )
+            print(f"Backbone video saved to: {backbone_video_path}")
+        except Exception as e:
+            print(f"Could not generate backbone video: {e}")
+
+        # generate side-by-side comparison video (micro vs macro)
+        comparison_video_path = os.path.join(results_dir, "simulation_comparison.avi")
+        try:
+            print("\nGenerating comparison video (micro vs macro)...")
+            sim.visualize_comparison(
+                result_filepaths=[
+                    backbone_state_path,
+                    os.path.join(results_dir, "simulation_results.json"),
+                ],
+                labels=["Backbone (MICRO)", f"Macro {parsed_args.model.upper()}"],
+                output_filepath=comparison_video_path,
+                fps=30,
+                subsampling=1,
+            )
+            print(f"Comparison video saved to: {comparison_video_path}")
+        except Exception as e:
+            print(f"Could not generate comparison video: {e}")
