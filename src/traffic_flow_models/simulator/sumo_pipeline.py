@@ -1,18 +1,23 @@
 import os
-import subprocess
 import sys
+import json
 import shutil
+import random
+import logging
+import subprocess
 import osmnx as ox
-from functools import wraps
+import xml.etree.ElementTree as ET
 import matplotlib.pyplot as plt
+from functools import wraps
 from typing import Optional, Tuple, Callable
+
+from traffic_flow_models.network import Network, Origin, Destination
 from traffic_flow_models.arbitrator.loop_detector_generator import LoopDetectorGenerator
 from traffic_flow_models.arbitrator.turning_rate_aggregator import TurningRateAggregator
 from traffic_flow_models.arbitrator.network_arbitrator import (
     NetworkArbitrator,
     RoadParamsConfig,
 )
-from traffic_flow_models.network.network import Network
 
 
 def skip_if_exists(attr_name):
@@ -154,20 +159,108 @@ class SUMOPipeline:
         subprocess.run(cmd, capture_output=True, text=True, check=True)
         print(f"{self.net_file} file generated.")
 
-    # @skip_if_exists('rou_file')
-    def generate_demand(self, vehicle_count: int) -> None:
-        """Generate traffic demand and create route file.
+    # @skip_if_exists("rou_file")
+    def generate_demand(
+        self,
+        vehicle_count: int,
+        duration_seconds: float,
+        backbone_vehicle_count: int = 0,
+        demand_profile: list[tuple[float, float]] | None = None,
+        seed: int = 42,
+    ) -> None:
+        """Generate traffic demand combining random trips and backbone-direct demand.
 
-        Creates random trips using SUMO's randomTrips.py tool and generates
-        a route file with the specified vehicle count.
+        Both random trips and backbone vehicles share the same demand_profile,
+        producing a physically consistent time-of-day demand shape across the
+        full network.
 
         Args:
-            vehicle_count: Number of vehicles to generate in the simulation.
+            vehicle_count: Number of random vehicles to generate across the
+                full SUMO network.
+            duration_seconds: Simulation duration in seconds.
+            backbone_vehicle_count: Number of additional vehicles to place
+                directly on backbone origin inflow edges. Default 0 (disabled).
+            demand_profile: Piecewise-linear list of (time_percentage, fraction)
+                pairs shaping vehicle departures. Fractions between breakpoints
+                must sum to 1.0. None = uniform distribution.
+                Example: [(0.2, 0.3), (0.3, 0.5), (0.5, 0.2)].
+            seed: Random seed for backbone trip generation.
+
+        Raises:
+            ValueError: If backbone_vehicle_count > 0 but consolidated_network
+                is not initialized.
+            ValueError: If demand_profile fractions do not sum to 1.0.
         """
+
+        logger = logging.getLogger(__name__)
+
         if "SUMO_HOME" not in os.environ:
             print("Error: Please set the 'SUMO_HOME' environment variable.")
             return
 
+        # set the rng seed for reproducibility of backbone trip generation
+        rng = random.Random(seed)
+
+        # ------------------------------------------------------------------
+        # Helper: sample departure times from a piecewise-linear profile
+        # ------------------------------------------------------------------
+        def sample_departure_times(count: int) -> list[float]:
+            if demand_profile is None:
+                interval = duration_seconds / count
+                return [i * interval for i in range(count)]
+
+            # scale relative times → absolute seconds
+            abs_profile = [
+                (t_percentage * duration_seconds, f)
+                for t_percentage, f in demand_profile
+            ]
+
+            times = [t for t, _ in abs_profile]
+            fractions = [f for _, f in abs_profile]
+
+            if abs(sum(fractions) - 1.0) > 1e-6:
+                raise ValueError(
+                    f"demand_profile fractions must sum to 1.0, got {sum(fractions):.6f}"
+                )
+
+            departures: list[float] = []
+            for i in range(len(times)):
+                t_start = times[i]
+
+                # Use the next time point, or the end of simulation if this is the last bucket
+                t_end = times[i + 1] if (i + 1) < len(times) else duration_seconds
+
+                n = round(fractions[i] * count)
+                if n <= 0:
+                    continue
+
+                # If the bucket is a single point in time (t_start == t_end),
+                # all vehicles in this bucket depart at that exact time.
+                if t_end > t_start:
+                    interval = (t_end - t_start) / n
+                    for j in range(n):
+                        departures.append(t_start + j * interval)
+                else:
+                    for _ in range(n):
+                        departures.append(t_start)
+
+            # handle rounding — pad with departures near the end, or trim
+            while len(departures) < count:
+                departures.append(duration_seconds - 1.0)
+
+            departures = sorted(departures[:count])
+
+            logger.debug(
+                "Sampled %d departure times from demand_profile (first=%.2f, last=%.2f)",
+                len(departures),
+                departures[0],
+                departures[-1],
+            )
+            return departures
+
+        # ------------------------------------------------------------------
+        # 1. Generate random trips via randomTrips.py (OD pairs + initial times)
+        # ------------------------------------------------------------------
         random_trips = os.path.join(os.environ["SUMO_HOME"], "tools", "randomTrips.py")
 
         cmd = [
@@ -185,16 +278,198 @@ class SUMOPipeline:
             "10",
             "--validate",
             "--remove-loops",
+            "--seed",
+            str(seed),
         ]
 
         try:
             subprocess.run(cmd, check=True)
-            print(f"{self.rou_file} file generated.")
-
+            print(f"{self.rou_file} generated ({vehicle_count} random vehicles).")
             if os.path.exists("temp_trips.xml"):
                 os.remove("temp_trips.xml")
         except subprocess.CalledProcessError as e:
-            print(f"An error occurred while generating demand: {e}")
+            print(f"An error occurred while generating random demand: {e}")
+            return
+
+        # ------------------------------------------------------------------
+        # 2. Post-process: overwrite random-trip depart times with profile times
+        # ------------------------------------------------------------------
+        random_departures = sample_departure_times(vehicle_count)
+
+        existing_tree = ET.parse(self.rou_file)
+        existing_root = existing_tree.getroot()
+
+        # collect all vehicle/trip elements that randomTrips produced
+        random_elements = [
+            el
+            for el in existing_root
+            if el.tag in ("vehicle", "trip")
+            and not el.get("id", "").startswith("backbone_")
+        ]
+
+        if len(random_elements) != len(random_departures):
+            logger.warning(
+                "randomTrips produced %d elements but expected %d — "
+                "profile reshaping may be approximate.",
+                len(random_elements),
+                vehicle_count,
+            )
+            # re-sample to match actual count
+            random_departures = sample_departure_times(len(random_elements))
+
+        for el, t in zip(random_elements, random_departures):
+            el.set("depart", f"{t:.2f}")
+
+        logger.debug(
+            "Rewrote depart times for %d random vehicles using demand_profile=%s",
+            len(random_elements),
+            "uniform" if demand_profile is None else demand_profile,
+        )
+
+        # ------------------------------------------------------------------
+        # 3. Optionally inject backbone-direct vehicles
+        # ------------------------------------------------------------------
+        if backbone_vehicle_count > 0:
+            if self.consolidated_network is None:
+                raise ValueError(
+                    "consolidated_network is not initialized. "
+                    "Call create_consolidated_network() before using backbone_vehicle_count > 0."
+                )
+
+            # collect backbone origin and destination node IDs
+            backbone_origin_node_ids: set[str] = set()
+            backbone_destination_node_ids: set[str] = set()
+
+            for node in self.consolidated_network:
+                for link in node.incoming:
+                    if isinstance(link, Origin):
+                        if link.destination_node_id is None:
+                            raise ValueError(
+                                f"Backbone origin link {link.id} missing destination_node_id"
+                            )
+
+                        backbone_origin_node_ids.add(link.destination_node_id)
+
+                for link in node.outgoing:
+                    if isinstance(link, Destination):
+                        if link.origin_node_id is None:
+                            raise ValueError(
+                                f"Backbone destination link {link.id} missing origin_node_id"
+                            )
+
+                        backbone_destination_node_ids.add(link.origin_node_id)
+
+            logger.debug(
+                "Backbone origin nodes: %d, destination nodes: %d",
+                len(backbone_origin_node_ids),
+                len(backbone_destination_node_ids),
+            )
+
+            # find inflow/outflow edges from the SUMO network XML
+            tree = ET.parse(self.net_file)
+            root = tree.getroot()
+
+            origin_inflow_edges: list[str] = []
+            destination_outflow_edges: list[str] = []
+
+            for edge in root.findall("edge"):
+                if edge.get("function") == "internal":
+                    continue
+
+                edge_id = edge.get("id")
+                edge_type = edge.get("type", "").lower()
+                from_node = edge.get("from")
+                to_node = edge.get("to")
+                is_motorway = "motorway" in edge_type
+
+                if not edge_id:
+                    raise ValueError("Edge without ID found in SUMO network XML.")
+
+                if not is_motorway and to_node in backbone_origin_node_ids:
+                    origin_inflow_edges.append(edge_id)
+                    logger.debug(
+                        "Backbone inflow edge: '%s' → node '%s'", edge_id, to_node
+                    )
+
+                if not is_motorway and from_node in backbone_destination_node_ids:
+                    destination_outflow_edges.append(edge_id)
+                    logger.debug(
+                        "Backbone outflow edge: '%s' ← node '%s'", edge_id, from_node
+                    )
+
+            if not origin_inflow_edges:
+                raise ValueError(
+                    "No backbone inflow edges found in SUMO network. "
+                    "Check that the SUMO network and consolidated network are consistent."
+                )
+            if not destination_outflow_edges:
+                raise ValueError("No backbone outflow edges found in SUMO network.")
+
+            # sample backbone departure times from the same profile
+            backbone_departures = sample_departure_times(backbone_vehicle_count)
+            backbone_trips: list[ET.Element] = []
+
+            for i, depart_time in enumerate(backbone_departures):
+                from_edge = rng.choice(origin_inflow_edges)
+                to_edge = rng.choice(destination_outflow_edges)
+
+                attempts = 0
+                while to_edge == from_edge and attempts < 10:
+                    to_edge = rng.choice(destination_outflow_edges)
+                    attempts += 1
+
+                trip = ET.Element("trip")
+                trip.set("id", f"backbone_veh_{i}")
+                trip.set("depart", f"{depart_time:.2f}")
+                trip.set("from", from_edge)
+                trip.set("to", to_edge)
+                trip.set("departLane", "best")
+                trip.set("departSpeed", "max")
+                backbone_trips.append(trip)
+
+            logger.debug(
+                "Generated %d backbone trips shaped by demand_profile",
+                backbone_vehicle_count,
+            )
+
+            for trip in backbone_trips:
+                existing_root.append(trip)
+
+        # ------------------------------------------------------------------
+        # 4. Re-sort all elements by depart time and write final .rou.xml
+        # ------------------------------------------------------------------
+        children = list(existing_root)
+        children.sort(key=lambda el: float(el.get("depart", "0")))
+        existing_root[:] = children
+
+        ET.indent(existing_root, space="  ")
+        existing_tree.write(self.rou_file, encoding="utf-8", xml_declaration=True)
+
+        total = vehicle_count + backbone_vehicle_count
+        print(
+            f"{self.rou_file} finalised — {vehicle_count} random + "
+            f"{backbone_vehicle_count} backbone = {total} total vehicles. "
+            f"Profile: {'uniform' if demand_profile is None else 'custom'}."
+        )
+
+    @staticmethod
+    def parse_demand_profile(raw: str | None) -> list[tuple[float, float]] | None:
+        if raw is None:
+            return None
+        try:
+            matrix = json.loads(raw)
+            profile = [(float(row[0]), float(row[1])) for row in matrix]
+        except (json.JSONDecodeError, IndexError, TypeError, ValueError):
+            raise ValueError(
+                f"Invalid demand profile format: '{raw}'. "
+                "Expected a matrix e.g. '[[0.0,0.3],[0.3,0.5],[0.8,0.2]]'"
+            )
+        total = sum(f for _, f in profile)
+        if abs(total - 1.0) > 1e-6:
+            raise ValueError(
+                f"demand_profile fractions must sum to 1.0, got {total:.6f}"
+            )
+        return profile
 
     def create_consolidated_network(
         self,

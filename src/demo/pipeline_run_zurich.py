@@ -38,6 +38,23 @@ if __name__ == "__main__":
         default="CTM",
         help="Traffic flow model to use for the simulation (default: CTM)",
     )
+    args.add_argument(
+        "--backbone-vehicle-count",
+        type=int,
+        default=0,
+        help="Number of additional vehicles to place directly on backbone origin edges.",
+    )
+    args.add_argument(
+        "--demand-profile",
+        type=str,
+        default=None,
+        help=(
+            "Piecewise-linear demand profile as a matrix of [time, fraction] pairs. "
+            "Times are relative (0.0–1.0). Fractions must sum to 1.0. "
+            "Example: '[[0.0,0.3],[0.3,0.5],[0.8,0.2]]'. "
+            "Default: uniform distribution."
+        ),
+    )
     parsed_args = args.parse_args()
 
     # scenario definitions
@@ -81,7 +98,12 @@ if __name__ == "__main__":
     detector_def_file, detector_output_file, spec_file = pipeline.generate_detectors(
         cell_size=preferred_cell_size
     )
-    pipeline.generate_demand(vehicle_count=vehicle_demand)
+    pipeline.generate_demand(
+        vehicle_count=vehicle_demand,
+        duration_seconds=duration * 3600,
+        backbone_vehicle_count=parsed_args.backbone_vehicle_count,
+        demand_profile=SUMOPipeline.parse_demand_profile(parsed_args.demand_profile),
+    )
     (
         network,
         origin_ids,

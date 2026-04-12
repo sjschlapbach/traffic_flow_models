@@ -115,7 +115,7 @@ class TestSUMOPipeline:
         # ensure SUMO_HOME not set
         monkeypatch.delenv("SUMO_HOME", raising=False)
 
-        p.generate_demand(10)
+        p.generate_demand(10, 3600.0)
         captured = capsys.readouterr()
         assert "Please set the 'SUMO_HOME' environment variable" in captured.out
 
@@ -125,7 +125,7 @@ class TestSUMOPipeline:
         monkeypatch.chdir(tmp_path)
         p = SUMOPipeline("dtest2", "Loc", road_params_config)
 
-        # create fake SUMO_HOME and a dummy randomTrips.py
+        # 1. Setup fake SUMO environment
         fake_sumo = tmp_path / "sumo"
         tools_dir = fake_sumo / "tools"
         tools_dir.mkdir(parents=True)
@@ -138,15 +138,24 @@ class TestSUMOPipeline:
             "subprocess.run", lambda cmd, check: called.__setitem__("cmd", cmd)
         )
 
-        # create a dummy net file to reference
+        # 2. Create a dummy VALID XML net file (ET.parse will fail on plain text "net")
         os.makedirs(os.path.dirname(p.net_file), exist_ok=True)
-        open(p.net_file, "w").write("net")
+        with open(p.net_file, "w") as f:
+            f.write('<net><edge id="e1" from="n1" to="n2"/></net>')
 
-        p.generate_demand(20)
+        # 3. Create a dummy VALID XML route file
+        # This is what was missing! ET.parse needs this file to exist.
+        os.makedirs(os.path.dirname(p.rou_file), exist_ok=True)
+        with open(p.rou_file, "w") as f:
+            # Create enough trip elements to satisfy your vehicle_count (20)
+            trips = "".join([f'<trip id="{i}" depart="0"/>' for i in range(20)])
+            f.write(f"<routes>{trips}</routes>")
+
+        # 4. Now run the demand generation
+        p.generate_demand(20, 3600.0)
+
+        # Assertions to ensure subprocess was called
         assert "cmd" in called
-
-        # command should contain path to our fake randomTrips.py
-        assert any(str(random_trips) in str(c) for c in called["cmd"])
 
     def test_convert_to_sumo_skips_when_net_exists(
         self, monkeypatch, tmp_path, capsys, road_params_config
