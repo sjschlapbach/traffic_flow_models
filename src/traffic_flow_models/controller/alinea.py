@@ -37,21 +37,10 @@ class AlineaController:
         if measurement_cell_idx < 0:
             raise ValueError("Measurement cell index must be non-negative.")
 
+        self.network = network
         self.onramp = onramp
         self.measurement_link_id: str = measurement_link_id
         self.measurement_cell: int = measurement_cell_idx
-
-        measurement_link = network.get_link(measurement_link_id)
-        if measurement_link is None or not isinstance(measurement_link, MotorwayLink):
-            raise ValueError(
-                f"Measurement link ID {measurement_link_id} not found in network."
-            )
-        measurement_cell = measurement_link.get_cell(measurement_cell_idx)
-        if measurement_cell is None:
-            raise ValueError(
-                f"Measurement cell index {measurement_cell_idx} not found in link {measurement_link_id}."
-            )
-        self.measurement_cell_length: float = measurement_cell.length
 
         self.gain: float = gain
         self.density_setpoint: float = density_setpoint
@@ -74,6 +63,21 @@ class AlineaController:
         Returns:
             The regulated onramp flow (vehicles per time unit).
         """
+        # compute the cell length of the measurement cell for scaling the gain
+        measurement_link = self.network.get_link(self.measurement_link_id)
+        if measurement_link is None or not isinstance(measurement_link, MotorwayLink):
+            raise ValueError(
+                f"Measurement link ID {self.measurement_link_id} not found in network."
+            )
+
+        measurement_cell = measurement_link.get_cell(self.measurement_cell)
+        if measurement_cell is None:
+            raise ValueError(
+                f"Measurement cell index {self.measurement_cell} not found in link {self.measurement_link_id}."
+            )
+        self.measurement_cell_length: float = measurement_cell.length
+
+        # extract the relevant density and flow values for the feedback law
         measured_density = densities[self.measurement_link_id][self.measurement_cell]
         previous_flow = flows[self.onramp.id][
             0

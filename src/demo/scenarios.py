@@ -295,7 +295,7 @@ def setup_network_c2() -> tuple[Network, dict, dict]:
         onramp=onramp,
         measurement_link_id="m2",
         measurement_cell_idx=0,
-        gain=5.0,
+        gain=0.025,
         density_setpoint=30.0,
     )
 
