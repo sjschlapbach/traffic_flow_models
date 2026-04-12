@@ -63,6 +63,10 @@ class AlineaController:
         Returns:
             The regulated onramp flow (vehicles per time unit).
         """
+        # verify that the time step size is strictly positive
+        if dt <= 0.0:
+            raise ValueError("Time step dt must be positive.")
+
         # compute the cell length of the measurement cell for scaling the gain
         measurement_link = self.network.get_link(self.measurement_link_id)
         if measurement_link is None or not isinstance(measurement_link, MotorwayLink):
