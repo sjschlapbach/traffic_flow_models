@@ -10,6 +10,7 @@ import xml.etree.ElementTree as ET
 import matplotlib.pyplot as plt
 import numpy as np
 import json
+import warnings
 from functools import wraps
 from typing import Optional, Tuple, Callable
 
@@ -171,7 +172,24 @@ class SUMOPipeline:
         subprocess.run(cmd, capture_output=True, text=True, check=True)
         print(f"{self.net_file} file generated.")
 
-    # @skip_if_exists("rou_file")
+    # ---------------------------------------------------------------------------
+    # Sentinel suffixes for synthetic ramp edges injected by netconvert --ramps.guess
+    # These edges model ramp geometry and must never be used as backbone
+    # inflow / outflow edges.
+    # ---------------------------------------------------------------------------
+    SYNTHETIC_RAMP_SUFFIXES: tuple[str, ...] = (
+        "-AddedOffRampEdge",
+        "-AddedOnRampEdge",
+    )
+
+    def _is_synthetic_ramp(edge_id: str) -> bool:
+        """Return True if *edge_id* was synthesised by netconvert's ramp guesser."""
+        return any(edge_id.endswith(s) for s in SUMOPipeline.SYNTHETIC_RAMP_SUFFIXES)
+
+    # ============================================================================
+    # generate_demand
+    # ============================================================================
+
     def generate_demand(
         self,
         vehicle_count: int,
@@ -192,25 +210,29 @@ class SUMOPipeline:
             duration_seconds: Simulation duration in seconds.
             backbone_vehicle_count: Number of additional vehicles to place
                 directly on backbone origin inflow edges. Default 0 (disabled).
+                These vehicles model highway through-traffic entering the zone
+                from outside; they are injected on plain motorway fringe edges only
+                and must NOT be placed on on-ramp or synthetic ramp edges.
             demand_profile: Piecewise-linear list of (time_percentage, fraction)
-                pairs shaping vehicle departures. Fractions between breakpoints
-                must sum to 1.0. None = uniform distribution.
+                pairs shaping vehicle departures. Fractions must sum to 1.0.
+                None = uniform distribution.
                 Example: [(0.2, 0.3), (0.3, 0.5), (0.5, 0.2)].
-            seed: Random seed for backbone trip generation.
+            seed: Random seed passed to both randomTrips *and* duarouter (via
+                --duarouter-option) to make the entire OD + routing step
+                fully reproducible across runs.
 
         Raises:
             ValueError: If backbone_vehicle_count > 0 but consolidated_network
-                is not initialized.
+                is not initialised.
             ValueError: If demand_profile fractions do not sum to 1.0.
         """
-
         logger = logging.getLogger(__name__)
 
         if "SUMO_HOME" not in os.environ:
             print("Error: Please set the 'SUMO_HOME' environment variable.")
             return
 
-        # set the rng seed for reproducibility of backbone trip generation
+        # Reproducible RNG for backbone edge selection.
         rng = random.Random(seed)
 
         # ------------------------------------------------------------------
@@ -221,12 +243,7 @@ class SUMOPipeline:
                 interval = duration_seconds / count
                 return [i * interval for i in range(count)]
 
-            # scale relative times → absolute seconds
-            abs_profile = [
-                (t_percentage * duration_seconds, f)
-                for t_percentage, f in demand_profile
-            ]
-
+            abs_profile = [(t_pct * duration_seconds, f) for t_pct, f in demand_profile]
             times = [t for t, _ in abs_profile]
             fractions = [f for _, f in abs_profile]
 
@@ -238,16 +255,10 @@ class SUMOPipeline:
             departures: list[float] = []
             for i in range(len(times)):
                 t_start = times[i]
-
-                # Use the next time point, or the end of simulation if this is the last bucket
                 t_end = times[i + 1] if (i + 1) < len(times) else duration_seconds
-
                 n = round(fractions[i] * count)
                 if n <= 0:
                     continue
-
-                # If the bucket is a single point in time (t_start == t_end),
-                # all vehicles in this bucket depart at that exact time.
                 if t_end > t_start:
                     interval = (t_end - t_start) / n
                     for j in range(n):
@@ -256,10 +267,8 @@ class SUMOPipeline:
                     for _ in range(n):
                         departures.append(t_start)
 
-            # handle rounding — pad with departures near the end, or trim
             while len(departures) < count:
                 departures.append(duration_seconds - 1.0)
-
             departures = sorted(departures[:count])
 
             logger.debug(
@@ -271,29 +280,40 @@ class SUMOPipeline:
             return departures
 
         # ------------------------------------------------------------------
-        # 1. Generate random trips via randomTrips.py (OD pairs + initial times)
+        # 1. Generate random trips via randomTrips.py
+        #
+        # IMPORTANT — reproducibility:
+        #   --seed seeds randomTrips' own OD-pair sampling.
+        #   --duarouter-option --seed=N seeds the duarouter call that
+        #   --validate triggers internally. Without the second flag, two runs
+        #   with the same --seed can still produce different route files.
         # ------------------------------------------------------------------
-        random_trips = os.path.join(os.environ["SUMO_HOME"], "tools", "randomTrips.py")
+        random_trips_script = os.path.join(
+            os.environ["SUMO_HOME"], "tools", "randomTrips.py"
+        )
 
         cmd = [
             sys.executable,
-            random_trips,
+            random_trips_script,
             "-n",
             self.net_file,
             "-o",
             "temp_trips.xml",
             "--route-file",
             self.rou_file,
-            "--end",  # FIX 1: set generation window
-            str(duration_seconds),  # to match simulation duration
+            "--end",
+            str(duration_seconds),
             "--period",
-            str(duration_seconds / vehicle_count),  # FIX 1: scale period accordingly
+            str(duration_seconds / vehicle_count),
             "--fringe-factor",
             "10",
             "--validate",
             "--remove-loops",
             "--seed",
             str(seed),
+            # Seed duarouter (called internally by --validate) for full reproducibility.
+            "--duarouter-option",
+            f"--seed={seed}",
         ]
 
         try:
@@ -313,7 +333,6 @@ class SUMOPipeline:
         existing_tree = ET.parse(self.rou_file)
         existing_root = existing_tree.getroot()
 
-        # collect all vehicle/trip elements that randomTrips produced
         random_elements = [
             el
             for el in existing_root
@@ -328,7 +347,6 @@ class SUMOPipeline:
                 len(random_elements),
                 vehicle_count,
             )
-            # re-sample to match actual count
             random_departures = sample_departure_times(len(random_elements))
 
         for el, t in zip(random_elements, random_departures):
@@ -342,15 +360,29 @@ class SUMOPipeline:
 
         # ------------------------------------------------------------------
         # 3. Optionally inject backbone-direct vehicles
+        #
+        # Goal: vehicles that model highway through-traffic entering the zone
+        # from outside. They must depart from a non-motorway fringe edge that
+        # leads directly into a true motorway (not an on-ramp / motorway_link),
+        # and arrive at an equivalent fringe edge on the other side.
+        #
+        # Two-pass approach:
+        #   Pass A — identify which backbone origin/destination nodes are
+        #            connected to a *plain* motorway (not motorway_link, not
+        #            a synthetic ramp edge). This filters out on-ramp nodes.
+        #   Pass B — for those filtered nodes, find the actual SUMO fringe
+        #            edges (non-motorway, non-synthetic) used for trip endpoints.
         # ------------------------------------------------------------------
         if backbone_vehicle_count > 0:
             if self.consolidated_network is None:
                 raise ValueError(
-                    "consolidated_network is not initialized. "
+                    "consolidated_network is not initialised. "
                     "Call create_consolidated_network() before using backbone_vehicle_count > 0."
                 )
 
-            # collect backbone origin and destination node IDs
+            # Collect backbone origin / destination node IDs from the macroscopic network.
+            # Origin link → its destination_node_id is the first backbone node.
+            # Destination link → its origin_node_id is the last backbone node.
             backbone_origin_node_ids: set[str] = set()
             backbone_destination_node_ids: set[str] = set()
 
@@ -372,21 +404,27 @@ class SUMOPipeline:
                         backbone_destination_node_ids.add(link.origin_node_id)
 
             logger.debug(
-                "Backbone origin nodes: %d, destination nodes: %d",
+                "Backbone origin nodes (all): %d, destination nodes (all): %d",
                 len(backbone_origin_node_ids),
                 len(backbone_destination_node_ids),
             )
 
-            # find inflow/outflow edges from the SUMO network XML
             tree = ET.parse(self.net_file)
             root = tree.getroot()
 
-            # FIX 2 — Pass A: restrict to backbone origin nodes whose outgoing
-            # edge is a plain motorway, not a motorway_link (onramp). Both types
-            # contain the substring "motorway", so "link" must be excluded explicitly.
+            # ------------------------------------------------------------------
+            # Pass A — Origins:
+            # Keep only origin nodes from which at least one outgoing edge is a
+            # plain motorway (contains "motorway" but NOT "link") and is not a
+            # synthetic ramp edge.  On-ramp entry nodes are excluded here because
+            # their outgoing edge type is "highway.motorway_link".
+            # ------------------------------------------------------------------
             direct_backbone_origin_node_ids: set[str] = set()
             for edge in root.findall("edge"):
                 if edge.get("function") == "internal":
+                    continue
+                edge_id = edge.get("id", "")
+                if SUMOPipeline._is_synthetic_ramp(edge_id):
                     continue
                 edge_type = edge.get("type", "").lower()
                 from_node = edge.get("from")
@@ -395,14 +433,57 @@ class SUMOPipeline:
                     direct_backbone_origin_node_ids.add(from_node)
 
             logger.debug(
-                "Direct-mainline backbone origin nodes: %d / %d total "
-                "(%d onramp origins excluded)",
+                "Direct-mainline backbone origin nodes: %d / %d "
+                "(%d on-ramp origin nodes excluded)",
                 len(direct_backbone_origin_node_ids),
                 len(backbone_origin_node_ids),
                 len(backbone_origin_node_ids) - len(direct_backbone_origin_node_ids),
             )
 
-            # FIX 2 — Pass B: scan for inflow/outflow edges using the filtered set
+            # ------------------------------------------------------------------
+            # Pass A — Destinations:
+            # Mirror the origin logic: keep only destination nodes where at least
+            # one *incoming* edge is a plain motorway (not motorway_link, not
+            # synthetic). This excludes off-ramp exit nodes whose last incoming
+            # edge is a motorway_link.
+            # ------------------------------------------------------------------
+            direct_backbone_destination_node_ids: set[str] = set()
+            for edge in root.findall("edge"):
+                if edge.get("function") == "internal":
+                    continue
+                edge_id = edge.get("id", "")
+                if SUMOPipeline._is_synthetic_ramp(edge_id):
+                    continue
+                edge_type = edge.get("type", "").lower()
+                to_node = edge.get("to")
+                is_plain_motorway = "motorway" in edge_type and "link" not in edge_type
+                if is_plain_motorway and to_node in backbone_destination_node_ids:
+                    direct_backbone_destination_node_ids.add(to_node)
+
+            logger.debug(
+                "Direct-mainline backbone destination nodes: %d / %d "
+                "(%d off-ramp destination nodes excluded)",
+                len(direct_backbone_destination_node_ids),
+                len(backbone_destination_node_ids),
+                len(backbone_destination_node_ids)
+                - len(direct_backbone_destination_node_ids),
+            )
+
+            # ------------------------------------------------------------------
+            # Pass B — Find fringe inflow / outflow edges.
+            #
+            # Inflow edge:  non-motorway, non-synthetic edge whose *to* node is
+            #               a direct-mainline origin node.  This is the access
+            #               road from outside the zone that leads onto the
+            #               motorway at the boundary.
+            # Outflow edge: non-motorway, non-synthetic edge whose *from* node is
+            #               a direct-mainline destination node.  Symmetric exit.
+            #
+            # Note: "not is_motorway" here uses the broad check
+            # ("motorway" in edge_type) intentionally — we want the fringe
+            # connector, never the motorway itself.  Synthetic edges are caught
+            # by the explicit suffix guard before the type check.
+            # ------------------------------------------------------------------
             origin_inflow_edges: list[str] = []
             destination_outflow_edges: list[str] = []
 
@@ -410,37 +491,60 @@ class SUMOPipeline:
                 if edge.get("function") == "internal":
                     continue
 
-                edge_id = edge.get("id")
-                edge_type = edge.get("type", "").lower()
-                from_node = edge.get("from")
-                to_node = edge.get("to")
-                is_motorway = "motorway" in edge_type
-
+                edge_id = edge.get("id", "")
                 if not edge_id:
                     raise ValueError("Edge without ID found in SUMO network XML.")
 
-                # FIX 2: use direct_backbone_origin_node_ids instead of backbone_origin_node_ids
+                # Skip synthetic ramp edges regardless of anything else.
+                if SUMOPipeline._is_synthetic_ramp(edge_id):
+                    logger.debug("Pass B: skipping synthetic ramp edge '%s'", edge_id)
+                    continue
+
+                edge_type = edge.get("type", "").lower()
+                from_node = edge.get("from")
+                to_node = edge.get("to")
+                is_motorway = "motorway" in edge_type  # broad: covers plain + link
+
                 if not is_motorway and to_node in direct_backbone_origin_node_ids:
                     origin_inflow_edges.append(edge_id)
                     logger.debug(
-                        "Backbone inflow edge: '%s' → node '%s'", edge_id, to_node
+                        "Backbone inflow edge: '%s' (type='%s') → node '%s'",
+                        edge_id,
+                        edge_type,
+                        to_node,
                     )
 
-                if not is_motorway and from_node in backbone_destination_node_ids:
+                if (
+                    not is_motorway
+                    and from_node in direct_backbone_destination_node_ids
+                ):
                     destination_outflow_edges.append(edge_id)
                     logger.debug(
-                        "Backbone outflow edge: '%s' ← node '%s'", edge_id, from_node
+                        "Backbone outflow edge: '%s' (type='%s') ← node '%s'",
+                        edge_id,
+                        edge_type,
+                        from_node,
                     )
 
             if not origin_inflow_edges:
                 raise ValueError(
                     "No backbone inflow edges found in SUMO network. "
-                    "Check that the SUMO network and consolidated network are consistent."
+                    "Check that the SUMO network and consolidated network are consistent, "
+                    "and that --ramps.guess was used during netconvert."
                 )
             if not destination_outflow_edges:
-                raise ValueError("No backbone outflow edges found in SUMO network.")
+                raise ValueError(
+                    "No backbone outflow edges found in SUMO network. "
+                    "Check that the SUMO network and consolidated network are consistent."
+                )
 
-            # sample backbone departure times from the same profile
+            logger.debug(
+                "Pass B complete: %d inflow edges, %d outflow edges",
+                len(origin_inflow_edges),
+                len(destination_outflow_edges),
+            )
+
+            # Sample backbone departure times from the same profile as random trips.
             backbone_departures = sample_departure_times(backbone_vehicle_count)
             backbone_trips: list[ET.Element] = []
 
@@ -448,6 +552,7 @@ class SUMOPipeline:
                 from_edge = rng.choice(origin_inflow_edges)
                 to_edge = rng.choice(destination_outflow_edges)
 
+                # Avoid trivially same-edge OD pairs.
                 attempts = 0
                 while to_edge == from_edge and attempts < 10:
                     to_edge = rng.choice(destination_outflow_edges)
@@ -463,8 +568,9 @@ class SUMOPipeline:
                 backbone_trips.append(trip)
 
             logger.debug(
-                "Generated %d backbone trips shaped by demand_profile",
+                "Generated %d backbone trips (profile=%s)",
                 backbone_vehicle_count,
+                "uniform" if demand_profile is None else "custom",
             )
 
             for trip in backbone_trips:
@@ -711,24 +817,66 @@ class SUMOPipeline:
 
         return detector_based_splits
 
+    # ============================================================================
+    # build_destination_boundary_conditions
+    # ============================================================================
+
     def build_destination_boundary_conditions(
         self,
         backbone_state_path: str,
     ) -> tuple[
         dict[str, Callable[[float], float]], dict[str, Callable[[float], float]]
     ]:
+        """Build time-varying flow and density boundary conditions for all destinations.
 
+        For each destination node the function resolves which upstream MotorwayLink
+        to read from, then builds a linear interpolant over the backbone simulation's
+        time array.
+
+        Resolution rule (Offramp checked BEFORE direct MotorwayLink):
+        1. If the host node has an Offramp in its incoming links, walk back
+            through the offramp to its origin node and take the MotorwayLink
+            feeding *that* node.  This gives the pre-diverge (pre-split) flow.
+        2. If the host node has a direct MotorwayLink in its incoming links
+            (no Offramp), use that link directly.
+
+        Offramp is checked first so that, when a node sits at the end of an
+        off-ramp that branches from a diverge, we read the backbone link *before*
+        the split rather than the (shorter, lower-flow) off-ramp link.
+
+        The last spatial cell of the resolved link is used for both flow and
+        density, since that cell is closest to the downstream boundary.
+
+        Args:
+            backbone_state_path: Path to the backbone_state.json file produced
+                by a prior macroscopic simulation step.
+
+        Returns:
+            (destination_flow_bc, destination_density_bc): two dicts mapping
+            destination IDs to callables ``f(t_hours) -> float``.
+        """
         logger = logging.getLogger(__name__)
 
-        _FALLBACK_FLOW: float = 6000.0
-        _FALLBACK_DENSITY: float = 10.0
+        _FALLBACK_FLOW: float = 6000.0  # veh/h — used when no data is available
+        _FALLBACK_DENSITY: float = 10.0  # veh/km — used when no data is available
 
         if self.consolidated_network is None:
             raise ValueError(
-                "consolidated_network is not initialized. "
-                "Call create_consolidated_network() before build_destination_boundary_conditions()."
+                "consolidated_network is not initialised. "
+                "Call create_consolidated_network() before "
+                "build_destination_boundary_conditions()."
             )
 
+        if self.destination_ids is None:
+            raise ValueError(
+                "destination_ids is None. "
+                "Call create_consolidated_network() before "
+                "build_destination_boundary_conditions()."
+            )
+
+        # ------------------------------------------------------------------
+        # Load backbone state
+        # ------------------------------------------------------------------
         with open(backbone_state_path, "r", encoding="utf-8") as fh:
             backbone_state = json.load(fh)
 
@@ -740,16 +888,45 @@ class SUMOPipeline:
             "state_time_series"
         ]["densities"]
         t_arr = np.array(time_array)
+        n_steps = len(time_array)
 
         logger.debug(
-            "backbone_state loaded: %d time steps, %d flow edges, %d density edges",
-            len(time_array),
+            "backbone_state loaded: %d time steps, %d flow links, %d density links",
+            n_steps,
             len(flows_ts),
             len(densities_ts),
         )
 
+        # Warn if most of the backbone state is zeros — this is the likely root
+        # cause of very low BC values and is worth surfacing loudly.
+        for link_id, rows in flows_ts.items():
+            non_zero_steps = sum(1 for row in rows if row and any(v > 0.0 for v in row))
+            if non_zero_steps < n_steps * 0.1:
+                logger.debug(
+                    "backbone_state WARNING: link '%s' has only %d / %d non-zero "
+                    "time steps — BCs derived from this link will be near-zero "
+                    "for most of the simulation. Check that vehicles remain in "
+                    "the network throughout the simulation, not just at t=0.",
+                    link_id,
+                    non_zero_steps,
+                    n_steps,
+                )
+
         node_by_id = {node.id: node for node in self.consolidated_network}
 
+        # ------------------------------------------------------------------
+        # _last_cell_series
+        #
+        # Extract the value of the *last spatial cell* at every time step for
+        # a given link.  The last cell is the one at the downstream end of the
+        # link, closest to the destination boundary.
+        #
+        # Empty rows (no cells recorded for that time step) are replaced with
+        # 0.0 rather than skipped, so the returned series always has exactly
+        # len(time_array) entries.  Skipping them would produce a shorter
+        # series which _make_interp would silently treat as "no data", falling
+        # back to the constant fallback value.
+        # ------------------------------------------------------------------
         def _last_cell_series(
             link_id: str,
             ts: dict[str, list[list[float]]],
@@ -757,18 +934,45 @@ class SUMOPipeline:
             rows = ts.get(link_id)
             if not rows:
                 return None
-            extracted = [row[-1] for row in rows if row]
-            return extracted if extracted else None
+            # Preserve zeros for empty rows — do NOT use `if row` filter.
+            extracted = [row[-1] if row else 0.0 for row in rows]
+            return extracted
 
+        # ------------------------------------------------------------------
+        # _make_interp
+        #
+        # Build a linear interpolant over time_array.  If the series is
+        # missing or has a length mismatch, fall back to a constant function
+        # and log the reason so callers can detect the issue.
+        # ------------------------------------------------------------------
         def _make_interp(
             series: list[float] | None,
             fallback: float,
+            label: str = "",
         ) -> Callable[[float], float]:
-            if not series or len(series) != len(time_array):
+            if series is None:
+                logger.debug(
+                    "_make_interp [%s]: series is None — using constant fallback %.2f",
+                    label,
+                    fallback,
+                )
+                return lambda _t, _f=fallback: _f
+            if len(series) != n_steps:
+                logger.debug(
+                    "_make_interp [%s]: series length %d != time_array length %d "
+                    "— using constant fallback %.2f",
+                    label,
+                    len(series),
+                    n_steps,
+                    fallback,
+                )
                 return lambda _t, _f=fallback: _f
             v_arr = np.array(series)
             return lambda t, _t=t_arr, _v=v_arr: float(np.interp(t, _t, _v))
 
+        # ------------------------------------------------------------------
+        # Main loop — resolve upstream link for each destination
+        # ------------------------------------------------------------------
         destination_flow_bc: dict[str, Callable[[float], float]] = {}
         destination_density_bc: dict[str, Callable[[float], float]] = {}
 
@@ -785,77 +989,98 @@ class SUMOPipeline:
             upstream_link: MotorwayLink | None = None
             link_source: str = "unknown"
 
+            # ----------------------------------------------------------------
+            # Traversal — Offramp checked FIRST.
+            #
+            # Rationale: a destination that sits at the end of an off-ramp must
+            # read from the pre-diverge backbone link (the MotorwayLink that
+            # feeds the diverge node where the off-ramp branches off).  If we
+            # checked MotorwayLink first, we might accidentally pick up a short
+            # post-diverge highway segment that also terminates at the same node,
+            # producing a lower (already-split) flow reading.
+            # ----------------------------------------------------------------
+            offramp_incoming: Offramp | None = None
+            motorway_incoming: MotorwayLink | None = None
+
             for incoming in host_node.incoming:
-                if isinstance(incoming, MotorwayLink):
-                    upstream_link = incoming
-                    link_source = "backbone (direct)"
-                    logger.debug(
-                        "dest '%s' → direct MotorwayLink '%s'",
-                        dest_id,
-                        incoming.id,
+                if isinstance(incoming, Offramp) and offramp_incoming is None:
+                    offramp_incoming = incoming
+                elif isinstance(incoming, MotorwayLink) and motorway_incoming is None:
+                    motorway_incoming = incoming
+
+            if offramp_incoming is not None:
+                # Case 1: destination is at the end of an off-ramp.
+                # Walk back to the MotorwayLink that feeds the diverge node.
+                logger.debug(
+                    "dest '%s' → Offramp '%s', walking upstream to backbone diverge node",
+                    dest_id,
+                    offramp_incoming.id,
+                )
+                offramp_origin = node_by_id.get(offramp_incoming.origin_node_id)
+                if offramp_origin is None:
+                    raise ValueError(
+                        f"[build_destination_bc] Offramp '{offramp_incoming.id}' origin node "
+                        f"'{offramp_incoming.origin_node_id}' not found in consolidated network "
+                        f"(destination '{dest_id}')."
                     )
-                    break
 
-                if isinstance(incoming, Offramp):
-                    logger.debug(
-                        "dest '%s' → Offramp '%s', walking upstream to backbone",
-                        dest_id,
-                        incoming.id,
+                for upstream in offramp_origin.incoming:
+                    if isinstance(upstream, MotorwayLink):
+                        upstream_link = upstream
+                        link_source = f"backbone (via offramp '{offramp_incoming.id}')"
+                        logger.debug(
+                            "dest '%s' → Offramp '%s' → MotorwayLink '%s' (pre-diverge)",
+                            dest_id,
+                            offramp_incoming.id,
+                            upstream.id,
+                        )
+                        break
+
+                if upstream_link is None:
+                    raise ValueError(
+                        f"[build_destination_bc] No upstream MotorwayLink found behind "
+                        f"offramp '{offramp_incoming.id}' at diverge node "
+                        f"'{offramp_incoming.origin_node_id}' (destination '{dest_id}')."
                     )
-                    offramp_origin = node_by_id.get(incoming.origin_node_id)
-                    if offramp_origin is None:
-                        raise ValueError(
-                            f"[build_destination_bc] Offramp '{incoming.id}' origin node "
-                            f"'{incoming.origin_node_id}' not found in consolidated network "
-                            f"(destination '{dest_id}')."
-                        )
 
-                    for upstream in offramp_origin.incoming:
-                        if isinstance(upstream, MotorwayLink):
-                            upstream_link = upstream
-                            link_source = f"backbone (via offramp '{incoming.id}')"
-                            logger.debug(
-                                "dest '%s' → Offramp '%s' → MotorwayLink '%s'",
-                                dest_id,
-                                incoming.id,
-                                upstream.id,
-                            )
-                            break
-
-                    if upstream_link is None:
-                        raise ValueError(
-                            f"[build_destination_bc] No upstream MotorwayLink found behind "
-                            f"offramp '{incoming.id}' (destination '{dest_id}')."
-                        )
-                    break
-
-            if upstream_link is None:
-                raise ValueError(
-                    f"[build_destination_bc] Could not resolve upstream MotorwayLink for "
-                    f"destination '{dest_id}'."
+            elif motorway_incoming is not None:
+                # Case 2: destination is directly at the end of a MotorwayLink
+                # (no off-ramp involved).
+                upstream_link = motorway_incoming
+                link_source = "backbone (direct)"
+                logger.debug(
+                    "dest '%s' → direct MotorwayLink '%s'",
+                    dest_id,
+                    motorway_incoming.id,
                 )
 
+            else:
+                raise ValueError(
+                    f"[build_destination_bc] Could not resolve upstream MotorwayLink for "
+                    f"destination '{dest_id}': host node '{host_node_id}' has neither an "
+                    f"Offramp nor a MotorwayLink in its incoming links."
+                )
+
+            # ----------------------------------------------------------------
+            # Extract time series and build interpolants
+            # ----------------------------------------------------------------
             flow_series = _last_cell_series(upstream_link.id, flows_ts)
             density_series = _last_cell_series(upstream_link.id, densities_ts)
 
             if flow_series is None:
-                import warnings
-
                 warnings.warn(
                     f"[build_destination_bc] Link '{upstream_link.id}' ({link_source}) "
                     f"has no detector coverage in backbone state for destination '{dest_id}'. "
                     f"Flow BC will use fallback constant {_FALLBACK_FLOW} veh/h."
                 )
             if density_series is None:
-                import warnings
-
                 warnings.warn(
                     f"[build_destination_bc] Link '{upstream_link.id}' ({link_source}) "
                     f"has no detector coverage in backbone state for destination '{dest_id}'. "
                     f"Density BC will use fallback constant {_FALLBACK_DENSITY} veh/km."
                 )
 
-            if flow_series:
+            if flow_series is not None:
                 non_zero = sum(1 for v in flow_series if v > 0)
                 logger.debug(
                     "dest '%s' link '%s' flow series: %d steps, %d non-zero, "
@@ -868,11 +1093,11 @@ class SUMOPipeline:
                     max(flow_series),
                     sum(flow_series) / len(flow_series),
                 )
-            if density_series:
+            if density_series is not None:
                 non_zero = sum(1 for v in density_series if v > 0)
                 logger.debug(
                     "dest '%s' link '%s' density series: %d steps, %d non-zero, "
-                    "min=%.4f max=%.4f mean=%.4f veh/km/lane",
+                    "min=%.4f max=%.4f mean=%.4f veh/km",
                     dest_id,
                     upstream_link.id,
                     len(density_series),
@@ -882,10 +1107,26 @@ class SUMOPipeline:
                     sum(density_series) / len(density_series),
                 )
 
-            destination_flow_bc[dest_id] = _make_interp(flow_series, _FALLBACK_FLOW)
-            destination_density_bc[dest_id] = _make_interp(
-                density_series, _FALLBACK_DENSITY
+            flow_label = f"{dest_id}/flow/{upstream_link.id}"
+            density_label = f"{dest_id}/density/{upstream_link.id}"
+
+            destination_flow_bc[dest_id] = _make_interp(
+                flow_series, _FALLBACK_FLOW, label=flow_label
             )
+            destination_density_bc[dest_id] = _make_interp(
+                density_series, _FALLBACK_DENSITY, label=density_label
+            )
+
+            # Spot-check the interpolant at 5 evenly spaced times so that
+            # near-zero BCs are immediately visible in the debug log.
+            if t_arr.size > 0:
+                sample_times = np.linspace(t_arr[0], t_arr[-1], 5)
+                logger.debug(
+                    "dest '%s' BC spot-check — flow (veh/h): %s | density (veh/km): %s",
+                    dest_id,
+                    [f"{destination_flow_bc[dest_id](t):.1f}" for t in sample_times],
+                    [f"{destination_density_bc[dest_id](t):.3f}" for t in sample_times],
+                )
 
             print(
                 f"  [dest BC] '{dest_id}' ← link '{upstream_link.id}' ({link_source})"
