@@ -326,7 +326,7 @@ git push origin v1.0.0                                  # push the new tag to Gi
 
 ## License
 
-This project is licensed under the GNU Affero General Public License version 3 (AGPL-3.0). See the `LICENSE` file in the repository for the full license text.
+This project is licensed under an MIT License. See the `LICENSE` file in the repository for the full license text.
 
 ## References
 
