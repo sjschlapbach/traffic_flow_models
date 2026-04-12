@@ -329,6 +329,7 @@ class TestVisualization:
         dest_off = Destination(id="d_off")
         onramp = Onramp(
             id="on1",
+            length=0.5,
             lanes=1,
             lane_capacity=1500.0,
             free_flow_speed=80.0,

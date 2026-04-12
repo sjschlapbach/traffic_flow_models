@@ -11,7 +11,7 @@ from traffic_flow_models import (
     CustomController,
 )
 import casadi
-from typing import Any
+from typing import Any, Callable
 
 
 def demand(time: float, t1: float, t2: float, end: float, max: float) -> float:
@@ -49,11 +49,10 @@ def onramp_demand_c(time: float) -> float:
     return demand(time, 900 / 3600, 2700 / 3600, 3600 / 3600, 1500)
 
 
-def setup_network_ab() -> tuple[Network, dict]:
-    """Create a simple linear `Network` with an onramp attached to the middle link.
+def _build_ab_base() -> tuple[Network, dict]:
+    """Build the base network for scenarios A and B (single onramp).
 
-    Returns `(network, metadata)` where `metadata` contains the ids of
-    origins, onramps and destinations and a `splits` mapping for nodes.
+    Returns `(network, metadata)` where `metadata` contains ids and splits.
     """
 
     # three motorway segments approximating the original 6 cells (0.5 km each)
@@ -80,6 +79,7 @@ def setup_network_ab() -> tuple[Network, dict]:
     destination = Destination(id="destination")
     onr = Onramp(
         id="onramp",
+        length=0.5,
         lanes=1,
         lane_capacity=2000,
         free_flow_speed=100,
@@ -121,7 +121,23 @@ def setup_network_ab() -> tuple[Network, dict]:
     return net, metadata
 
 
-def setup_network_c() -> tuple[Network, dict]:
+def setup_network_a() -> tuple[Network, dict, dict]:
+    """Scenario A: base network with demand profile A."""
+
+    net, metadata = _build_ab_base()
+    origin_demands = {"origin": mainline_demand_a, "origin_onr": onramp_demand_a}
+    return net, metadata, origin_demands
+
+
+def setup_network_b() -> tuple[Network, dict, dict]:
+    """Scenario B: base network with demand profile B."""
+
+    net, metadata = _build_ab_base()
+    origin_demands = {"origin": mainline_demand_b, "origin_onr": onramp_demand_b}
+    return net, metadata, origin_demands
+
+
+def setup_network_c() -> tuple[Network, dict, dict]:
     """
     Create a simple network with a single onramp in the middle and a
     bottleneck with lane drop downstream.
@@ -171,6 +187,7 @@ def setup_network_c() -> tuple[Network, dict]:
     destination = Destination(id="destination")
     onr = Onramp(
         id="onramp",
+        length=0.5,
         lanes=1,
         lane_capacity=2000,
         free_flow_speed=100,
@@ -217,10 +234,11 @@ def setup_network_c() -> tuple[Network, dict]:
         "splits": splits,
     }
 
-    return net, metadata
+    origin_demands = {origin.id: mainline_demand_c, origin_onr.id: onramp_demand_c}
+    return net, metadata, origin_demands
 
 
-def setup_network_c1() -> tuple[Network, dict]:
+def setup_network_c1() -> tuple[Network, dict, dict]:
     """
     Create a variant of scenario C with a fixed-rate ramp metering controller.
 
@@ -229,7 +247,7 @@ def setup_network_c1() -> tuple[Network, dict]:
     on the mainline.
     """
 
-    net, metadata = setup_network_c()
+    net, metadata, origin_demands = setup_network_c()
 
     # find the relevant node in the network
     onramp_node = net.get_node("nonr")
@@ -242,12 +260,12 @@ def setup_network_c1() -> tuple[Network, dict]:
         raise TypeError("Expected 'nonr' node to have an Onramp as outgoing link.")
 
     # attach a fixed-rate flow controller to the onramp
-    onramp.controller = FlowController(onramp_id=onramp.id, flow=900)
+    onramp.controller = FlowController(onramp, flow=900)
 
-    return net, metadata
+    return net, metadata, origin_demands
 
 
-def setup_network_c2() -> tuple[Network, dict]:
+def setup_network_c2() -> tuple[Network, dict, dict]:
     """
     Create a variant of scenario C with an ALINEA ramp metering controller.
 
@@ -259,7 +277,7 @@ def setup_network_c2() -> tuple[Network, dict]:
     The feedback gain is set to a value of 5.0 to avoid oscillations.
     """
 
-    net, metadata = setup_network_c()
+    net, metadata, origin_demands = setup_network_c()
 
     # find the relevant node in the network
     onramp_node = net.get_node("nonr")
@@ -273,17 +291,17 @@ def setup_network_c2() -> tuple[Network, dict]:
 
     # attach an ALINEA flow controller to the onramp
     onramp.controller = AlineaController(
-        onramp_id=onramp.id,
+        onramp,
         measurement_link_id="m2",
         measurement_cell_idx=0,
         gain=5.0,
         density_setpoint=30.0,
     )
 
-    return net, metadata
+    return net, metadata, origin_demands
 
 
-def setup_network_c3() -> tuple[Network, dict]:
+def setup_network_c3() -> tuple[Network, dict, dict]:
     """
     Variant of scenario C where a custom controller inspects the current downstream
     flow and decides on a metering rate accordingly according to a switching rule
@@ -294,39 +312,7 @@ def setup_network_c3() -> tuple[Network, dict]:
     metering rate (here 600 or 900 vehicles per time unit).
     """
 
-    net, metadata = setup_network_c()
-
-    # find the relevant node in the network
-    onramp_node = net.get_node("nonr")
-    if onramp_node is None:
-        raise ValueError("Onramp node 'nonr' not found in the network.")
-
-    # get the onramp link
-    onramp = onramp_node.outgoing[0]
-    if not isinstance(onramp, Onramp):
-        raise TypeError("Expected 'nonr' node to have an Onramp as outgoing link.")
-
-    # custom metering logic: decide based on downstream motorway flow (m2)
-    def metering_fn(flows: dict[str, casadi.SX], _: dict[str, casadi.SX]) -> casadi.SX:
-        downstream_flow = flows["m2"][0]
-
-        # if downstream flow < 2100 veh/h -> allow 900, otherwise 600
-        return casadi.if_else(
-            downstream_flow < casadi.SX(2100.0), casadi.SX(900.0), casadi.SX(600.0)
-        )
-
-    onramp.controller = CustomController(onramp_id=onramp.id, controller_fn=metering_fn)
-    return net, metadata
-
-
-def setup_network_c4() -> tuple[Network, dict]:
-    """
-    Variant of scenario C where the custom controller accepts a third
-    `params` argument. The parameters control the threshold and the
-    high/low metering rates returned by the controller.
-    """
-
-    net, metadata = setup_network_c()
+    net, metadata, origin_demands = setup_network_c()
 
     # find the relevant node in the network
     onramp_node = net.get_node("nonr")
@@ -340,7 +326,46 @@ def setup_network_c4() -> tuple[Network, dict]:
 
     # custom metering logic: decide based on downstream motorway flow (m2)
     def metering_fn(
-        flows: dict[str, casadi.SX], _: dict[str, casadi.SX], params: dict[str, Any]
+        onramp_queues: dict[str, casadi.SX],
+        flows: dict[str, casadi.SX],
+        densities: dict[str, casadi.SX],
+    ) -> casadi.SX:
+        downstream_flow = flows["m2"][0]
+
+        # if downstream flow < 2100 veh/h -> allow 900, otherwise 600
+        return casadi.if_else(
+            downstream_flow < casadi.SX(2100.0), casadi.SX(900.0), casadi.SX(600.0)
+        )
+
+    onramp.controller = CustomController(onramp, controller_fn=metering_fn)
+    return net, metadata, origin_demands
+
+
+def setup_network_c4() -> tuple[Network, dict, dict]:
+    """
+    Variant of scenario C where the custom controller accepts a third
+    `params` argument. The parameters control the threshold and the
+    high/low metering rates returned by the controller.
+    """
+
+    net, metadata, origin_demands = setup_network_c()
+
+    # find the relevant node in the network
+    onramp_node = net.get_node("nonr")
+    if onramp_node is None:
+        raise ValueError("Onramp node 'nonr' not found in the network.")
+
+    # get the onramp link
+    onramp = onramp_node.outgoing[0]
+    if not isinstance(onramp, Onramp):
+        raise TypeError("Expected 'nonr' node to have an Onramp as outgoing link.")
+
+    # custom metering logic: decide based on downstream motorway flow (m2)
+    def metering_fn(
+        onramp_queues: dict[str, casadi.SX],
+        flows: dict[str, casadi.SX],
+        densities: dict[str, casadi.SX],
+        params: dict[str, Any],
     ) -> casadi.SX:
         downstream_flow = flows["m2"][0]
         threshold = casadi.SX(params.get("threshold"))
@@ -349,12 +374,12 @@ def setup_network_c4() -> tuple[Network, dict]:
         return casadi.if_else(downstream_flow < threshold, high, low)
 
     onramp.controller = CustomController(
-        onramp_id=onramp.id,
+        onramp,
         controller_fn=metering_fn,
         params={"threshold": 2050.0, "high": 900.0, "low": 600.0},
     )
 
-    return net, metadata
+    return net, metadata, origin_demands
 
 
 def mainline_demand_d(time: float) -> float:
@@ -366,7 +391,7 @@ def onramp_demand_d(time: float) -> float:
     return demand(time, 300 / 3600, 1500 / 3600, 3600 / 3600, 2000)
 
 
-def setup_network_d() -> tuple[Network, dict]:
+def setup_network_d() -> tuple[Network, dict, dict]:
     """Create a network with a mid-network onramp and a downstream offramp.
 
     The layout is designed so the onramp merges upstream of an offramp
@@ -408,6 +433,7 @@ def setup_network_d() -> tuple[Network, dict]:
     destination_offr = Destination(id="destination_offr")
     onr = Onramp(
         id="onramp",
+        length=0.5,
         lanes=1,
         lane_capacity=2000,
         free_flow_speed=100,
@@ -462,4 +488,5 @@ def setup_network_d() -> tuple[Network, dict]:
         "splits": splits,
     }
 
-    return net, metadata
+    origin_demands = {origin.id: mainline_demand_d, origin_onr.id: onramp_demand_d}
+    return net, metadata, origin_demands

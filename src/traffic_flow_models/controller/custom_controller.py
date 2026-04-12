@@ -1,6 +1,9 @@
 import casadi
 import inspect
-from typing import Callable, Any
+from typing import Callable, Any, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from traffic_flow_models.network.onramp import Onramp
 
 
 class CustomController:
@@ -15,34 +18,38 @@ class CustomController:
 
     def __init__(
         self,
-        onramp_id: str,
+        onramp: "Onramp",
         controller_fn: Callable[..., casadi.SX],
         params: dict[str, Any] | None = None,
     ) -> None:
         if not callable(controller_fn):
             raise TypeError("controller_fn must be callable")
 
-        self.onramp_id: str = onramp_id
+        self.onramp = onramp
         self.controller_fn = controller_fn
 
         # store a mutable params dict for use by the controller function
         self.params: dict = dict(params) if params is not None else {}
 
     def compute_regulated_flow(
-        self, flows: dict[str, casadi.SX], densities: dict[str, casadi.SX]
+        self,
+        onramp_queues: dict[str, casadi.SX],
+        flows: dict[str, casadi.SX],
+        densities: dict[str, casadi.SX],
     ) -> casadi.SX:
         """Call the user-supplied function to compute the metering rate.
 
         Args:
-            flows: Mapping link id -> CasADi SX vector for flows
-            densities: Mapping link id -> CasADi SX vector for densities
+            onramp_queues: Dictionary mapping on-ramp IDs to their current queue values (Casadi SX).
+            flows: Dictionary mapping link IDs to their current flow values (Casadi SX).
+            densities: Dictionary mapping link IDs to their current density values (Casadi SX).
 
         Returns:
             CasADi SX expression representing the metering rate.
         """
         # Inspect the callable signature to decide how to pass params.
-        # - If the function accepts a third positional argument (or *args),
-        #   pass params as the third positional argument.
+        # - If the function accepts a fourth positional argument (or *args),
+        #   pass params as the fourth positional argument.
         # - If the function accepts **kwargs or defines a parameter named
         #   'params' (including keyword-only), pass params as a keyword arg.
         try:
@@ -68,14 +75,16 @@ class CustomController:
             has_var_pos = has_var_kw = has_named_params = False
             positional = []
 
-        if has_var_pos or len(positional) >= 3:
-            # accepts a third positional argument
-            result = self.controller_fn(flows, densities, self.params)
+        if has_var_pos or len(positional) >= 4:
+            # accepts a fourth positional argument
+            result = self.controller_fn(onramp_queues, flows, densities, self.params)
         elif has_var_kw or has_named_params:
             # accepts params via keyword
-            result = self.controller_fn(flows, densities, params=self.params)
+            result = self.controller_fn(
+                onramp_queues, flows, densities, params=self.params
+            )
         else:
-            result = self.controller_fn(flows, densities)
+            result = self.controller_fn(onramp_queues, flows, densities)
 
         # if the result is a CasADi object, return it directly
         if isinstance(result, casadi.SX):

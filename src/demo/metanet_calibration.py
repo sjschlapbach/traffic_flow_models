@@ -38,7 +38,7 @@ from demo.scenarios import (
     mainline_demand_c,
     onramp_demand_a,
     onramp_demand_c,
-    setup_network_ab,
+    setup_network_a,
     setup_network_c,
 )
 
@@ -980,7 +980,7 @@ def main():
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
     # ! Scenario A
-    network_a, metadata_a = setup_network_ab()
+    network_a, metadata_a, _ = setup_network_a()
     run_calibration_experiment(
         scenario_name="Scenario A",
         network=network_a,
@@ -998,7 +998,7 @@ def main():
     )
 
     # ! Scenario C (with lane drop/bottleneck)
-    network_c, metadata_c = setup_network_c()
+    network_c, metadata_c, _ = setup_network_c()
     run_calibration_experiment(
         scenario_name="Scenario C",
         network=network_c,

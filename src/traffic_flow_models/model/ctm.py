@@ -714,7 +714,9 @@ class CTM:
                     # metering (i.e. the controller output) and include it in the minimum
                     if inc.controller is not None:
                         r_k = inc.controller.compute_regulated_flow(
-                            flows=flows, densities=densities
+                            onramp_queues=onramp_queues,
+                            flows=flows,
+                            densities=densities,
                         )
                     else:
                         r_k = casadi.SX(casadi.inf)

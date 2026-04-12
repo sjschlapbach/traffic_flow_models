@@ -37,6 +37,7 @@ def build_and_plot_network():
     destination_off = Destination(id=None)
 
     onr = Onramp(
+        length=0.5,
         lanes=1,
         lane_capacity=2000,
         free_flow_speed=100,
