@@ -5,6 +5,7 @@ from traffic_flow_models.controller import (
     FlowController,
     AlineaController,
     CustomController,
+    HeroController,
 )
 
 
@@ -29,7 +30,8 @@ class Onramp:
         jam_density: float,
         id: str | None = None,
         controller: (
-            Union[FlowController, AlineaController, CustomController] | None
+            Union[FlowController, AlineaController, CustomController, HeroController]
+            | None
         ) = None,
         origin_node_id: str | None = None,
         destination_node_id: str | None = None,
@@ -82,6 +84,9 @@ class Onramp:
         # neighbor onramps for coordinated ramp metering (populated by Network helper)
         self.upstream_onramps: list[Onramp] = []
         self.downstream_onramps: list[Onramp] = []
+
+        # maximum queue length based on jam density
+        self.max_queue_length: float = self.rho_jam * self.length * self.lanes
 
         self.origin_node_id: str | None = origin_node_id
         self.destination_node_id: str | None = destination_node_id

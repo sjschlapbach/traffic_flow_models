@@ -93,21 +93,17 @@ class TestOnramp:
 
         net = Network(nodes=[node1, node2, node3])
 
-        up_list, down_list = net.set_onramp_relations(
-            target, max_upstream=10, max_downstream=10
-        )
+        up_list, down_list = net.set_onramp_relations(target, max_range_onramps=10)
 
         # uniqueness and no overlap
         up_ids = [o.id for o in up_list]
         down_ids = [o.id for o in down_list]
 
+        # Each list should contain unique entries internally; overlap between
+        # upstream and downstream is allowed (no uniqueness enforced).
         assert len(up_ids) == len(set(up_ids))
-        assert len(up_ids) == 2  # upstream onramps have priority
+        assert len(up_ids) == 2
         assert len(down_ids) == len(set(down_ids))
-        assert (
-            len(down_ids) == 0
-        )  # downstream onramps should be empty due to circular structure and upstream priority
-        assert set(up_ids).isdisjoint(set(down_ids))
 
         # expected discovery: each onramp should be discovered either as
         # upstream or downstream (in cyclical networks the classification
@@ -116,13 +112,9 @@ class TestOnramp:
         assert {up.id, down.id}.issubset(union_ids)
 
         # recompute relations with max_upstream=1, max_downstream=1 to check limits are respected
-        up_list, down_list = net.set_onramp_relations(
-            target, max_upstream=1, max_downstream=1
-        )
+        up_list, down_list = net.set_onramp_relations(target, max_range_onramps=1)
         assert len(up_list) == 1
-        assert (
-            len(down_list) == 1
-        )  # only onramp one step up was considered as upstream onramp -> other is available as downstream
+        assert len(down_list) == 1
         up_ids = [o.id for o in up_list]
         down_ids = [o.id for o in down_list]
         assert len(up_ids) == len(set(up_ids))
@@ -175,11 +167,10 @@ class TestOnramp:
         target_idx = N_ONRAMPS // 2
         target = onramps[target_idx]
 
-        up, down = net.set_onramp_relations(target, max_upstream=5, max_downstream=5)
+        up, down = net.set_onramp_relations(target, max_range_onramps=5)
 
         assert len(up) == 5
         assert len(down) == 5
         # uniqueness and disjointness
         assert len({o.id for o in up}) == len(up)
         assert len({o.id for o in down}) == len(down)
-        assert set(o.id for o in up).isdisjoint({o.id for o in down})

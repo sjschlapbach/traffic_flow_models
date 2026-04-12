@@ -40,11 +40,13 @@ class AlineaController:
         self.gain: float = gain
         self.density_setpoint: float = density_setpoint
 
+    # TODO: ALSO IMPLEMENT OVERRIDE CASE AT 0.9 * max queue length or something like this to prevent spillback if possible
     def compute_regulated_flow(
         self,
         onramp_queues: dict[str, casadi.SX],
         flows: dict[str, casadi.SX],
         densities: dict[str, casadi.SX],
+        dt: float,
     ) -> casadi.SX:
         """Compute the regulated onramp flow using the ALINEA feedback law.
 
@@ -52,6 +54,7 @@ class AlineaController:
             onramp_queues: Dictionary mapping on-ramp IDs to their current queue values (Casadi SX).
             flows: Dictionary mapping link IDs to their current flow values (Casadi SX).
             densities: Dictionary mapping link IDs to their current density values (Casadi SX).
+            dt: Simulation time step size (placeholder for other controllers).
 
         Returns:
             The regulated onramp flow (vehicles per time unit).
