@@ -291,7 +291,8 @@ def setup_network_c2() -> tuple[Network, dict, dict]:
 
     # attach an ALINEA flow controller to the onramp
     onramp.controller = AlineaController(
-        onramp,
+        network=net,
+        onramp=onramp,
         measurement_link_id="m2",
         measurement_cell_idx=0,
         gain=5.0,
