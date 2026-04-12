@@ -1788,80 +1788,23 @@ class Simulation:
             for offramp_id, val in offramp_queues_t.items():
                 offramp_queues_over_time[offramp_id][t] = float(val)
 
-        # extract relevant disturbance time series (turning rates)
-        origin_demands_over_time: dict[str, np.ndarray] = {}
-
-        # prepare node outflow containers (one entry per outgoing link)
-        node_outflows_over_time: dict[str, dict[str, np.ndarray]] = {}
-        for node in self.network.list_nodes():
-            node_outflows_over_time[node.id] = {}
-            for out in node.outgoing:
-                node_outflows_over_time[node.id][out.id] = np.zeros(num_timesteps)
-
-        if disturbance_history.size == 0:
-            raise ValueError(
-                "Disturbance history is empty. Cannot reconstruct turning rates and origin demands for plotting."
-            )
-
+        # extract demands for origins from disturbance_history
+        origin_demands_over_time = {}
         for t in range(num_timesteps - 1):
-            origin_demands_t, turning_rates_t, _, _ = (
-                self.network.disturbance_vec_to_network_dict(disturbance_history[:, t])
+            origin_demands_t, _, _, _ = self.network.disturbance_vec_to_network_dict(
+                disturbance_history[:, t]
             )
 
-            # initialize origin array on first disturbance timestep
             if t == 0:
                 for origin_id in origin_demands_t.keys():
                     origin_demands_over_time[origin_id] = np.zeros(num_timesteps - 1)
 
-            # store origin demand values
             for origin_id, val in origin_demands_t.items():
                 origin_demands_over_time[origin_id][t] = float(val)
 
-            # compute node-level outflows by multiplying total upstream flow by turning rates
-            for node in self.network.list_nodes():
-                # compute total available upstream flow Qn at time t (sum of upstream link outflows)
-                Qn = 0.0
-                for inc in node.incoming:
-                    inc_id = inc.id
-                    flow_arr = flows_over_time.get(inc_id, np.zeros((1, num_timesteps)))
-                    if isinstance(inc, MotorwayLink):
-                        Qn += float(flow_arr[-1, t])
-                    else:
-                        Qn += float(flow_arr[0, t])
-
-                # get turning rates for this node at time t
-                node_rates = turning_rates_t.get(node.id, None)
-
-                # If turning rates are present and non-zero, distribute Qn by the rates.
-                # Otherwise fall back to the actual link inflows recorded in `flows_over_time`
-                if node_rates is not None:
-                    # normalize provided rates and distribute
-                    for out in node.outgoing:
-                        rate = float(node_rates.get(out.id, 0.0))
-                        node_outflows_over_time[node.id][out.id][t] = Qn * (
-                            rate / sum(float(v) for v in node_rates.values())
-                        )
-                else:
-                    warnings.warn(
-                        f"Turning rates for node '{node.id}' at time {t} not found. Falling back to recorded link inflows for outflow estimation.",
-                        stacklevel=2,
-                    )
-
-                    # fallback: use recorded link inflow (first cell for outgoing links)
-                    for out in node.outgoing:
-                        node_outflows_over_time[node.id][out.id][t] = float(
-                            flows_over_time[out.id][0, t]
-                        )
-
-        # copy last disturbance values forward to the final state timestep
-        for _, outs in node_outflows_over_time.items():
-            for _, arr in outs.items():
-                if num_timesteps > 1:
-                    arr[-1] = arr[-2]
-
-        # extract demands for onramps as equal to the origins they are fed by
+        # extract demands for onramps as the equal of the origins they are fed by
         # delayed by one timestep due to the store-and-forward nature of the origin
-        onramp_demands_over_time: dict[str, np.ndarray] = {}
+        onramp_demands_over_time = {}
         for node in self.network.list_nodes():
             for link in node.outgoing:
                 if isinstance(link, Onramp):
@@ -1873,6 +1816,7 @@ class Simulation:
                             f"Onramp {link.id} must be fed by exactly one origin. Found: {[type(lk).__name__ for lk in node.incoming]}"
                         )
 
+                    # iterate over the timesteps and set onramp demand equal to the flow of the origin link
                     origin_id = node.incoming[0].id
                     onramp_demands_over_time[link.id] = np.zeros(num_timesteps - 1)
                     for t in range(1, num_timesteps - 1):
@@ -1885,10 +1829,6 @@ class Simulation:
         for node in self.network.list_nodes():
             for link in node.outgoing:
                 if isinstance(link, MotorwayLink):
-                    link_inflow = None
-                    if node_outflows_over_time and node.id in node_outflows_over_time:
-                        link_inflow = node_outflows_over_time[node.id].get(link.id)
-
                     self._plot_motorway_link_results(
                         link=link,
                         time_seconds=time_seconds,
@@ -1896,7 +1836,6 @@ class Simulation:
                         flows=flows_over_time[link.id],
                         speeds=speeds_over_time[link.id],
                         save_dir=save_dir,
-                        link_inflow=link_inflow,
                     )
 
         # ===== PART 2: Per-Node Inflow Plots (Origins) =====
@@ -1958,7 +1897,6 @@ class Simulation:
                 node=node,
                 time_seconds=time_seconds,
                 flows_over_time=flows_over_time,
-                node_outflows_over_time=node_outflows_over_time,
                 save_dir=save_dir,
             )
 
@@ -1972,7 +1910,6 @@ class Simulation:
         flows: NDArray[np.float64],
         speeds: NDArray[np.float64],
         save_dir: str,
-        link_inflow: NDArray[np.float64] | None = None,
     ) -> None:
         """Create density, flow, and speed plots for a motorway link.
 
@@ -1986,11 +1923,8 @@ class Simulation:
         """
         num_cells = len(link)
         ncols = 3
-
-        # include one extra subplot slot for the link inflow so it sits inline
-        n_cells_needed = num_cells + 1
-        nrows = math.ceil(n_cells_needed / ncols)
-        actual_duration = float(time_seconds[-1])
+        nrows = math.ceil(num_cells / ncols)
+        actual_duration = time_seconds[-1]
 
         # calculate max values for y-axis scaling
         max_density = max(np.max(densities) * 1.1, link.rho_jam * 1.1)
@@ -2032,71 +1966,35 @@ class Simulation:
         )
         plt.close(fig1)
 
-        # figure 2: Flow (with an additional inflow subplot shown inline)
-        # create a gridspec large enough to hold the inflow plus all cell plots
-        fig2 = plt.figure(figsize=(4 * ncols, 3 * nrows))
+        # figure 2: Flow
+        fig2, axes2 = plt.subplots(nrows, ncols, figsize=(4 * ncols, 3 * nrows))
         fig2.suptitle(f"Vehicle Flow - Link {link.id}", fontsize=14, fontweight="bold")
-        gs = fig2.add_gridspec(nrows, ncols)
 
-        # first cell: inflow axis (inline with the cell subplots)
-        ax_inflow = fig2.add_subplot(gs[0, 0])
-        if link_inflow is not None and link_inflow.size > 0:
-            ax_inflow.plot(
-                time_seconds[:-1],
-                link_inflow[:-1],
-                color="tab:orange",
-                linewidth=2,
-                label="Link inflow (node outflow)",
-            )
-
-            # draw capacity of first cell on inflow subplot
-            ax_inflow.axhline(link.Qc, color="red", linestyle="--", linewidth=1)
-            ax_inflow.set_xlim(0, actual_duration)
-            ax_inflow.set_xlabel("time (s)")
-            ax_inflow.set_ylabel("flow (veh/h)")
-            ax_inflow.grid(True)
-            ax_inflow.set_title("Link inflow (node outflow)")
-            ax_inflow.legend(fontsize="small", frameon=False)
+        # properly handle axes array structure
+        if nrows == 1 and ncols == 1:
+            axes2 = [axes2]
+        elif nrows == 1 or ncols == 1:
+            axes2 = axes2.flatten()
         else:
-            ax_inflow.set_visible(False)
-
-        # remaining grid positions are used for per-cell flow axes (skip [0,0])
-        axes2 = []
-        positions = [
-            (r, c)
-            for r in range(nrows)
-            for c in range(ncols)
-            if not (r == 0 and c == 0)
-        ]
-        for r, c in positions:
-            # make all cell axes share y-axis with the inflow axis so they align automatically
-            axes2.append(fig2.add_subplot(gs[r, c], sharey=ax_inflow))
+            axes2 = axes2.flatten()
 
         for i, _ in link.enumerate_cells():
-            ax = axes2[i]
-            ax.plot(
+            axes2[i].plot(
                 time_seconds[:-1], flows[i, :-1], linewidth=1.5, label="Cell outflow"
             )
-            ax.axhline(link.Qc, color="red", linestyle="--", linewidth=1)
-
-            # rely on shared y-axis and autoscale to align y-limits across subplots
-            ax.set_xlim([0, actual_duration])
-            ax.set_xlabel("time (s)")
-            ax.set_ylabel("flow (veh/h)")
-            ax.grid(True)
-            ax.set_title(f"Cell {i + 1}")
+            axes2[i].axhline(link.Qc, color="red", linestyle="--", linewidth=1)
+            axes2[i].set_ylim([0, max(link.Qc * 1.1, max_flow)])
+            axes2[i].set_xlim([0, actual_duration])
+            axes2[i].set_xlabel("time (s)")
+            axes2[i].set_ylabel("flow (veh/h)")
+            axes2[i].grid(True)
+            axes2[i].set_title(f"Cell {i + 1}")
 
         for ax in axes2[num_cells:]:
             ax.set_visible(False)
 
-        # trigger autoscale across shared y-axes so all subplots use the same y-range
-        axes_for_autoscale = [ax_inflow] + [axes2[i] for i, _ in link.enumerate_cells()]
-        for a in axes_for_autoscale:
-            a.relim()
-            a.autoscale_view(scalex=False, scaley=True)
-
         plt.tight_layout()
-        fig2.savefig(
+        plt.savefig(
             os.path.join(save_dir, f"{link.id}_flow.png"), dpi=200, bbox_inches="tight"
         )
         plt.close(fig2)
@@ -2399,8 +2297,7 @@ class Simulation:
         node: Node,
         time_seconds: NDArray[np.float64],
         flows_over_time: dict,
-        node_outflows_over_time: dict,
-        save_dir: str = "results",
+        save_dir: str,
     ) -> None:
         """Create a summary plot showing all inflows and outflows at a node."""
         # collect all incoming and outgoing links
@@ -2415,10 +2312,9 @@ class Simulation:
         fig.suptitle(f"Node {node.id} - Flow Summary", fontsize=14, fontweight="bold")
         actual_duration = time_seconds[-1]
 
-        # plot incoming flows and compute total incoming (accumulate to avoid extra copies)
-        incoming_total = np.zeros(len(time_seconds) - 1)
-        max_inflow = 0
+        # plot incoming flows
         if incoming_links:
+            max_inflow = 0
             for link in incoming_links:
                 link_id = link.id
                 flow = flows_over_time.get(link_id, np.zeros((1, len(time_seconds))))
@@ -2431,34 +2327,22 @@ class Simulation:
                 else:
                     flow_to_plot = flow[:-1]
 
-                flow_arr = np.asarray(flow_to_plot)
-                incoming_total += flow_arr
-
                 axes[0].plot(
                     time_seconds[:-1],
-                    flow_arr,
-                    linewidth=1.0,
+                    flow_to_plot,
+                    linewidth=1.5,
                     label=f"{type(link).__name__} {link_id}",
                 )
                 max_inflow = max(
-                    max_inflow, np.max(flow_arr) if flow_arr.size > 0 else 0
+                    max_inflow, np.max(flow_to_plot) if len(flow_to_plot) > 0 else 0
                 )
 
             axes[0].grid(True)
             axes[0].set_xlim([0, actual_duration])
+            axes[0].set_ylim([0, max_inflow * 1.1 if max_inflow > 0 else 2500])
             axes[0].set_xlabel("time (s)")
             axes[0].set_ylabel("flow (veh/h)")
             axes[0].set_title("Incoming Flows (last segment of incoming links)")
-
-            # total incoming line
-            axes[0].plot(
-                time_seconds[:-1],
-                incoming_total,
-                color="k",
-                linewidth=2.2,
-                linestyle=(0, (5, 2)),
-                label="Total incoming",
-            )
             axes[0].legend(fontsize="small", frameon=False)
         else:
             axes[0].text(
@@ -2471,43 +2355,37 @@ class Simulation:
             )
             axes[0].set_axis_off()
 
-        # plot outgoing flows (use node-level outflows when available) and compute total outgoing
-        outgoing_total = np.zeros(len(time_seconds) - 1)
-        max_outflow = 0
+        # plot outgoing flows
         if outgoing_links:
+            max_outflow = 0
             for link in outgoing_links:
-                flow_to_plot = node_outflows_over_time[node.id][link.id][:-1]
-                label_suffix = "node outflow"
+                link_id = link.id
+                flow = flows_over_time.get(link_id, np.zeros((1, len(time_seconds))))
 
-                flow_arr = np.asarray(flow_to_plot)
-                outgoing_total += flow_arr
+                # for motorway links, take the flow from the first cell (inflow to the link)
+                if isinstance(link, MotorwayLink):
+                    flow_to_plot = flow[0, :-1]
+                elif len(flow.shape) > 1:
+                    flow_to_plot = flow[0, :-1]
+                else:
+                    flow_to_plot = flow[:-1]
 
                 axes[1].plot(
                     time_seconds[:-1],
-                    flow_arr,
-                    linewidth=1.0,
-                    label=f"{type(link).__name__} {link.id} ({label_suffix})",
+                    flow_to_plot,
+                    linewidth=1.5,
+                    label=f"{type(link).__name__} {link_id}",
                 )
                 max_outflow = max(
-                    max_outflow, np.max(flow_arr) if flow_arr.size > 0 else 0
+                    max_outflow, np.max(flow_to_plot) if len(flow_to_plot) > 0 else 0
                 )
 
             axes[1].grid(True)
             axes[1].set_xlim([0, actual_duration])
+            axes[1].set_ylim([0, max_outflow * 1.1 if max_outflow > 0 else 2500])
             axes[1].set_xlabel("time (s)")
             axes[1].set_ylabel("flow (veh/h)")
-            axes[1].set_title("Outgoing Flows (node outflows)")
-
-            # total outgoing line
-            axes[1].plot(
-                time_seconds[:-1],
-                outgoing_total,
-                color="k",
-                linewidth=2.2,
-                linestyle=(0, (5, 2)),
-                label="Total outgoing",
-            )
-
+            axes[1].set_title("Outgoing Flows (first segment of outgoing links)")
             axes[1].legend(fontsize="small", frameon=False)
         else:
             axes[1].text(
@@ -2519,13 +2397,6 @@ class Simulation:
                 transform=axes[1].transAxes,
             )
             axes[1].set_axis_off()
-
-        # ensure both subplots use the same y-axis scale for easy comparison by
-        # sharing autoscaling rather than computing explicit limits
-        axes[0].relim()
-        axes[1].relim()
-        axes[0].autoscale_view(scalex=False, scaley=True)
-        axes[1].autoscale_view(scalex=False, scaley=True)
 
         plt.tight_layout()
         plt.savefig(
