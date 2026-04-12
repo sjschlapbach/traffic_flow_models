@@ -1,21 +1,23 @@
 import os
-import subprocess
 import sys
+import json
 import shutil
-import osmnx as ox
-from functools import wraps
-import logging
 import random
+import logging
+import subprocess
+import osmnx as ox
 import xml.etree.ElementTree as ET
 import matplotlib.pyplot as plt
+from functools import wraps
 from typing import Optional, Tuple, Callable
+
+from traffic_flow_models.network import Network, Origin, Destination
 from traffic_flow_models.arbitrator.loop_detector_generator import LoopDetectorGenerator
 from traffic_flow_models.arbitrator.turning_rate_aggregator import TurningRateAggregator
 from traffic_flow_models.arbitrator.network_arbitrator import (
     NetworkArbitrator,
     RoadParamsConfig,
 )
-from traffic_flow_models.network.network import Network
 
 
 def skip_if_exists(attr_name):
@@ -157,7 +159,7 @@ class SUMOPipeline:
         subprocess.run(cmd, capture_output=True, text=True, check=True)
         print(f"{self.net_file} file generated.")
 
-    # @skip_if_exists('rou_file')
+    @skip_if_exists("rou_file")
     def generate_demand(
         self,
         vehicle_count: int,
@@ -178,10 +180,10 @@ class SUMOPipeline:
             duration_seconds: Simulation duration in seconds.
             backbone_vehicle_count: Number of additional vehicles to place
                 directly on backbone origin inflow edges. Default 0 (disabled).
-            demand_profile: Piecewise-linear list of (time_seconds, fraction)
+            demand_profile: Piecewise-linear list of (time_percentage, fraction)
                 pairs shaping vehicle departures. Fractions between breakpoints
                 must sum to 1.0. None = uniform distribution.
-                Example: [(0, 0.3), (900, 0.5), (1800, 0.2)] for a 30-min sim.
+                Example: [(0.2, 0.3), (0.3, 0.5), (0.5, 0.2)].
             seed: Random seed for backbone trip generation.
 
         Raises:
@@ -205,7 +207,10 @@ class SUMOPipeline:
                 return [i * interval for i in range(count)]
 
             # scale relative times → absolute seconds
-            abs_profile = [(t * duration_seconds, f) for t, f in demand_profile]
+            abs_profile = [
+                (t_percentage * duration_seconds, f)
+                for t_percentage, f in demand_profile
+            ]
 
             times = [t for t, _ in abs_profile]
             fractions = [f for _, f in abs_profile]
@@ -218,6 +223,7 @@ class SUMOPipeline:
             departures: list[float] = []
             for i in range(len(times)):
                 t_start = times[i]
+
                 # Use the next time point, or the end of simulation if this is the last bucket
                 t_end = times[i + 1] if (i + 1) < len(times) else duration_seconds
 
@@ -325,8 +331,6 @@ class SUMOPipeline:
                     "Call create_consolidated_network() before using backbone_vehicle_count > 0."
                 )
 
-            from traffic_flow_models.network import Origin, Destination
-
             rng = random.Random(seed)
 
             # collect backbone origin and destination node IDs
@@ -336,9 +340,19 @@ class SUMOPipeline:
             for node in self.consolidated_network:
                 for link in node.incoming:
                     if isinstance(link, Origin):
+                        if link.destination_node_id is None:
+                            raise ValueError(
+                                f"Backbone origin link {link.id} missing destination_node_id"
+                            )
+
                         backbone_origin_node_ids.add(link.destination_node_id)
                 for link in node.outgoing:
                     if isinstance(link, Destination):
+                        if link.origin_node_id is None:
+                            raise ValueError(
+                                f"Backbone destination link {link.id} missing origin_node_id"
+                            )
+
                         backbone_destination_node_ids.add(link.origin_node_id)
 
             logger.debug(
@@ -357,11 +371,15 @@ class SUMOPipeline:
             for edge in root.findall("edge"):
                 if edge.get("function") == "internal":
                     continue
+
                 edge_id = edge.get("id")
                 edge_type = edge.get("type", "").lower()
                 from_node = edge.get("from")
                 to_node = edge.get("to")
                 is_motorway = "motorway" in edge_type
+
+                if not edge_id:
+                    raise ValueError("Edge without ID found in SUMO network XML.")
 
                 if not is_motorway and to_node in backbone_origin_node_ids:
                     origin_inflow_edges.append(edge_id)
@@ -432,8 +450,6 @@ class SUMOPipeline:
 
     @staticmethod
     def parse_demand_profile(raw: str | None) -> list[tuple[float, float]] | None:
-        import json
-
         if raw is None:
             return None
         try:
