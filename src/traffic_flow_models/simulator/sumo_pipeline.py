@@ -278,7 +278,7 @@ class SUMOPipeline:
             "10",
             "--validate",
             "--remove-loops",
-            "-seed",
+            "--seed",
             str(seed),
         ]
 
@@ -349,6 +349,7 @@ class SUMOPipeline:
                             )
 
                         backbone_origin_node_ids.add(link.destination_node_id)
+
                 for link in node.outgoing:
                     if isinstance(link, Destination):
                         if link.origin_node_id is None:
