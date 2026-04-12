@@ -1,8 +1,12 @@
 import casadi
 import numpy as np
-from typing import Mapping
 
 from traffic_flow_models import (
+    Network,
+    Node,
+    Origin,
+    Destination,
+    MotorwayLink,
     FlowController,
     AlineaController,
     Onramp,
@@ -55,7 +59,7 @@ def test_flowcontroller_attributes_and_compute():
     densities = {"m1": casadi.SX([10.0])}
     onramp_queues = {"r1": casadi.SX([5.0])}
     regulated = c2.compute_regulated_flow(
-        onramp_queues=onramp_queues, flows=flows, densities=densities
+        onramp_queues=onramp_queues, flows=flows, densities=densities, dt=10 / 3600
     )
     assert _eval([regulated])[0] == 750.0
 
@@ -123,7 +127,34 @@ def test_onramp_accepts_controllers_and_compute():
         jam_density=140,
         id="r2",
     )
+
+    m0 = MotorwayLink(
+        length=1.0,
+        lanes=3,
+        lane_capacity=2000,
+        free_flow_speed=100,
+        jam_density=150,
+        id="m0",
+    )
+    m1 = MotorwayLink(
+        length=1.0,
+        lanes=3,
+        lane_capacity=2000,
+        free_flow_speed=100,
+        jam_density=150,
+        id="m1",
+    )
+    origin = Origin(id="o1")
+    destination = Destination(id="d1")
+    node1 = Node(id="n1", incoming=[origin], outgoing=[m0])
+    node2 = Node(id="n2", incoming=[m0, onramp_fc, onramp_al], outgoing=[m1])
+    node3 = Node(id="n3", incoming=[m1], outgoing=[destination])
+    net = Network(nodes=[node1, node2, node3])
+    m0.partition_link(preferred_cell_size=0.5, dt=10 / 3600)
+    m1.partition_link(preferred_cell_size=0.5, dt=10 / 3600)
+
     ar = AlineaController(
+        network=net,
         onramp=onramp_al,
         measurement_link_id="m1",
         measurement_cell_idx=0,
@@ -139,12 +170,30 @@ def test_onramp_accepts_controllers_and_compute():
     densities = {"m1": casadi.SX([0.0])}
     onramp_queues = {"r1": casadi.SX([5.0])}
     regulated = onramp_fc.controller.compute_regulated_flow(
-        onramp_queues=onramp_queues, flows=flows, densities=densities
+        onramp_queues=onramp_queues, flows=flows, densities=densities, dt=10 / 3600
     )
     assert _eval([regulated])[0] == 500.0
 
 
 def test_alinea_attributes_and_compute():
+    dt = 10 / 3600
+    preferred_cell_size = 0.5
+    m0 = MotorwayLink(
+        length=1.0,
+        lanes=3,
+        lane_capacity=2000,
+        free_flow_speed=100,
+        jam_density=150,
+        id="m0",
+    )
+    m1 = MotorwayLink(
+        length=1.0,
+        lanes=3,
+        lane_capacity=2000,
+        free_flow_speed=100,
+        jam_density=150,
+        id="m1",
+    )
     onr = Onramp(
         length=0.5,
         lanes=1,
@@ -153,41 +202,54 @@ def test_alinea_attributes_and_compute():
         jam_density=140,
         id="r1",
     )
+
+    origin = Origin(id="o1")
+    destination = Destination(id="d1")
+    node1 = Node(id="n1", incoming=[origin], outgoing=[m0])
+    node2 = Node(id="n2", incoming=[m0, onr], outgoing=[m1])
+    node3 = Node(id="n3", incoming=[m1], outgoing=[destination])
+    net = Network(nodes=[node1, node2, node3])
+    m0.partition_link(preferred_cell_size=preferred_cell_size, dt=dt)
+    m1.partition_link(preferred_cell_size=preferred_cell_size, dt=dt)
+
+    gain = 2.0
     c = AlineaController(
+        network=net,
         onramp=onr,
         measurement_link_id="m1",
         measurement_cell_idx=0,
-        gain=2.0,
+        gain=gain * dt / preferred_cell_size,
         density_setpoint=10.0,
     )
-    assert c.gain == 2.0
+    assert c.gain == gain * dt / preferred_cell_size
     assert c.density_setpoint == 10.0
 
     flows = {"r1": casadi.SX([100.0])}
     densities = {"m1": casadi.SX([5.0])}
     onramp_queues = {"r1": casadi.SX([5.0])}
     regulated = c.compute_regulated_flow(
-        onramp_queues=onramp_queues, flows=flows, densities=densities
+        onramp_queues=onramp_queues, flows=flows, densities=densities, dt=dt
     )
     val = _eval([regulated])[0]
     prev_val = _eval([flows["r1"]])[0]
     meas_val = _eval([densities["m1"]])[0]
-    expected = prev_val + c.gain * (c.density_setpoint - meas_val)
+    expected = prev_val + gain * (c.density_setpoint - meas_val)
     assert val == expected
 
     # non-negative behaviour
     c2 = AlineaController(
+        network=net,
         onramp=onr,
         measurement_link_id="m1",
         measurement_cell_idx=0,
-        gain=1.0,
+        gain=1.0 * dt / preferred_cell_size,
         density_setpoint=0.0,
     )
     flows = {"r1": casadi.SX([0.0])}
     densities = {"m1": casadi.SX([1000.0])}
     onramp_queues = {"r1": casadi.SX([5.0])}
     regulated2 = c2.compute_regulated_flow(
-        onramp_queues=onramp_queues, flows=flows, densities=densities
+        onramp_queues=onramp_queues, flows=flows, densities=densities, dt=dt
     )
     assert _eval([regulated2])[0] == 0.0
 
@@ -214,7 +276,7 @@ def test_custom_controller_callable_and_numeric_conversion():
     densities = {"m1": casadi.SX([0.0])}
     onramp_queues = {"r1": casadi.SX([5.0])}
     regulated = cc.compute_regulated_flow(
-        onramp_queues=onramp_queues, flows=flows, densities=densities
+        onramp_queues=onramp_queues, flows=flows, densities=densities, dt=10 / 3600
     )
     assert _eval([regulated])[0] == 20.0
 
@@ -226,7 +288,7 @@ def test_custom_controller_callable_and_numeric_conversion():
 
     cc2 = CustomController(onramp=onr2, controller_fn=fn_numeric)  # type: ignore
     regulated2 = cc2.compute_regulated_flow(
-        onramp_queues=onramp_queues, flows=flows, densities=densities
+        onramp_queues=onramp_queues, flows=flows, densities=densities, dt=10 / 3600
     )
     assert _eval([regulated2])[0] == 333.0
 
@@ -256,6 +318,6 @@ def test_custom_controller_with_params():
     densities = {"m1": casadi.SX([0.0])}
     onramp_queues = {"r1": casadi.SX([5.0])}
     regulated = cc.compute_regulated_flow(
-        onramp_queues=onramp_queues, flows=flows, densities=densities
+        onramp_queues=onramp_queues, flows=flows, densities=densities, dt=10 / 3600
     )
     assert _eval([regulated])[0] == 777.0

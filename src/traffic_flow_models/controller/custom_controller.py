@@ -36,6 +36,7 @@ class CustomController:
         onramp_queues: dict[str, casadi.SX],
         flows: dict[str, casadi.SX],
         densities: dict[str, casadi.SX],
+        dt: float,
     ) -> casadi.SX:
         """Call the user-supplied function to compute the metering rate.
 
@@ -43,6 +44,7 @@ class CustomController:
             onramp_queues: Dictionary mapping on-ramp IDs to their current queue values (Casadi SX).
             flows: Dictionary mapping link IDs to their current flow values (Casadi SX).
             densities: Dictionary mapping link IDs to their current density values (Casadi SX).
+            dt: Simulation time step (placeholder for ALINEA controller).
 
         Returns:
             CasADi SX expression representing the metering rate.
