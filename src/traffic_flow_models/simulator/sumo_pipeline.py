@@ -159,7 +159,7 @@ class SUMOPipeline:
         subprocess.run(cmd, capture_output=True, text=True, check=True)
         print(f"{self.net_file} file generated.")
 
-    @skip_if_exists("rou_file")
+    # @skip_if_exists("rou_file")
     def generate_demand(
         self,
         vehicle_count: int,
@@ -197,6 +197,9 @@ class SUMOPipeline:
         if "SUMO_HOME" not in os.environ:
             print("Error: Please set the 'SUMO_HOME' environment variable.")
             return
+
+        # set the rng seed for reproducibility of backbone trip generation
+        rng = random.Random(seed)
 
         # ------------------------------------------------------------------
         # Helper: sample departure times from a piecewise-linear profile
@@ -275,6 +278,8 @@ class SUMOPipeline:
             "10",
             "--validate",
             "--remove-loops",
+            "-seed",
+            str(seed),
         ]
 
         try:
@@ -330,8 +335,6 @@ class SUMOPipeline:
                     "consolidated_network is not initialized. "
                     "Call create_consolidated_network() before using backbone_vehicle_count > 0."
                 )
-
-            rng = random.Random(seed)
 
             # collect backbone origin and destination node IDs
             backbone_origin_node_ids: set[str] = set()
