@@ -192,13 +192,12 @@ sim.visualize(
 )
 ```
 
-<!-- TODO: re-introduce section on ALINEA and ramp metering, once this feature is supported again by the library
-### ALINEA Ramp Metering
+### Ramp Metering
 
-Attach an ALINEA controller to an onramp during network creation:
+Ramp metering strategies regulate on-ramp inflow to improve mainline traffic performance. The package includes multiple ramp metering controllers (for example, ALINEA), as well as an interface for the definition of custom controllers. The code below is provided as an example demonstrating how to attach an ALINEA controller to an on-ramp and measure density on a downstream motorway link cell.
 
 ```python
-from traffic_flow_models import AlineaController
+from traffic_flow_models import Onramp, AlineaController
 
 onramp = Onramp(
     id="onramp",
@@ -206,13 +205,20 @@ onramp = Onramp(
     lane_capacity=2000,
     free_flow_speed=100,
     jam_density=180,
-    controller=AlineaController(
-        gain=5.0,
-        setpoint=20.0,
-        measurement_cell=3
-    )
+    controller=None,
 )
-``` -->
+
+# attach an ALINEA controller that measures density on downstream link 'm2' cell 0
+onramp.controller = AlineaController(
+    onramp=onramp,
+    measurement_link_id="m2",
+    measurement_cell_idx=0,
+    gain=5.0,
+    density_setpoint=30.0,
+)
+```
+
+Other controllers are available in the `controller` directory — for example, [METALINE](src/traffic_flow_models/controller/metaline.py). See [src/traffic_flow_models/controller](src/traffic_flow_models/controller) for more controllers and the structure of custom controllers.
 
 ## Development
 
