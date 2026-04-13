@@ -51,6 +51,10 @@ class MetalineController:
             raise ValueError(
                 f"Number of measurement cells ({len(measurement_cells)}) must be consistent with the gain matrix dimension ({gain_matrix[onramp.id].shape[1]})."
             )
+        if gain_matrix[onramp.id].shape[0] != 1:
+            raise ValueError(
+                f"Gain matrix for on-ramp {onramp.id} must have exactly one row (currently has {gain_matrix[onramp.id].shape[0]})."
+            )
 
         # store the controller parameters
         self.onramp = onramp
@@ -97,4 +101,6 @@ class MetalineController:
             gain_matrix_onramp, casadi.vertcat(*density_errors)
         )
 
-        return regulated_flow
+        return casadi.fmax(
+            0, regulated_flow
+        )  # ensure non-negativity of the regulated flow

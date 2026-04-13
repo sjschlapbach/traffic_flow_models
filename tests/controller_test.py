@@ -393,6 +393,10 @@ def test_metaline_equivalent_to_alinea_for_diagonal_gains():
     reg_m2 = m2_ctrl.compute_regulated_flow(onramp_queues, flows, densities)
     reg_m3 = m3_ctrl.compute_regulated_flow(onramp_queues, flows, densities)
 
-    assert _eval([reg_a1, reg_m1])[0] == _eval([reg_a1])[0]
-    assert _eval([reg_a2, reg_m2])[0] == _eval([reg_a2])[0]
-    assert _eval([reg_a3, reg_m3])[0] == _eval([reg_a3])[0]
+    val_a1, val_m1 = _eval([reg_a1, reg_m1])
+    val_a2, val_m2 = _eval([reg_a2, reg_m2])
+    val_a3, val_m3 = _eval([reg_a3, reg_m3])
+
+    assert np.isclose(val_a1, val_m1)
+    assert np.isclose(val_a2, val_m2)
+    assert np.isclose(val_a3, val_m3)
