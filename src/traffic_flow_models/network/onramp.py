@@ -4,6 +4,7 @@ from typing import Union, Literal
 from traffic_flow_models.controller import (
     FlowController,
     AlineaController,
+    MetalineController,
     CustomController,
 )
 
@@ -29,7 +30,10 @@ class Onramp:
         jam_density: float,
         id: str | None = None,
         controller: (
-            Union[FlowController, AlineaController, CustomController] | None
+            Union[
+                FlowController, AlineaController, MetalineController, CustomController
+            ]
+            | None
         ) = None,
         origin_node_id: str | None = None,
         destination_node_id: str | None = None,

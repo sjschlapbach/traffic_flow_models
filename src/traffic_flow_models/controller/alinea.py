@@ -1,16 +1,13 @@
 import casadi
 from typing import TYPE_CHECKING
-from traffic_flow_models.network.motorway_link import MotorwayLink
 
 if TYPE_CHECKING:
     from traffic_flow_models.network.onramp import Onramp
-    from traffic_flow_models.network.network import Network
 
 
 class AlineaController:
     def __init__(
         self,
-        network: "Network",
         onramp: "Onramp",
         measurement_link_id: str,
         measurement_cell_idx: int,
@@ -37,7 +34,6 @@ class AlineaController:
         if measurement_cell_idx < 0:
             raise ValueError("Measurement cell index must be non-negative.")
 
-        self.network = network
         self.onramp = onramp
         self.measurement_link_id: str = measurement_link_id
         self.measurement_cell: int = measurement_cell_idx
@@ -50,7 +46,6 @@ class AlineaController:
         onramp_queues: dict[str, casadi.SX],
         flows: dict[str, casadi.SX],
         densities: dict[str, casadi.SX],
-        dt: float,
     ) -> casadi.SX:
         """Compute the regulated onramp flow using the ALINEA feedback law.
 
@@ -63,24 +58,6 @@ class AlineaController:
         Returns:
             The regulated onramp flow (vehicles per time unit).
         """
-        # verify that the time step size is strictly positive
-        if dt <= 0.0:
-            raise ValueError("Time step dt must be positive.")
-
-        # compute the cell length of the measurement cell for scaling the gain
-        measurement_link = self.network.get_link(self.measurement_link_id)
-        if measurement_link is None or not isinstance(measurement_link, MotorwayLink):
-            raise ValueError(
-                f"Measurement link ID {self.measurement_link_id} not found in network."
-            )
-
-        measurement_cell = measurement_link.get_cell(self.measurement_cell)
-        if measurement_cell is None:
-            raise ValueError(
-                f"Measurement cell index {self.measurement_cell} not found in link {self.measurement_link_id}."
-            )
-        self.measurement_cell_length: float = measurement_cell.length
-
         # extract the relevant density and flow values for the feedback law
         measured_density = densities[self.measurement_link_id][self.measurement_cell]
         previous_flow = flows[self.onramp.id][
@@ -92,8 +69,6 @@ class AlineaController:
                 f"Missing flow or density information for controller on onramp {self.onramp.id}"
             )
 
-        flow_adjustment = (self.gain * self.measurement_cell_length / dt) * (
-            self.density_setpoint - measured_density
-        )
+        flow_adjustment = self.gain * (self.density_setpoint - measured_density)
         regulated_flow = previous_flow + flow_adjustment
         return casadi.fmax(regulated_flow, casadi.SX(0.0))  # ensure non-negative flow
