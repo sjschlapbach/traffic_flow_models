@@ -139,6 +139,17 @@ class Network:
 
         return None
 
+    def get_link(
+        self, id: str
+    ) -> MotorwayLink | Origin | Onramp | Offramp | Destination | None:
+        """Return the link with the given id or None if absent."""
+        for n in self.list_nodes():
+            for link in n.incoming + n.outgoing:
+                if getattr(link, "id", None) == id:
+                    return link
+
+        return None
+
     def list_nodes(self) -> list[Node]:
         """Return a shallow copy of the node list."""
         return self._nodes

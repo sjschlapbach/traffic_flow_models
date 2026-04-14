@@ -91,7 +91,7 @@ class TestSUMOPipeline:
         called = {}
         monkeypatch.setattr(
             "subprocess.run",
-            lambda cmd, capture_output, text, check: called.__setitem__("cmd", cmd),
+            lambda *a, **k: called.__setitem__("cmd", a[0] if a else k.get("cmd")),
         )
 
         p.convert_to_sumo()
@@ -115,9 +115,11 @@ class TestSUMOPipeline:
         # ensure SUMO_HOME not set
         monkeypatch.delenv("SUMO_HOME", raising=False)
 
-        p.generate_demand(10, 3600.0)
-        captured = capsys.readouterr()
-        assert "Please set the 'SUMO_HOME' environment variable" in captured.out
+        # The pipeline raises an EnvironmentError when SUMO_HOME is missing,
+        # and the message should be explicit and stable for callers.
+        with pytest.raises(EnvironmentError) as excinfo:
+            p.generate_demand(10, 3600.0)
+        assert str(excinfo.value) == "Please set the 'SUMO_HOME' environment variable."
 
     def test_generate_demand_invokes_randomTrips(
         self, monkeypatch, tmp_path, road_params_config
@@ -134,8 +136,11 @@ class TestSUMOPipeline:
         monkeypatch.setenv("SUMO_HOME", str(fake_sumo))
 
         called = {}
+        # Accept arbitrary positional and keyword args so tests are robust
+        # to subprocess.run being called with kwargs like capture_output/text.
         monkeypatch.setattr(
-            "subprocess.run", lambda cmd, check: called.__setitem__("cmd", cmd)
+            "subprocess.run",
+            lambda *a, **k: called.__setitem__("cmd", a[0] if a else k.get("cmd")),
         )
 
         # 2. Create a dummy VALID XML net file (ET.parse will fail on plain text "net")
@@ -152,6 +157,13 @@ class TestSUMOPipeline:
             f.write(f"<routes>{trips}</routes>")
 
         # 4. Now run the demand generation
+        # subprocess.run is monkeypatched and won't create the temporary
+        # urban route file. Create it from the final route file so ET.parse
+        # inside generate_demand can proceed.
+        temp_urban_rou = os.path.join(p.output_dir, "_temp_urban.rou.xml")
+        with open(p.rou_file, "r") as src, open(temp_urban_rou, "w") as dst:
+            dst.write(src.read())
+
         p.generate_demand(20, 3600.0)
 
         # Assertions to ensure subprocess was called

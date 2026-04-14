@@ -17,6 +17,7 @@ class AlineaController:
         """Create an ALINEA controller instance.
 
         Args:
+            network: Macroscopic network to which the controller is applied.
             onramp: Onramp object to which the controller is attached.
             measurement_link_id: ID of the link where the density measurement is taken for feedback
             measurement_cell_idx: Index of the cell on the measurement link where the density is measured
@@ -52,10 +53,12 @@ class AlineaController:
             onramp_queues: Dictionary mapping on-ramp IDs to their current queue values (Casadi SX).
             flows: Dictionary mapping link IDs to their current flow values (Casadi SX).
             densities: Dictionary mapping link IDs to their current density values (Casadi SX).
+            dt: Simulation time step.
 
         Returns:
             The regulated onramp flow (vehicles per time unit).
         """
+        # extract the relevant density and flow values for the feedback law
         measured_density = densities[self.measurement_link_id][self.measurement_cell]
         previous_flow = flows[self.onramp.id][
             0

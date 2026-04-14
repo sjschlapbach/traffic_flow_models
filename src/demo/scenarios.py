@@ -1,3 +1,7 @@
+import casadi
+import numpy as np
+from typing import Any
+
 from traffic_flow_models import (
     Network,
     Node,
@@ -8,10 +12,9 @@ from traffic_flow_models import (
     Origin,
     FlowController,
     AlineaController,
+    MetalineController,
     CustomController,
 )
-import casadi
-from typing import Any, Callable
 
 
 def demand(time: float, t1: float, t2: float, end: float, max: float) -> float:
@@ -291,7 +294,7 @@ def setup_network_c2() -> tuple[Network, dict, dict]:
 
     # attach an ALINEA flow controller to the onramp
     onramp.controller = AlineaController(
-        onramp,
+        onramp=onramp,
         measurement_link_id="m2",
         measurement_cell_idx=0,
         gain=5.0,
@@ -489,4 +492,193 @@ def setup_network_d() -> tuple[Network, dict, dict]:
     }
 
     origin_demands = {origin.id: mainline_demand_d, origin_onr.id: onramp_demand_d}
+    return net, metadata, origin_demands
+
+
+def setup_network_e() -> tuple[Network, dict, dict]:
+    """
+    Scenario E base: mainline with three sequential onramps.
+
+    Returns the network, metadata and origin demand mapping.
+    """
+
+    # mainline segments
+    m1 = MotorwayLink(
+        id="m1",
+        length=1.0,
+        lanes=3,
+        lane_capacity=2000,
+        free_flow_speed=100,
+        jam_density=180,
+    )
+    m2 = MotorwayLink(
+        id="m2",
+        length=1.0,
+        lanes=3,
+        lane_capacity=2000,
+        free_flow_speed=100,
+        jam_density=180,
+    )
+    m3 = MotorwayLink(
+        id="m3",
+        length=1.0,
+        lanes=3,
+        lane_capacity=2000,
+        free_flow_speed=100,
+        jam_density=180,
+    )
+    m4 = MotorwayLink(
+        id="m4",
+        length=1.0,
+        lanes=3,
+        lane_capacity=2000,
+        free_flow_speed=100,
+        jam_density=180,
+    )
+
+    # origins and onramps
+    origin = Origin(id="origin")
+    origin_onr1 = Origin(id="origin_onr1")
+    origin_onr2 = Origin(id="origin_onr2")
+    origin_onr3 = Origin(id="origin_onr3")
+    destination = Destination(id="destination")
+
+    onr1 = Onramp(
+        id="onr1",
+        length=0.5,
+        lanes=1,
+        lane_capacity=2000,
+        free_flow_speed=100,
+        jam_density=180,
+        controller=None,
+    )
+    onr2 = Onramp(
+        id="onr2",
+        length=0.5,
+        lanes=1,
+        lane_capacity=2000,
+        free_flow_speed=100,
+        jam_density=180,
+        controller=None,
+    )
+    onr3 = Onramp(
+        id="onr3",
+        length=0.5,
+        lanes=1,
+        lane_capacity=2000,
+        free_flow_speed=100,
+        jam_density=180,
+        controller=None,
+    )
+
+    # connect nodes
+    n0 = Node(id="n0", incoming=[origin], outgoing=[m1])
+    n0.position = (0.0, 0.0)
+
+    nonr1 = Node(id="nonr1", incoming=[origin_onr1], outgoing=[onr1])
+    nonr1.position = (0.8, 0.1)
+
+    n1 = Node(id="n1", incoming=[m1, onr1], outgoing=[m2])
+    n1.position = (1.0, 0.0)
+
+    nonr2 = Node(id="nonr2", incoming=[origin_onr2], outgoing=[onr2])
+    nonr2.position = (1.8, 0.1)
+
+    n2 = Node(id="n2", incoming=[m2, onr2], outgoing=[m3])
+    n2.position = (2.0, 0.0)
+
+    nonr3 = Node(id="nonr3", incoming=[origin_onr3], outgoing=[onr3])
+    nonr3.position = (2.8, 0.1)
+
+    n3 = Node(id="n3", incoming=[m3, onr3], outgoing=[m4])
+    n3.position = (3.0, 0.0)
+
+    n4 = Node(id="n4", incoming=[m4], outgoing=[destination])
+    n4.position = (4.0, 0.0)
+
+    net = Network(nodes=[n0, nonr1, n1, nonr2, n2, nonr3, n3, n4])
+
+    splits = {
+        n0.id: {m1.id: 1.0},
+        nonr1.id: {onr1.id: 1.0},
+        n1.id: {m2.id: 1.0},
+        nonr2.id: {onr2.id: 1.0},
+        n2.id: {m3.id: 1.0},
+        nonr3.id: {onr3.id: 1.0},
+        n3.id: {m4.id: 1.0},
+        n4.id: {destination.id: 1.0},
+    }
+
+    metadata = {
+        "origin_ids": [origin.id, origin_onr1.id, origin_onr2.id, origin_onr3.id],
+        "onramp_ids": [onr1.id, onr2.id, onr3.id],
+        "motorway_ids": [m1.id, m2.id, m3.id, m4.id],
+        "offramp_ids": [],
+        "destination_ids": [destination.id],
+        "splits": splits,
+    }
+
+    # use a mix of demand profiles for the three onramps
+    origin_demands = {
+        origin.id: mainline_demand_d,
+        origin_onr1.id: onramp_demand_a,
+        origin_onr2.id: onramp_demand_b,
+        origin_onr3.id: onramp_demand_c,
+    }
+
+    return net, metadata, origin_demands
+
+
+def setup_network_e1() -> tuple[Network, dict, dict]:
+    """Scenario E1: apply independent ALINEA controllers to each onramp."""
+    net, metadata, origin_demands = setup_network_e()
+
+    # map onramps to their downstream measurement links
+    mapping = {"onr1": "m2", "onr2": "m3", "onr3": "m4"}
+
+    # attach ALINEA controllers with the same setpoint/gain for simplicity
+    for onr_id in metadata["onramp_ids"]:
+        onr = net.get_link(onr_id)
+        if not isinstance(onr, Onramp):
+            raise TypeError("Expected an Onramp link.")
+
+        meas_link = mapping[onr_id]
+        onr.controller = AlineaController(
+            onramp=onr,
+            measurement_link_id=meas_link,
+            measurement_cell_idx=0,
+            gain=5.0,
+            density_setpoint=30.0,
+        )
+
+    return net, metadata, origin_demands
+
+
+def setup_network_e2() -> tuple[Network, dict, dict]:
+    """Scenario E2: apply coordinated METALINE across the three onramps."""
+    net, metadata, origin_demands = setup_network_e()
+
+    measurement_cells = [("m2", 0), ("m3", 0), ("m4", 0)]
+    density_setpoints = [("m2", 0, 30.0), ("m3", 0, 30.0), ("m4", 0, 30.0)]
+
+    # example coordinated gain matrix with coupling
+    gain_matrix = {
+        "onr1": np.array([[5.0, 10.0, 1.0]], dtype=np.float64),
+        "onr2": np.array([[1.0, 5.0, 3.0]], dtype=np.float64),
+        "onr3": np.array([[1.0, 1.0, 5.0]], dtype=np.float64),
+    }
+
+    # attach Metaline controller instance to each onramp
+    for onr_id in metadata["onramp_ids"]:
+        onr = net.get_link(onr_id)
+        if not isinstance(onr, Onramp):
+            raise TypeError("Expected an Onramp link.")
+
+        onr.controller = MetalineController(
+            onramp=onr,
+            measurement_cells=measurement_cells,
+            gain_matrix=gain_matrix,
+            density_setpoints=density_setpoints,
+        )
+
     return net, metadata, origin_demands
