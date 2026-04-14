@@ -1,14 +1,20 @@
 import casadi
 import numpy as np
-from typing import Mapping
 
 from traffic_flow_models import (
+    Network,
+    Node,
+    Origin,
+    Destination,
+    MotorwayLink,
     FlowController,
     AlineaController,
     Onramp,
     CustomController,
 )
 from traffic_flow_models.model.helpers import store_and_forward_update
+from traffic_flow_models.controller.metaline import MetalineController
+import pytest
 
 
 def _eval(exprs):
@@ -123,6 +129,7 @@ def test_onramp_accepts_controllers_and_compute():
         jam_density=140,
         id="r2",
     )
+
     ar = AlineaController(
         onramp=onramp_al,
         measurement_link_id="m1",
@@ -145,6 +152,7 @@ def test_onramp_accepts_controllers_and_compute():
 
 
 def test_alinea_attributes_and_compute():
+    dt = 10 / 3600
     onr = Onramp(
         length=0.5,
         lanes=1,
@@ -153,14 +161,16 @@ def test_alinea_attributes_and_compute():
         jam_density=140,
         id="r1",
     )
+
+    gain = 2.0
     c = AlineaController(
         onramp=onr,
         measurement_link_id="m1",
         measurement_cell_idx=0,
-        gain=2.0,
+        gain=gain,
         density_setpoint=10.0,
     )
-    assert c.gain == 2.0
+    assert c.gain == gain
     assert c.density_setpoint == 10.0
 
     flows = {"r1": casadi.SX([100.0])}
@@ -172,7 +182,7 @@ def test_alinea_attributes_and_compute():
     val = _eval([regulated])[0]
     prev_val = _eval([flows["r1"]])[0]
     meas_val = _eval([densities["m1"]])[0]
-    expected = prev_val + c.gain * (c.density_setpoint - meas_val)
+    expected = prev_val + gain * (c.density_setpoint - meas_val)
     assert val == expected
 
     # non-negative behaviour
@@ -259,3 +269,134 @@ def test_custom_controller_with_params():
         onramp_queues=onramp_queues, flows=flows, densities=densities
     )
     assert _eval([regulated])[0] == 777.0
+
+
+def test_metaline_init_fail_cases():
+    # missing density setpoint for measurement cell
+    onr = Onramp(
+        length=0.5,
+        lanes=1,
+        lane_capacity=1500,
+        free_flow_speed=80,
+        jam_density=140,
+        id="r1",
+    )
+
+    with pytest.raises(ValueError):
+        MetalineController(
+            onramp=onr,
+            measurement_cells=[("m1", 0)],
+            gain_matrix={"r1": np.array([[1.0]])},
+            density_setpoints=[],
+        )
+
+    # negative setpoint
+    with pytest.raises(ValueError):
+        MetalineController(
+            onramp=onr,
+            measurement_cells=[("m1", 0)],
+            gain_matrix={"r1": np.array([[1.0]])},
+            density_setpoints=[("m1", 0, -1.0)],
+        )
+
+    # missing gain_matrix row for onramp
+    with pytest.raises(ValueError):
+        MetalineController(
+            onramp=onr,
+            measurement_cells=[("m1", 0)],
+            gain_matrix={"other": np.array([[1.0]])},
+            density_setpoints=[("m1", 0, 1.0)],
+        )
+
+    # measurement dimension mismatch
+    with pytest.raises(ValueError):
+        MetalineController(
+            onramp=onr,
+            measurement_cells=[("m1", 0), ("m2", 0)],
+            gain_matrix={"r1": np.array([[1.0]])},
+            density_setpoints=[("m1", 0, 1.0), ("m2", 0, 1.0)],
+        )
+
+
+def test_metaline_equivalent_to_alinea_for_diagonal_gains():
+    # three onramps, diagonal gain matrix -> Metaline should equal ALINEA per ramp
+    onr1 = Onramp(
+        length=0.5,
+        lanes=1,
+        lane_capacity=1500,
+        free_flow_speed=80,
+        jam_density=140,
+        id="r1",
+    )
+    onr2 = Onramp(
+        length=0.5,
+        lanes=1,
+        lane_capacity=1500,
+        free_flow_speed=80,
+        jam_density=140,
+        id="r2",
+    )
+    onr3 = Onramp(
+        length=0.5,
+        lanes=1,
+        lane_capacity=1500,
+        free_flow_speed=80,
+        jam_density=140,
+        id="r3",
+    )
+
+    measurement_cells = [("m1", 0), ("m2", 0), ("m3", 0)]
+    density_setpoints = [("m1", 0, 10.0), ("m2", 0, 10.0), ("m3", 0, 10.0)]
+
+    # diagonal gains
+    g1, g2, g3 = 2.0, 1.5, 3.0
+    gain_matrix = {
+        "r1": np.array([[g1, 0.0, 0.0]]),
+        "r2": np.array([[0.0, g2, 0.0]]),
+        "r3": np.array([[0.0, 0.0, g3]]),
+    }
+
+    # flows and densities
+    flows = {"r1": casadi.SX([100.0]), "r2": casadi.SX([80.0]), "r3": casadi.SX([50.0])}
+    densities = {
+        "m1": casadi.SX([8.0]),
+        "m2": casadi.SX([12.0]),
+        "m3": casadi.SX([9.0]),
+    }
+    onramp_queues = {
+        "r1": casadi.SX([0.0]),
+        "r2": casadi.SX([0.0]),
+        "r3": casadi.SX([0.0]),
+    }
+
+    # ALINEA controllers per onramp
+    a1 = AlineaController(onr1, "m1", 0, gain=g1, density_setpoint=10.0)
+    a2 = AlineaController(onr2, "m2", 0, gain=g2, density_setpoint=10.0)
+    a3 = AlineaController(onr3, "m3", 0, gain=g3, density_setpoint=10.0)
+
+    # Metaline controllers (coordinated) for each onramp using the diagonal rows
+    m1_ctrl = MetalineController(
+        onr1, measurement_cells, gain_matrix, density_setpoints
+    )
+    m2_ctrl = MetalineController(
+        onr2, measurement_cells, gain_matrix, density_setpoints
+    )
+    m3_ctrl = MetalineController(
+        onr3, measurement_cells, gain_matrix, density_setpoints
+    )
+
+    reg_a1 = a1.compute_regulated_flow(onramp_queues, flows, densities)
+    reg_a2 = a2.compute_regulated_flow(onramp_queues, flows, densities)
+    reg_a3 = a3.compute_regulated_flow(onramp_queues, flows, densities)
+
+    reg_m1 = m1_ctrl.compute_regulated_flow(onramp_queues, flows, densities)
+    reg_m2 = m2_ctrl.compute_regulated_flow(onramp_queues, flows, densities)
+    reg_m3 = m3_ctrl.compute_regulated_flow(onramp_queues, flows, densities)
+
+    val_a1, val_m1 = _eval([reg_a1, reg_m1])
+    val_a2, val_m2 = _eval([reg_a2, reg_m2])
+    val_a3, val_m3 = _eval([reg_a3, reg_m3])
+
+    assert np.isclose(val_a1, val_m1)
+    assert np.isclose(val_a2, val_m2)
+    assert np.isclose(val_a3, val_m3)
