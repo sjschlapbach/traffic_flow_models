@@ -1,18 +1,24 @@
 import os
-import subprocess
 import sys
+import json
 import shutil
+import random
+import json
+import subprocess
 import osmnx as ox
-from functools import wraps
+import xml.etree.ElementTree as ET
 import matplotlib.pyplot as plt
+from functools import wraps
 from typing import Optional, Tuple, Callable
+
+from traffic_flow_models.network import Network, Origin, Destination
 from traffic_flow_models.arbitrator.loop_detector_generator import LoopDetectorGenerator
 from traffic_flow_models.arbitrator.turning_rate_aggregator import TurningRateAggregator
 from traffic_flow_models.arbitrator.network_arbitrator import (
     NetworkArbitrator,
     RoadParamsConfig,
 )
-from traffic_flow_models.network.network import Network
+from traffic_flow_models.network.network import Network, Origin, Destination
 
 
 def skip_if_exists(attr_name):
@@ -154,47 +160,593 @@ class SUMOPipeline:
         subprocess.run(cmd, capture_output=True, text=True, check=True)
         print(f"{self.net_file} file generated.")
 
-    # @skip_if_exists('rou_file')
-    def generate_demand(self, vehicle_count: int) -> None:
-        """Generate traffic demand and create route file.
-
-        Creates random trips using SUMO's randomTrips.py tool and generates
-        a route file with the specified vehicle count.
-
-        Args:
-            vehicle_count: Number of vehicles to generate in the simulation.
-        """
-        if "SUMO_HOME" not in os.environ:
-            print("Error: Please set the 'SUMO_HOME' environment variable.")
-            return
-
-        random_trips = os.path.join(os.environ["SUMO_HOME"], "tools", "randomTrips.py")
-
-        cmd = [
-            sys.executable,
-            random_trips,
-            "-n",
-            self.net_file,
-            "-o",
-            "temp_trips.xml",
-            "--route-file",
-            self.rou_file,
-            "--period",
-            str(3600 / vehicle_count),
-            "--fringe-factor",
-            "10",
-            "--validate",
-            "--remove-loops",
+    def _sample_from_profile(
+        self,
+        count: int,
+        duration_seconds: float,
+        demand_profile: list[tuple[float, float]],
+    ) -> list[float]:
+        """Helper to scale relative profile percentages to absolute departure times."""
+        # Scale relative times -> absolute seconds
+        abs_profile = [
+            (t_percentage * duration_seconds, f) for t_percentage, f in demand_profile
         ]
 
-        try:
-            subprocess.run(cmd, check=True)
-            print(f"{self.rou_file} file generated.")
+        times = [t for t, _ in abs_profile]
+        fractions = [f for _, f in abs_profile]
 
-            if os.path.exists("temp_trips.xml"):
-                os.remove("temp_trips.xml")
+        if abs(sum(fractions) - 1.0) > 1e-6:
+            raise ValueError(
+                f"demand_profile fractions must sum to 1.0, got {sum(fractions):.6f}"
+            )
+
+        departures: list[float] = []
+        for i in range(len(times)):
+            t_start = times[i]
+            t_end = times[i + 1] if (i + 1) < len(times) else duration_seconds
+
+            n = round(fractions[i] * count)
+            if n <= 0:
+                continue
+
+            if t_end > t_start:
+                interval = (t_end - t_start) / n
+                for j in range(n):
+                    departures.append(t_start + j * interval)
+            else:
+                for _ in range(n):
+                    departures.append(t_start)
+
+        # Handle rounding errors to ensure we return exactly 'count' vehicles
+        while len(departures) < count:
+            departures.append(duration_seconds - 1.0)
+
+        return sorted(departures[:count])
+
+    # @skip_if_exists('rou_file')
+    # def generate_demand(
+    #     self,
+    #     vehicle_count: int,
+    #     duration_seconds: float,
+    #     demand_profile: list[tuple[float, float]] | None = None,
+    #     seed: int = 42,
+    # ) -> None:
+    #     """
+    #     Generates demand using randomTrips.py and reshapes timing to match a profile.
+    #     """
+    #     if "SUMO_HOME" not in os.environ:
+    #         print("Error: Please set the 'SUMO_HOME' environment variable.")
+    #         return
+
+    #     random_trips = os.path.join(os.environ["SUMO_HOME"], "tools", "randomTrips.py")
+
+    #     # 1. Run randomTrips to generate VALID routes
+    #     # We use a uniform period here just to get the routes created
+    #     cmd = [
+    #         sys.executable,
+    #         random_trips,
+    #         "-n", self.net_file,
+    #         "-o", "temp_trips.xml", # We keep trips separate from routes
+    #         "--route-file", self.rou_file,
+    #         "--end", str(duration_seconds),
+    #         "--period", str(duration_seconds / vehicle_count),
+    #         "--fringe-factor", "10",  # Prioritizes motorway boundaries
+    #         "--validate",             # Ensures every trip is physically possible
+    #         "--remove-loops",
+    #         "--seed", str(seed),
+    #     ]
+
+    #     try:
+    #         subprocess.run(cmd, check=True)
+
+    #         # 2. Reshape departure times to match your Profile
+    #         if demand_profile:
+    #             tree = ET.parse(self.rou_file)
+    #             root = tree.getroot()
+
+    #             # Find all vehicle/trip elements
+    #             elements = [el for el in root if el.tag in ("vehicle", "trip")]
+
+    #             # Sample new times from your profile helper
+    #             new_times = self._sample_from_profile(len(elements), duration_seconds, demand_profile)
+
+    #             # Update the XML elements with the profile-based times
+    #             for el, t in zip(elements, new_times):
+    #                 el.set("depart", f"{t:.2f}")
+    #                 # Optional: Force a standard car type to avoid permission errors
+    #                 el.set("type", "passenger_car")
+
+    #             # Add the vType definition at the top
+    #             vtype = ET.Element("vType", id="passenger_car", vClass="passenger")
+    #             root.insert(0, vtype)
+
+    #             # Sort by departure time (Required for SUMO)
+    #             elements.sort(key=lambda x: float(x.get("depart")))
+    #             root[:] = [vtype] + elements
+
+    #             tree.write(self.rou_file, encoding="utf-8", xml_declaration=True)
+
+    #         print(f"Successfully generated {vehicle_count} validated trips.")
+
+    #         # Cleanup
+    #         if os.path.exists("temp_trips.xml"):
+    #             os.remove("temp_trips.xml")
+
+    #     except subprocess.CalledProcessError as e:
+    #         print(f"An error occurred while generating demand: {e}")
+
+    def _strip_node_prefix(self, node_id: str) -> str:
+        """Return the raw SUMO junction ID by stripping any known role prefix."""
+        NODE_ID_PREFIXES = ("origin_", "destination_", "dest_", "onramp_", "offramp_")
+
+        for prefix in NODE_ID_PREFIXES:
+            if node_id.startswith(prefix):
+                return node_id[len(prefix) :]
+        return node_id
+
+    def _get_fringe_edges(
+        self,
+        node_ids: list[str],
+        direction: str,
+        *,
+        allow_reverse_fallback: bool = False,
+    ) -> list[str]:
+        """Collect edge IDs in the SUMO net adjacent to the given node IDs.
+
+        Handles three kinds of entries in *node_ids*:
+
+        1. **Prefixed node IDs** (e.g. ``'origin_177009495'``, ``'dest_260747056'``) —
+        the prefix is stripped and the raw ID is looked up as a SUMO junction.
+        2. **Raw junction IDs** (plain numerics like ``'298859194'``) — looked up
+        directly as junctions.
+        3. **Raw SUMO edge IDs** (contain ``'#'`` or match an edge in the net,
+        e.g. ``'210731931#0'``) — used as-is without any junction lookup.
+
+        For junction-based lookups the preferred *direction* is tried first; if
+        nothing is found and *allow_reverse_fallback* is ``True``, the opposite
+        direction is attempted and a warning is printed.
+
+        Internal junction edges (``function="internal"``) are always skipped.
+
+        Args:
+            node_ids: Mixed list of prefixed node IDs, raw junction IDs, or raw
+                edge IDs — as stored by NetworkArbitrator.
+            direction: Preferred search direction for junction-based lookups.
+                    ``'from'`` → outgoing edges; ``'to'`` → incoming edges.
+            allow_reverse_fallback: Retry with the opposite direction when the
+                preferred direction yields nothing for a junction.
+
+        Returns:
+            Deduplicated list of resolved edge IDs.
+        """
+        tree = ET.parse(self.net_file)
+        root = tree.getroot()
+
+        # Build junction→edges index and a set of all known edge IDs in one pass.
+        from_index: dict[str, list[str]] = {}
+        to_index: dict[str, list[str]] = {}
+        all_edge_ids: set[str] = set()
+        for edge in root.findall("edge"):
+            if edge.get("function") == "internal":
+                continue
+            eid = edge.get("id")
+            if not eid:
+                continue
+            all_edge_ids.add(eid)
+            f = edge.get("from")
+            t = edge.get("to")
+            if f:
+                from_index.setdefault(f, []).append(eid)
+            if t:
+                to_index.setdefault(t, []).append(eid)
+
+        primary_index = from_index if direction == "from" else to_index
+        fallback_index = to_index if direction == "from" else from_index
+        fallback_dir = "to" if direction == "from" else "from"
+
+        edges: list[str] = []
+        seen: set[str] = set()
+        fallback_nodes: list[str] = []
+        direct_edge_nodes: list[str] = []
+
+        for node_id in node_ids:
+            raw = self._strip_node_prefix(node_id)
+
+            # Case 3: stripped ID is itself a valid SUMO edge — use it directly.
+            if raw in all_edge_ids:
+                direct_edge_nodes.append(raw)
+                if raw not in seen:
+                    seen.add(raw)
+                    edges.append(raw)
+                continue
+
+            # Cases 1 & 2: treat as junction ID and look up adjacent edges.
+            found = primary_index.get(raw, [])
+            if not found and allow_reverse_fallback:
+                found = fallback_index.get(raw, [])
+                if found:
+                    fallback_nodes.append(raw)
+            for eid in found:
+                if eid not in seen:
+                    seen.add(eid)
+                    edges.append(eid)
+
+        if direct_edge_nodes:
+            print(
+                f"[INFO] _get_fringe_edges: {len(direct_edge_nodes)} ID(s) resolved "
+                f"as direct edge references (not junctions): {direct_edge_nodes}"
+            )
+        if fallback_nodes:
+            print(
+                f"[WARN] _get_fringe_edges(direction='{direction}'): "
+                f"{len(fallback_nodes)} junction(s) had no '{direction}' edge — "
+                f"used '{fallback_dir}' fallback: {fallback_nodes}"
+            )
+
+        return edges
+
+    def _build_highway_trips_xml(
+        self,
+        departures: list[float],
+        from_edges: list[str],
+        to_edges: list[str],
+        rng: random.Random,
+    ) -> ET.Element:
+        """Build a bare <routes> XML tree of <trip> elements for the highway stream.
+
+        Each trip is randomly paired (from_edge → to_edge) using *rng*, so the
+        result is fully reproducible given the same seed.  A trivial same-edge
+        pairing is retried up to 20 times where possible.
+
+        Args:
+            departures: Pre-computed, sorted departure times in seconds.
+            from_edges: Pool of valid departure edges (outgoing from origin nodes).
+            to_edges:   Pool of valid arrival edges (incoming to dest/offramp nodes).
+            rng:        Seeded :class:`random.Random` instance.
+
+        Returns:
+            An ``ET.Element`` rooted at ``<routes>`` containing ``<trip>`` children.
+            The caller is responsible for writing this to disk and running
+            duarouter to validate/expand the trips into full routes.
+        """
+        root = ET.Element("routes")
+        for i, t in enumerate(departures):
+            from_edge = rng.choice(from_edges)
+            to_edge = rng.choice(to_edges)
+            # Avoid trivial same-edge trips (not always avoidable on tiny networks)
+            for _ in range(20):
+                if to_edge != from_edge:
+                    break
+                to_edge = rng.choice(to_edges)
+
+            trip = ET.SubElement(
+                root, "trip", id=f"hw_{i}", depart=f"{t:.2f}", type="passenger_car"
+            )
+            trip.set("from", from_edge)
+            trip.set("to", to_edge)
+        return root
+
+    def _validate_with_duarouter(
+        self,
+        trips_path: str,
+        routes_out_path: str,
+        seed: int,
+    ) -> None:
+        """Convert a raw trips file into validated routes using ``duarouter``.
+
+        Unreachable trips are silently dropped (``--ignore-errors``) rather than
+        aborting the whole run.  The caller should compare expected vs. actual
+        vehicle counts in the output if strict counts matter.
+
+        Args:
+            trips_path:     Path to the input ``<routes>``/``<trip>`` XML file.
+            routes_out_path: Destination path for the validated ``<routes>`` output.
+            seed:           Passed to duarouter for deterministic internal routing.
+
+        Raises:
+            subprocess.CalledProcessError: If duarouter exits with a non-zero code.
+        """
+        cmd = [
+            "duarouter",
+            "-n",
+            self.net_file,
+            "--route-files",
+            trips_path,
+            "-o",
+            routes_out_path,
+            "--repair",
+            "--ignore-errors",  # drop unroutable trips
+            "--seed",
+            str(seed),
+        ]
+        subprocess.run(cmd, check=True, capture_output=True, text=True)
+
+    def _merge_route_files(self, paths: list[str], output_path: str) -> int:
+        """Merge several route XML files into one file sorted by departure time.
+
+        Extracts ``<vehicle>`` and ``<trip>`` elements from each source file
+        (preserving nested ``<route>`` children produced by duarouter), prepends
+        a single ``<vType id="passenger_car">`` definition, and writes the merged
+        tree to *output_path*.
+
+        Args:
+            paths:       Ordered list of source route/trip XML file paths.
+            output_path: Destination path for the merged output file.
+
+        Returns:
+            Total number of vehicle/trip elements written.
+        """
+        merged_root = ET.Element("routes")
+        vtype = ET.SubElement(
+            merged_root, "vType", id="passenger_car", vClass="passenger"
+        )
+
+        all_vehicles: list[ET.Element] = []
+        for path in paths:
+            tree = ET.parse(path)
+            for el in tree.getroot():
+                if el.tag in ("vehicle", "trip"):
+                    all_vehicles.append(el)
+
+        all_vehicles.sort(key=lambda x: float(x.get("depart", "0")))
+        merged_root[:] = [vtype] + all_vehicles
+
+        ET.ElementTree(merged_root).write(
+            output_path, encoding="utf-8", xml_declaration=True
+        )
+        return len(all_vehicles)
+
+    # @skip_if_exists("rou_file")
+    def generate_demand(
+        self,
+        urban_count: int,
+        duration_seconds: float,
+        highway_count: int = 0,
+        demand_profile: list[tuple[float, float]] | None = None,
+        seed: int = 42,
+    ) -> None:
+        """Generate two-stream SUMO demand and write a single merged route file.
+
+        **Urban stream** (always active)
+            Uses ``randomTrips.py`` to produce topologically valid random trips
+            across the full road network, biased toward motorway fringes.
+            Departure times are reshaped to match *demand_profile* if supplied.
+
+        **Highway stream** (enabled when ``highway_count > 0``)
+            Injects vehicles directly at motorway fringe *origin* nodes
+            (``self.origin_ids``) and routes them to any valid *destination* or
+            *offramp* node (``self.destination_ids ∪ self.offramp_ids``).  This
+            simulates through traffic entering the map from outside the modelled
+            area.  Trips are randomly paired per the seeded RNG and then validated
+            with ``duarouter``; unreachable pairings are silently dropped.
+
+        Both streams share the same *seed* and *demand_profile*, so their temporal
+        shapes are identical.  The two streams are merged into a single
+        ``self.rou_file``, sorted by departure time, with a single
+        ``<vType id="passenger_car">`` definition at the top.
+
+        Vehicle IDs are namespaced: ``urban_<n>`` and ``hw_<n>`` to avoid
+        collisions when SUMO reads the merged file.
+
+        Args:
+            urban_count:     Number of vehicles in the urban random-trip stream.
+            duration_seconds: Total simulation window in seconds.
+            highway_count:   Number of vehicles in the highway fringe stream.
+                            Pass ``0`` (default) to disable the highway stream.
+            demand_profile:  Piecewise-linear temporal profile as a list of
+                            ``(relative_time, fraction)`` pairs.  Times must be
+                            in ``[0.0, 1.0]``; fractions must sum to ``1.0``.
+                            Example: ``[(0.0, 0.3), (0.3, 0.5), (0.8, 0.2)]``.
+                            Pass ``None`` for a uniform distribution.
+            seed:            Integer seed for reproducibility.  Controls both
+                            ``randomTrips.py`` routing and the RNG used for
+                            highway origin→destination pairing.
+
+        Raises:
+            EnvironmentError: If the ``SUMO_HOME`` environment variable is not set.
+            ValueError: If ``highway_count > 0`` but ``origin_ids``,
+                        ``destination_ids``, or ``offramp_ids`` have not been
+                        populated (i.e. ``create_consolidated_network()`` has not
+                        been called).
+            ValueError: If no valid departure or arrival edges can be resolved
+                        from the given origin/destination node IDs.
+            subprocess.CalledProcessError: Propagated if ``randomTrips.py`` or
+                        ``duarouter`` exits with a non-zero status.
+        """
+        if "SUMO_HOME" not in os.environ:
+            raise EnvironmentError("Please set the 'SUMO_HOME' environment variable.")
+
+        rng = random.Random(seed)
+
+        temp_urban_trips = os.path.join(self.output_dir, "_temp_urban_trips.xml")
+        temp_urban_rou = os.path.join(self.output_dir, "_temp_urban.rou.xml")
+        temp_hw_trips = os.path.join(self.output_dir, "_temp_hw_trips.xml")
+        temp_hw_rou = os.path.join(self.output_dir, "_temp_hw.rou.xml")
+
+        try:
+            # ── Stream 1: Urban random trips ─────────────────────────────────────
+            random_trips_script = os.path.join(
+                os.environ["SUMO_HOME"], "tools", "randomTrips.py"
+            )
+            cmd = [
+                sys.executable,
+                random_trips_script,
+                "-n",
+                self.net_file,
+                "-o",
+                temp_urban_trips,
+                "--route-file",
+                temp_urban_rou,
+                "--end",
+                str(duration_seconds),
+                "--period",
+                str(duration_seconds / urban_count),
+                "--fringe-factor",
+                "10",
+                "--validate",
+                "--remove-loops",
+                "--seed",
+                str(seed),
+            ]
+            subprocess.run(cmd, check=True, capture_output=True, text=True)
+
+            # Reshape urban departure times + apply vehicle type + namespace IDs.
+            urban_tree = ET.parse(temp_urban_rou)
+            urban_root = urban_tree.getroot()
+            elements = [el for el in urban_root if el.tag in ("vehicle", "trip")]
+
+            if demand_profile:
+                new_times = self._sample_from_profile(
+                    len(elements), duration_seconds, demand_profile
+                )
+            else:
+                # Uniform: re-space whatever randomTrips produced across the window.
+                interval = duration_seconds / max(len(elements), 1)
+                new_times = [i * interval for i in range(len(elements))]
+
+            for idx, (el, t) in enumerate(zip(elements, new_times)):
+                el.set("depart", f"{t:.2f}")
+                el.set("type", "passenger_car")
+                el.set("id", f"urban_{idx}")
+
+            elements.sort(key=lambda x: float(x.get("depart")))  # type: ignore - should fail in case of missing attribute
+            urban_root[:] = elements
+            urban_tree.write(temp_urban_rou, encoding="utf-8", xml_declaration=True)
+
+            # ── Stream 2: Highway fringe demand ──────────────────────────────────
+            routed_count = 0
+            if highway_count > 0:
+                # Validate prerequisites
+                if not self.origin_ids:
+                    raise ValueError(
+                        "origin_ids is empty.  Call create_consolidated_network() "
+                        "before generating highway demand."
+                    )
+                dest_node_ids = (self.destination_ids or []) + (self.offramp_ids or [])
+                if not dest_node_ids:
+                    raise ValueError(
+                        "Both destination_ids and offramp_ids are empty.  "
+                        "At least one destination or offramp node is required for "
+                        "the highway stream."
+                    )
+
+                raw_origins = [self._strip_node_prefix(n) for n in self.origin_ids]
+                raw_dests = [self._strip_node_prefix(n) for n in dest_node_ids]
+                print(f"[DEBUG] Highway stream — searching net XML for:")
+                print(f"  origin  raw IDs  ({len(raw_origins)}): {raw_origins}")
+                print(f"  dest    raw IDs  ({len(raw_dests)}):   {raw_dests}")
+
+                from_edges = self._get_fringe_edges(self.origin_ids, "from")
+                to_edges = self._get_fringe_edges(dest_node_ids, "to")
+
+                if not from_edges:
+                    raise ValueError(
+                        f"No edges (in either direction) found for origin nodes "
+                        f"{raw_origins} in {self.net_file}.\n"
+                        "Possible causes:\n"
+                        "  * create_consolidated_network() was not called before generate_demand().\n"
+                        "  * The node IDs don't match any junction in the net XML."
+                    )
+                if not to_edges:
+                    # Collect the first 20 junction IDs from the net for comparison.
+                    _tree = ET.parse(self.net_file)
+                    _net_junctions = [
+                        j.get("id")
+                        for j in _tree.getroot().findall("junction")
+                        if j.get("type") != "internal"
+                    ][:20]
+                    raise ValueError(
+                        f"No edges (in either direction) found for "
+                        f"{len(dest_node_ids)} destination/offramp nodes after "
+                        f"prefix stripping.\n"
+                        f"  Searched raw IDs : {raw_dests}\n"
+                        f"  Net junctions (first 20): {_net_junctions}\n"
+                        "Check whether the stripped IDs appear in that list.  "
+                        "If not, the node IDs produced by NetworkArbitrator do not "
+                        "correspond 1-to-1 with SUMO junction IDs."
+                    )
+                print(
+                    f"[INFO] Highway stream edge pools — "
+                    f"departure: {len(from_edges)}, arrival: {len(to_edges)}"
+                )
+
+                # Departure times — same profile logic, independent count
+                if demand_profile:
+                    hw_departures = self._sample_from_profile(
+                        highway_count, duration_seconds, demand_profile
+                    )
+                else:
+                    hw_interval = duration_seconds / highway_count
+                    hw_departures = [i * hw_interval for i in range(highway_count)]
+
+                # Build raw trips and validate with duarouter
+                hw_trips_root = self._build_highway_trips_xml(
+                    hw_departures, from_edges, to_edges, rng
+                )
+                ET.ElementTree(hw_trips_root).write(
+                    temp_hw_trips, encoding="utf-8", xml_declaration=True
+                )
+                self._validate_with_duarouter(temp_hw_trips, temp_hw_rou, seed)
+
+                # Report how many highway trips survived routing
+                hw_tree = ET.parse(temp_hw_rou)
+                routed_count = sum(
+                    1 for el in hw_tree.getroot() if el.tag in ("vehicle", "trip")
+                )
+                if routed_count < highway_count:
+                    print(
+                        f"[WARN] Highway stream: {highway_count - routed_count} of "
+                        f"{highway_count} trips were unroutable and dropped by "
+                        "duarouter."
+                    )
+
+            # ── Merge both streams into the final route file ──────────────────────
+            files_to_merge = [temp_urban_rou]
+            if highway_count > 0:
+                files_to_merge.append(temp_hw_rou)
+
+            total = self._merge_route_files(files_to_merge, self.rou_file)
+
+            parts = [f"urban={urban_count}"]
+            if highway_count > 0:
+                parts.append(f"highway={routed_count}/{highway_count} routed")
+            print(
+                f"[OK] Generated {total} vehicles ({', '.join(parts)}) "
+                f"→ {self.rou_file}"
+            )
+
         except subprocess.CalledProcessError as e:
-            print(f"An error occurred while generating demand: {e}")
+            # Re-raise with full stderr visible to the caller rather than silencing.
+            stderr = e.stderr.strip() if e.stderr else "(no stderr)"
+            raise RuntimeError(
+                f"Subprocess failed (exit {e.returncode}): {' '.join(e.cmd)}\n{stderr}"
+            ) from e
+
+        finally:
+            # Always clean up temp files, even on error
+            for path in [temp_urban_trips, temp_urban_rou, temp_hw_trips, temp_hw_rou]:
+                if os.path.exists(path):
+                    os.remove(path)
+
+    @staticmethod
+    def parse_demand_profile(raw: str | None) -> list[tuple[float, float]] | None:
+
+        if raw is None:
+            return None
+        try:
+            matrix = json.loads(raw)
+            profile = [(float(row[0]), float(row[1])) for row in matrix]
+        except (json.JSONDecodeError, IndexError, TypeError, ValueError):
+            raise ValueError(
+                f"Invalid demand profile format: '{raw}'. "
+                "Expected a matrix e.g. '[[0.0,0.3],[0.3,0.5],[0.8,0.2]]'"
+            )
+        total = sum(f for _, f in profile)
+        if abs(total - 1.0) > 1e-6:
+            raise ValueError(
+                f"demand_profile fractions must sum to 1.0, got {total:.6f}"
+            )
+        return profile
 
     def create_consolidated_network(
         self,

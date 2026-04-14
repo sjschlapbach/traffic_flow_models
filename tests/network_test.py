@@ -57,6 +57,50 @@ class TestNetwork:
         net.remove_node(n2.id)
         assert len(net) == 0
 
+    def test_get_link_simple_cases(self):
+        """Verify that `get_link` returns the correct link objects or None."""
+        main = MotorwayLink(
+            length=1.0, lanes=1, lane_capacity=1500, free_flow_speed=80, jam_density=140
+        )
+        origin = Origin()
+        onramp = Onramp(
+            length=0.5, lanes=1, lane_capacity=1800, free_flow_speed=90, jam_density=160
+        )
+        offramp = Offramp(
+            lanes=1, lane_capacity=1800, free_flow_speed=90, jam_density=160
+        )
+        dest = Destination()
+
+        node1 = Node(id="n1", incoming=[origin, onramp], outgoing=[main])
+        node2 = Node(id="n2", incoming=[main], outgoing=[offramp, dest])
+        net = Network(nodes=[node1, node2])
+
+        # should return the exact object instances stored in the network
+        assert net.get_link(origin.id) is origin
+        assert net.get_link(onramp.id) is onramp
+        assert net.get_link(main.id) is main
+        assert net.get_link(offramp.id) is offramp
+        assert net.get_link(dest.id) is dest
+
+    def test_get_link_missing_and_empty_network(self):
+        """Verify `get_link` returns None for missing ids and when network is empty."""
+        main = MotorwayLink(
+            length=1.0, lanes=2, lane_capacity=1500, free_flow_speed=80, jam_density=140
+        )
+        origin = Origin()
+        dest = Destination()
+
+        # network with links but different ids
+        node1 = Node(id="n1", incoming=[origin], outgoing=[main])
+        node2 = Node(id="n2", incoming=[main], outgoing=[dest])
+        net = Network(nodes=[node1, node2])
+
+        assert net.get_link("no_such_link") is None
+
+        # empty network should also return None
+        empty_net = Network()
+        assert empty_net.get_link(main.id) is None
+
     def test_validate_path_connected_nodes(self):
         # create shared mainline link between node1 -> node2
         main = MotorwayLink(
