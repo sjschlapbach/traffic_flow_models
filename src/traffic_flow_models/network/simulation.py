@@ -1636,8 +1636,12 @@ class Simulation:
 
         if old_time.ndim != 1 or new_time.ndim != 1:
             raise ValueError("time arrays must be one-dimensional")
-        if old_time.size < 1:
-            raise ValueError("source results file contains empty time array")
+        if old_time.size < 1 or new_time.size < 1:
+            raise ValueError("time arrays must be non-empty")
+        if np.any(np.diff(old_time) <= 0) or np.any(np.diff(new_time) <= 0):
+            raise ValueError("time arrays must be strictly increasing")
+        if new_time[0] < old_time[0] or new_time[-1] > old_time[-1]:
+            raise ValueError("target_time_array must stay within the source time span")
 
         state_in = data.get("state_time_series", {})
         dist_in = data.get("disturbance_time_series", {})
