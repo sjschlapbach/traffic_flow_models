@@ -1,0 +1,13 @@
+<configuration>
+            <input>
+                <net-file value="zurich_sumo.net.xml"/>
+                <additional-files value="detector.xml"/>
+                <route-files value="zurich_sumo.rou.xml"/>
+            </input>
+            <output>
+            <statistic-output value="zurich_sumo_stats.xml"/>
+            </output>
+             <report>
+                <duration-log.statistics value="true"/>
+            </report>
+        </configuration>
