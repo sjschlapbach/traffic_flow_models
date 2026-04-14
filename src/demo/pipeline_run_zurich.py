@@ -282,9 +282,27 @@ if __name__ == "__main__":
         comparison_video_path = os.path.join(results_dir, "simulation_comparison.avi")
         try:
             print("\nGenerating comparison video (micro vs macro)...")
+
+            # ensure the backbone (micro) results are on the same time grid as
+            # the macro simulation results. Resample the backbone file onto the
+            # macro time array and pass the resampled file to visualize_comparison.
+            macro_time_array, _, _, _ = Simulation.load_results(
+                filepath=os.path.join(results_dir, "simulation_results.json"),
+                network=network,
+            )
+
+            subsampled_micro_data = os.path.join(
+                results_dir, "subsampled_micro_data.json"
+            )
+            Simulation.resample_results_file(
+                source_filepath=backbone_state_path,
+                dest_filepath=subsampled_micro_data,
+                target_time_array=macro_time_array,
+            )
+
             sim.visualize_comparison(
                 result_filepaths=[
-                    backbone_state_path,
+                    subsampled_micro_data,
                     os.path.join(results_dir, "simulation_results.json"),
                 ],
                 labels=["Backbone (MICRO)", f"Macro {parsed_args.model.upper()}"],

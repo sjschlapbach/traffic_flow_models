@@ -1601,6 +1601,179 @@ class Simulation:
 
         return time_array, state_history, disturbance_history, metadata
 
+    @classmethod
+    def resample_results_file(
+        cls,
+        source_filepath: str,
+        dest_filepath: str,
+        target_time_array: NDArray[np.float64] | list[float],
+    ) -> str:
+        """Resample a saved simulation results JSON file onto `target_time_array`.
+
+        The function reads a results JSON produced by :meth:`save_results` or
+        the backbone aggregator, linearly interpolates all per-link / per-node
+        time series (state and disturbance) onto the provided time grid and
+        writes a new JSON file at ``dest_filepath``. Disturbance time series
+        (which are defined on intervals between state timesteps) are resampled
+        using midpoint times and returned with length ``len(target_time_array)-1``.
+
+        Returns the path to the written file (``dest_filepath``).
+        """
+        # load source file
+        with open(source_filepath, "r", encoding="utf-8") as f:
+            data = json.load(f)
+
+        old_time = np.asarray(data.get("time_array", []), dtype=np.float64)
+        new_time = np.asarray(target_time_array, dtype=np.float64)
+
+        # quick path: already matching -> copy
+        if old_time.shape == new_time.shape and np.allclose(
+            old_time, new_time, rtol=1e-12, atol=1e-15
+        ):
+            with open(dest_filepath, "w", encoding="utf-8") as f:
+                json.dump(data, f, indent=2)
+            return dest_filepath
+
+        if old_time.ndim != 1 or new_time.ndim != 1:
+            raise ValueError("time arrays must be one-dimensional")
+        if old_time.size < 1:
+            raise ValueError("source results file contains empty time array")
+
+        state_in = data.get("state_time_series", {})
+        dist_in = data.get("disturbance_time_series", {})
+
+        new_state = {
+            "flows": {},
+            "densities": {},
+            "speeds": {},
+            "origin_queues": {},
+            "onramp_queues": {},
+            "offramp_queues": {},
+        }
+
+        # helper: interpolate a 2-D time x value array (values may be scalar or vector per timestep)
+        def _interp_2d(list_of_vals, t_old, t_new):
+            arr = np.array(list_of_vals, dtype=np.float64)
+            if arr.ndim == 1:
+                arr = arr.reshape((-1, 1))
+            if arr.shape[0] != t_old.shape[0]:
+                raise ValueError("Inconsistent time-series length in source file")
+
+            # handle degenerate single-sample case by repeating
+            if arr.shape[0] == 1:
+                return np.repeat(arr, t_new.shape[0], axis=0)
+
+            out = np.zeros((t_new.shape[0], arr.shape[1]), dtype=np.float64)
+            for j in range(arr.shape[1]):
+                out[:, j] = np.interp(t_new, t_old, arr[:, j])
+            return out
+
+        # state fields (flows/densities/speeds)
+        for field in ("flows", "densities", "speeds"):
+            for lk_id, series in state_in.get(field, {}).items():
+                if not series:
+                    new_state[field][lk_id] = []
+                    continue
+                new_arr = _interp_2d(series, old_time, new_time)
+
+                # store as list-of-lists per timestep (consistent with save_results)
+                new_state[field][lk_id] = [list(row.tolist()) for row in new_arr]
+
+        # queue-like state fields (scalar per timestep)
+        for field in ("origin_queues", "onramp_queues", "offramp_queues"):
+            for k, series in state_in.get(field, {}).items():
+                if not series:
+                    new_state[field][k] = []
+                    continue
+                arr = np.asarray(series, dtype=np.float64)
+                if arr.shape[0] == 1:
+                    new_vals = np.repeat(arr[0], new_time.shape[0])
+                else:
+                    new_vals = np.interp(new_time, old_time, arr)
+                new_state[field][k] = [float(x) for x in new_vals.tolist()]
+
+        # disturbances: defined on intervals between state timesteps
+        new_dist = {
+            "origin_demands": {},
+            "turning_rates": {},
+            "flow_boundary_conditions": {},
+            "density_boundary_conditions": {},
+        }
+
+        if old_time.shape[0] >= 2 and new_time.shape[0] >= 2:
+            old_intervals = old_time[:-1]
+            new_intervals = new_time[:-1]
+
+            # origin_demands (scalar per interval)
+            for k, series in dist_in.get("origin_demands", {}).items():
+                if not series:
+                    new_dist["origin_demands"][k] = []
+                    continue
+                arr = np.asarray(series, dtype=np.float64)
+                if arr.shape[0] == 1:
+                    new_vals = np.repeat(arr[0], new_intervals.shape[0])
+                else:
+                    new_vals = np.interp(new_intervals, old_intervals, arr)
+                new_dist["origin_demands"][k] = [float(x) for x in new_vals.tolist()]
+
+            # turning_rates: nested dict node_id -> link_id -> list
+            for node_id, inner in dist_in.get("turning_rates", {}).items():
+                new_dist["turning_rates"][node_id] = {}
+                for lk, series in inner.items():
+                    if not series:
+                        new_dist["turning_rates"][node_id][lk] = []
+                        continue
+                    arr = np.asarray(series, dtype=np.float64)
+                    if arr.shape[0] == 1:
+                        new_vals = np.repeat(arr[0], new_intervals.shape[0])
+                    else:
+                        new_vals = np.interp(new_intervals, old_intervals, arr)
+                    new_dist["turning_rates"][node_id][lk] = [
+                        float(x) for x in new_vals.tolist()
+                    ]
+
+            # flow / density boundary conditions (scalar per interval)
+            for field in ("flow_boundary_conditions", "density_boundary_conditions"):
+                for k, series in dist_in.get(field, {}).items():
+                    if not series:
+                        new_dist[field][k] = []
+                        continue
+                    arr = np.asarray(series, dtype=np.float64)
+                    if arr.shape[0] == 1:
+                        new_vals = np.repeat(arr[0], new_intervals.shape[0])
+                    else:
+                        new_vals = np.interp(new_intervals, old_intervals, arr)
+                    new_dist[field][k] = [float(x) for x in new_vals.tolist()]
+        else:
+            # degenerate case: no disturbance samples in source or target
+            # preserve empty structures
+            for field in new_dist.keys():
+                # copy keys where present but ensure empty lists
+                for k in dist_in.get(field, {}).keys():
+                    new_dist[field].setdefault(k, [])
+
+        # assemble output
+        out = {
+            "metadata": dict(data.get("metadata", {})),
+            "time_array": [float(x) for x in new_time.tolist()],
+            "state_time_series": new_state,
+            "disturbance_time_series": new_dist,
+        }
+
+        # annotate provenance
+        out.setdefault("metadata", {})["resampled_from"] = os.path.basename(
+            source_filepath
+        )
+        out.setdefault("metadata", {})["resampled_on"] = (
+            datetime.utcnow().isoformat() + "Z"
+        )
+
+        # write JSON
+        with open(dest_filepath, "w", encoding="utf-8") as f:
+            json.dump(out, f, indent=2)
+
+        return dest_filepath
+
     def compute_metrics(
         self,
         states: NDArray[np.float64],
