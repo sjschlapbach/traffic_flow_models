@@ -609,11 +609,12 @@ class SUMOPipeline:
                 el.set("type", "passenger_car")
                 el.set("id", f"urban_{idx}")
 
-            elements.sort(key=lambda x: float(x.get("depart")))
+            elements.sort(key=lambda x: float(x.get("depart")))  # type: ignore - should fail in case of missing attribute
             urban_root[:] = elements
             urban_tree.write(temp_urban_rou, encoding="utf-8", xml_declaration=True)
 
             # ── Stream 2: Highway fringe demand ──────────────────────────────────
+            routed_count = 0
             if highway_count > 0:
                 # Validate prerequisites
                 if not self.origin_ids:
