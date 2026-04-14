@@ -14,6 +14,9 @@ from demo.scenarios import (
     setup_network_c3,
     setup_network_c4,
     setup_network_d,
+    setup_network_e,
+    setup_network_e1,
+    setup_network_e2,
 )
 
 if __name__ == "__main__":
@@ -38,7 +41,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--scenario",
         type=str,
-        choices=["A", "B", "C", "C1", "C2", "C3", "C4", "D"],
+        choices=["A", "B", "C", "C1", "C2", "C3", "C4", "D", "E", "E1", "E2"],
         default="A",
         help="Select the scenario to simulate (default: A). The subversions (if available) contain different ramp metering controllers for the on-ramp(s) in the scenario.",
     )
@@ -64,6 +67,12 @@ if __name__ == "__main__":
         setup_network = setup_network_c4
     elif scenario == "D":
         setup_network = setup_network_d
+    elif scenario == "E":
+        setup_network = setup_network_e
+    elif scenario == "E1":
+        setup_network = setup_network_e1
+    elif scenario == "E2":
+        setup_network = setup_network_e2
     else:
         raise ValueError(f"Scenario {scenario} is not defined.")
 

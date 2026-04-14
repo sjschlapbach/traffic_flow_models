@@ -99,9 +99,9 @@ if __name__ == "__main__":
         cell_size=preferred_cell_size
     )
     pipeline.generate_demand(
-        vehicle_count=vehicle_demand,
+        urban_count=vehicle_demand,
         duration_seconds=duration * 3600,
-        backbone_vehicle_count=parsed_args.backbone_vehicle_count,
+        highway_count=parsed_args.backbone_vehicle_count,
         demand_profile=SUMOPipeline.parse_demand_profile(parsed_args.demand_profile),
     )
     (
