@@ -462,8 +462,8 @@ class SUMOPipeline:
             "--seed",
             str(seed),
             # Seed duarouter (called internally by --validate) for full reproducibility.
-            "--duarouter-option",
-            f"--seed={seed}",
+            #"--duarouter-option",
+            #f"--seed={seed}",
         ]
         subprocess.run(cmd, check=True, capture_output=True, text=True)
 
