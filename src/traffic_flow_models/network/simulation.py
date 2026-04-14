@@ -1841,6 +1841,15 @@ class Simulation:
         # ===== PART 2: Per-Node Inflow Plots (Origins) =====
         print("  Creating per-node inflow plots (origins)...")
         for node in self.network.list_nodes():
+            # skip plotting of origin - onramp nodes
+            if (
+                len(node.incoming) == 1
+                and isinstance(node.incoming[0], Origin)
+                and len(node.outgoing) == 1
+                and isinstance(node.outgoing[0], Onramp)
+            ):
+                continue
+
             inflow_components = [
                 link for link in node.incoming if isinstance(link, (Origin, Onramp))
             ]
@@ -1893,6 +1902,15 @@ class Simulation:
         # ===== PART 5: Per-Node Summary Plots (All Inflows & Outflows) =====
         print("  Creating per-node summary plots...")
         for node in self.network.list_nodes():
+            # skip plotting of origin - onramp nodes
+            if (
+                len(node.incoming) == 1
+                and isinstance(node.incoming[0], Origin)
+                and len(node.outgoing) == 1
+                and isinstance(node.outgoing[0], Onramp)
+            ):
+                continue
+
             self._plot_node_summary(
                 node=node,
                 time_seconds=time_seconds,
