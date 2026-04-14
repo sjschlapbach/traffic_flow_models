@@ -2467,9 +2467,7 @@ class Simulation:
         link_properties = metadata.get("link_properties", {})
         for lk_id, val in list(critical_densities.items()):
             if not isinstance(val, (int, float)) or not np.isfinite(val):
-                jam_density = link_properties.get(lk_id, {}).get(
-                    "jam_density_density", None
-                )
+                jam_density = link_properties.get(lk_id, {}).get("jam_density", None)
                 try:
                     jam_density = float(jam_density)
                 except Exception:
@@ -2643,15 +2641,9 @@ class Simulation:
                     filepath=filepath, network=self.network, load_mainline_only=True
                 )
             else:
-                # try normal load, fallback to mainline-only when validation complains
-                try:
-                    time_array, state_history, _, metadata = self.load_results(
-                        filepath=filepath, network=self.network
-                    )
-                except ValueError:
-                    time_array, state_history, _, metadata = self.load_results(
-                        filepath=filepath, network=self.network, load_mainline_only=True
-                    )
+                time_array, state_history, _, metadata = self.load_results(
+                    filepath=filepath, network=self.network
+                )
 
             if metadata is None:
                 raise ValueError(
