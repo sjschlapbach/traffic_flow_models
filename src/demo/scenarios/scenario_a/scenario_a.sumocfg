@@ -1,0 +1,14 @@
+<configuration>
+    <input>
+        <net-file value="scenario_a.net.xml"/>
+        <route-files value="scenario_a.rou.xml"/>
+    </input>
+    <time>
+        <begin value="0"/>
+        <end value="3600"/>
+        <step-length value="1.0"/> 
+    </time>
+    <processing>
+        <time-to-teleport value="-1"/> 
+    </processing>
+</configuration>
