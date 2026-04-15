@@ -13,7 +13,13 @@ class TestSUMOSimulation:
         net.write_text("net")
         rou.write_text("rou")
 
-        sim = SUMOSimulation("testsim", str(net), str(rou), str(out))
+        sim = SUMOSimulation(
+            "testsim",
+            str(net),
+            str(rou),
+            str(out / "testsim.sumocfg"),
+            str(out),
+        )
         sim.write_config()
 
         # verify that class attributes are initialized correctly
@@ -45,7 +51,13 @@ class TestSUMOSimulation:
         tree = ET.ElementTree(root)
         tree.write(str(stats_file))
 
-        sim = SUMOSimulation("mysim", "n.net.xml", "r.rou.xml", str(out))
+        sim = SUMOSimulation(
+            "mysim",
+            "n.net.xml",
+            "r.rou.xml",
+            str(out / "mysim.sumocfg"),
+            str(out),
+        )
 
         # point sim at our prepared stats file
         sim.stats_file = str(stats_file)
@@ -65,7 +77,13 @@ class TestSUMOSimulation:
         net.write_text("")
         rou.write_text("")
 
-        sim = SUMOSimulation("runme", str(net), str(rou), str(out))
+        sim = SUMOSimulation(
+            "runme",
+            str(net),
+            str(rou),
+            str(out / "runme.sumocfg"),
+            str(out),
+        )
         called = {}
 
         monkeypatch.setattr(
