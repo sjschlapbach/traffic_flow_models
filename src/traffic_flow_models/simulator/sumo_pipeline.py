@@ -28,6 +28,8 @@ def skip_if_exists(attr_name):
     def decorator(func):
         @wraps(func)
         def wrapper(self, *args, **kwargs):
+            # If the target output file already exists, skip the work to avoid
+            # re-downloading or regenerating expensive SUMO inputs.
             if os.path.exists(getattr(self, attr_name)):
                 print(f"[SKIP] {getattr(self, attr_name)} already exists.")
                 return
@@ -84,6 +86,7 @@ class SUMOPipeline:
             shutil.rmtree(self.output_dir)
         os.makedirs(self.output_dir, exist_ok=True)
 
+        # paths for intermediate and final SUMO inputs/outputs
         self.osm_file: str = os.path.join(self.output_dir, f"{name}.osm")
         self.net_file: str = os.path.join(self.output_dir, f"{name}.net.xml")
         self.detector_file: str = os.path.join(self.output_dir, f"{name}detectors.xml")
@@ -113,6 +116,8 @@ class SUMOPipeline:
         Fetches road network data from OpenStreetMap, plots the network,
         and saves it as an OSM XML file.
         """
+        # Force all edges to be treated as one-way in the OSM graph to match
+        # SUMO's directed edge semantics for network conversion.
         ox.settings.all_oneway = True
         graph = ox.graph_from_place(self.location, network_type="drive", simplify=False)
         fig, ax = ox.plot_graph(
@@ -145,6 +150,8 @@ class SUMOPipeline:
             self.osm_file,
             "--output-file",
             self.net_file,
+            # Use aggressive topology cleanup and signal inference to create a
+            # cleaner SUMO network from raw OSM input.
             "--geometry.remove",
             "true",
             "--junctions.join",
@@ -178,6 +185,8 @@ class SUMOPipeline:
     ) -> list[float]:
         """Helper to scale relative profile percentages to absolute departure times."""
         # Scale relative times -> absolute seconds
+        # Convert normalized demand profile fractions into actual departure times
+        # and keep the matching fraction values for each segment.
         abs_profile = [
             (t_percentage * duration_seconds, f) for t_percentage, f in demand_profile
         ]
@@ -282,6 +291,7 @@ class SUMOPipeline:
         fallback_index = to_index if direction == "from" else from_index
         fallback_dir = "to" if direction == "from" else "from"
 
+        # Collect unique edge IDs while preserving insertion order.
         edges: list[str] = []
         seen: set[str] = set()
         fallback_nodes: list[str] = []
@@ -292,6 +302,8 @@ class SUMOPipeline:
 
             # Case 3: stripped ID is itself a valid SUMO edge — use it directly.
             if raw in all_edge_ids:
+                # If this ID is already a direct SUMO edge ID, use it as-is instead
+                # of interpreting it as a junction reference.
                 direct_edge_nodes.append(raw)
                 if raw not in seen:
                     seen.add(raw)
@@ -352,6 +364,7 @@ class SUMOPipeline:
             from_edge = rng.choice(from_edges)
             to_edge = rng.choice(to_edges)
             # Avoid trivial same-edge trips (not always avoidable on tiny networks)
+            # by retrying random selection a few times.
             for _ in range(20):
                 if to_edge != from_edge:
                     break
@@ -384,6 +397,8 @@ class SUMOPipeline:
         Raises:
             subprocess.CalledProcessError: If duarouter exits with a non-zero code.
         """
+        # Run duarouter to expand simple trip definitions into full routes based
+        # on the current SUMO network topology.
         cmd = [
             "duarouter",
             "-n",
@@ -503,9 +518,13 @@ class SUMOPipeline:
 
         try:
             # ── Stream 1: Urban random trips ─────────────────────────────────────
+            # randomTrips.py produces a full random route file across the entire
+            # network. This stream covers internal urban travel, not just highway
+            # fringe traffic.
             random_trips_script = os.path.join(
                 os.environ["SUMO_HOME"], "tools", "randomTrips.py"
             )
+            # Generate the urban stream using SUMO's randomTrips.py helper.
             cmd = [
                 sys.executable,
                 random_trips_script,
@@ -539,6 +558,7 @@ class SUMOPipeline:
                 )
             else:
                 # Uniform: re-space whatever randomTrips produced across the window.
+                # This ensures the generated urban departures fill the full horizon.
                 interval = duration_seconds / max(len(elements), 1)
                 new_times = [i * interval for i in range(len(elements))]
 
@@ -617,7 +637,8 @@ class SUMOPipeline:
                     hw_interval = duration_seconds / highway_count
                     hw_departures = [i * hw_interval for i in range(highway_count)]
 
-                # Build raw trips and validate with duarouter
+                # Build raw highway fringe trip definitions and validate them.
+                # duarouter will drop unreachable trips while producing complete routes.
                 hw_trips_root = self._build_highway_trips_xml(
                     hw_departures, from_edges, to_edges, rng
                 )
