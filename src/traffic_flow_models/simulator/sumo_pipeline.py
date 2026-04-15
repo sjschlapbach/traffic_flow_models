@@ -285,7 +285,7 @@ class SUMOPipeline:
     #     except subprocess.CalledProcessError as e:
     #         print(f"An error occurred while generating demand: {e}")
 
-    def _strip_node_prefix(self, node_id: str) -> str:
+    def strip_node_prefix(self, node_id: str) -> str:
         """Return the raw SUMO junction ID by stripping any known role prefix."""
         NODE_ID_PREFIXES = ("origin_", "destination_", "dest_", "onramp_", "offramp_")
 
@@ -294,7 +294,7 @@ class SUMOPipeline:
                 return node_id[len(prefix) :]
         return node_id
 
-    def _get_fringe_edges(
+    def get_fringe_edges(
         self,
         node_ids: list[str],
         direction: str,
@@ -360,7 +360,7 @@ class SUMOPipeline:
         direct_edge_nodes: list[str] = []
 
         for node_id in node_ids:
-            raw = self._strip_node_prefix(node_id)
+            raw = self.strip_node_prefix(node_id)
 
             # Case 3: stripped ID is itself a valid SUMO edge — use it directly.
             if raw in all_edge_ids:
@@ -383,12 +383,12 @@ class SUMOPipeline:
 
         if direct_edge_nodes:
             print(
-                f"[INFO] _get_fringe_edges: {len(direct_edge_nodes)} ID(s) resolved "
+                f"[INFO] get_fringe_edges: {len(direct_edge_nodes)} ID(s) resolved "
                 f"as direct edge references (not junctions): {direct_edge_nodes}"
             )
         if fallback_nodes:
             print(
-                f"[WARN] _get_fringe_edges(direction='{direction}'): "
+                f"[WARN] get_fringe_edges(direction='{direction}'): "
                 f"{len(fallback_nodes)} junction(s) had no '{direction}' edge — "
                 f"used '{fallback_dir}' fallback: {fallback_nodes}"
             )
@@ -468,9 +468,6 @@ class SUMOPipeline:
             "--ignore-errors",  # drop unroutable trips
             "--seed",
             str(seed),
-            # Seed duarouter (called internally by --validate) for full reproducibility.
-            # "--duarouter-option",
-            # f"--seed={seed}",
         ]
         subprocess.run(cmd, check=True, capture_output=True, text=True)
 
@@ -622,7 +619,7 @@ class SUMOPipeline:
                 el.set("type", "passenger_car")
                 el.set("id", f"urban_{idx}")
 
-            elements.sort(key=lambda x: float(x.get("depart")))  # type: ignore - should fail in case of missing attribute
+            elements.sort(key=lambda x: float(x.get("depart")))
             urban_root[:] = elements
             urban_tree.write(temp_urban_rou, encoding="utf-8", xml_declaration=True)
 
@@ -643,14 +640,14 @@ class SUMOPipeline:
                         "the highway stream."
                     )
 
-                raw_origins = [self._strip_node_prefix(n) for n in self.origin_ids]
-                raw_dests = [self._strip_node_prefix(n) for n in dest_node_ids]
+                raw_origins = [self.strip_node_prefix(n) for n in self.origin_ids]
+                raw_dests = [self.strip_node_prefix(n) for n in dest_node_ids]
                 print(f"[DEBUG] Highway stream — searching net XML for:")
                 print(f"  origin  raw IDs  ({len(raw_origins)}): {raw_origins}")
                 print(f"  dest    raw IDs  ({len(raw_dests)}):   {raw_dests}")
 
-                from_edges = self._get_fringe_edges(self.origin_ids, "from")
-                to_edges = self._get_fringe_edges(dest_node_ids, "to")
+                from_edges = self.get_fringe_edges(self.origin_ids, "from")
+                to_edges = self.get_fringe_edges(dest_node_ids, "to")
 
                 if not from_edges:
                     raise ValueError(
@@ -683,7 +680,6 @@ class SUMOPipeline:
                     f"departure: {len(from_edges)}, arrival: {len(to_edges)}"
                 )
 
-                # Departure times — same profile logic, independent count
                 if demand_profile:
                     hw_departures = self._sample_from_profile(
                         highway_count, duration_seconds, demand_profile
@@ -692,7 +688,6 @@ class SUMOPipeline:
                     hw_interval = duration_seconds / highway_count
                     hw_departures = [i * hw_interval for i in range(highway_count)]
 
-                # Build raw trips and validate with duarouter
                 hw_trips_root = self._build_highway_trips_xml(
                     hw_departures, from_edges, to_edges, rng
                 )
@@ -701,7 +696,6 @@ class SUMOPipeline:
                 )
                 self._validate_with_duarouter(temp_hw_trips, temp_hw_rou, seed)
 
-                # Report how many highway trips survived routing
                 hw_tree = ET.parse(temp_hw_rou)
                 routed_count = sum(
                     1 for el in hw_tree.getroot() if el.tag in ("vehicle", "trip")
@@ -729,14 +723,14 @@ class SUMOPipeline:
             )
 
         except subprocess.CalledProcessError as e:
-            # Re-raise with full stderr visible to the caller rather than silencing.
+
             stderr = e.stderr.strip() if e.stderr else "(no stderr)"
             raise RuntimeError(
                 f"Subprocess failed (exit {e.returncode}): {' '.join(e.cmd)}\n{stderr}"
             ) from e
 
         finally:
-            # Always clean up temp files, even on error
+
             for path in [temp_urban_trips, temp_urban_rou, temp_hw_trips, temp_hw_rou]:
                 if os.path.exists(path):
                     os.remove(path)
@@ -1288,7 +1282,7 @@ class SUMOPipeline:
 
     #     return destination_flow_bc, destination_density_bc
 
-    def _get_edge_lane_counts(self) -> dict[str, int]:
+    def get_edge_lane_counts(self) -> dict[str, int]:
         """Parse the net_file to map edge IDs to their number of lanes."""
         import xml.etree.ElementTree as ET
 
@@ -1308,153 +1302,103 @@ class SUMOPipeline:
         return lane_counts
 
     @staticmethod
-    def _bc_flow_from_density(
+    def bc_flow_from_density(
         rho_total: float,
         n_lanes: int,
         road_params: dict,
     ) -> float:
-    
-        q_max = road_params["lane_capacity"]    # veh/h/lane
-        rho_jam = road_params["jam_density"]    # veh/km/lane
-        v_f = road_params["free_flow_speed"]    # km/h
 
-        # Per-lane density
+        q_max_lane = road_params["lane_capacity"]  # veh/h/lane
+        rho_jam_lane = road_params["jam_density"]  # veh/km/lane
+        v_f = road_params["free_flow_speed"]  # km/h
+
+        # Per-lane density for the FD calculation
         rho_lane = rho_total / n_lanes if n_lanes > 0 else rho_total
+        rho_lane = max(0.0, min(rho_lane, rho_jam_lane))
 
-        # Clamp to physical range
-        rho_lane = max(0.0, min(rho_lane, rho_jam))
+        rho_c = q_max_lane / v_f  # Critical density
+        w = q_max_lane / (rho_jam_lane - rho_c)  # Wave speed
 
-        rho_c = q_max / v_f                     # Critical density (veh/km/lane)
-        w = q_max / (rho_jam - rho_c)           # Wave speed (km/h)
-
-        # Apply flat-top boundary logic
+        # The Hybrid Equation:
         if rho_lane <= rho_c:
-            q_lane = q_max                      # Unrestricted demand
+            # Freeflow: Boundary is wide open at capacity
+            q_lane = q_max_lane
         else:
-            q_lane = q_max - w * (rho_lane - rho_c)
+            # Congestion: Boundary flow is restricted by the FD slope
+            q_lane = q_max_lane - w * (rho_lane - rho_c)
 
-        # Ensure flow doesn't dip below 0 due to floating point math, scale by lanes
         return max(0.0, q_lane) * n_lanes
 
     def build_destination_bc_from_sumo_edges(
         self,
         edge_data_path: str,
-    ) -> tuple[
-        dict[str, Callable[[float], float]],
-        dict[str, Callable[[float], float]],
-    ]:
-        """Build destination BCs directly from SUMO edgeData output."""
+    ) -> tuple[dict[str, Callable], dict[str, Callable]]:
         import xml.etree.ElementTree as ET
         import numpy as np
-        import warnings
-        import logging
 
-        logger = logging.getLogger(__name__)
-
-        _FALLBACK_DENSITY = 10.0  # veh/km
-
-        if self.consolidated_network is None or self.destination_ids is None:
-            raise ValueError(
-                "Call create_consolidated_network() before "
-                "build_destination_bc_from_sumo_edges()."
-            )
-
-        lane_counts = self._get_edge_lane_counts()
-
-        # 1. Parse edgeData XML
         tree = ET.parse(edge_data_path)
         root = tree.getroot()
-        edge_density_ts: dict[str, list[tuple[float, float]]] = {}
+        edge_density_ts = {}
 
         for interval in root.findall("interval"):
-            t_begin = float(interval.get("begin", 0))
-            t_end = float(interval.get("end", 0))
-            t_mid = ((t_begin + t_end) / 2.0) / 3600.0  # → hours
-
+            t_mid = (
+                (float(interval.get("begin", 0)) + float(interval.get("end", 0))) / 2.0
+            ) / 3600.0
             for edge_el in interval.findall("edge"):
                 eid = edge_el.get("id")
-                raw_dens = edge_el.get("density")
-                if eid and raw_dens is not None:
-                    edge_density_ts.setdefault(eid, []).append(
-                        (t_mid, float(raw_dens))
-                    )
+                d = edge_el.get("density")
+                if eid and d is not None:
+                    edge_density_ts.setdefault(eid, []).append((t_mid, float(d)))
 
-        logger.debug(
-            "edgeData parsed: %d edges with density data",
-            len(edge_density_ts),
-        )
+        lane_counts = self.get_edge_lane_counts()
+        _rp = self.road_params.get("motorway") or next(iter(self.road_params.values()))
 
-        # 2. For each destination, resolve upstream SUMO edges
-        def _make_interp_from_pairs(
-            pairs: list[tuple[float, float]] | None,
-            fallback: float,
-            label: str = "",
-        ) -> Callable[[float], float]:
-            if not pairs:
-                return lambda _t, _f=fallback: _f
-            t_arr = np.array([p[0] for p in pairs])
-            v_arr = np.array([p[1] for p in pairs])
-            return lambda t, _t=t_arr, _v=v_arr: float(np.interp(t, _t, _v))
-
-        if self.road_params is None:
-            raise ValueError("road_params not initialised.")
-        _rp: dict = (
-            self.road_params.get("motorway")  # type: ignore
-            or next(iter(self.road_params.values()))
-        )
-
-        destination_flow_bc: dict[str, Callable[[float], float]] = {}
-        destination_density_bc: dict[str, Callable[[float], float]] = {}
+        destination_flow_bc = {}
+        destination_density_bc = {}
 
         for dest_id in self.destination_ids:
-            upstream_edges = self._get_fringe_edges(
+            upstream_edges = self.get_fringe_edges(
                 [dest_id], direction="to", allow_reverse_fallback=True
             )
 
-            if not upstream_edges:
-                warnings.warn(f"No upstream edges for '{dest_id}'. Using fallback.")
-                destination_density_bc[dest_id] = lambda _t, _r=_FALLBACK_DENSITY: _r
-                destination_flow_bc[dest_id] = lambda _t, _r=_FALLBACK_DENSITY: (
-                    SUMOPipeline._bc_flow_from_density(_r, 1, _rp)
-                )
-                continue
-
-            density_pairs_agg: dict[float, list[float]] = {}
-            matched_edges: list[str] = []
-
+            ts_agg = {}
+            matched = []
             for eid in upstream_edges:
                 if eid in edge_density_ts:
-                    matched_edges.append(eid)
-                    for t_mid, d in edge_density_ts[eid]:
-                        density_pairs_agg.setdefault(t_mid, []).append(d)
+                    matched.append(eid)
+                    for t, d in edge_density_ts[eid]:
+                        ts_agg.setdefault(t, []).append(d)
 
-            if not matched_edges:
-                warnings.warn(f"Upstream edges for '{dest_id}' not in edgeData. Using fallback.")
-                destination_density_bc[dest_id] = lambda _t, _r=_FALLBACK_DENSITY: _r
-                destination_flow_bc[dest_id] = lambda _t, _r=_FALLBACK_DENSITY: (
-                    SUMOPipeline._bc_flow_from_density(_r, 1, _rp)
+            if not matched:
+                destination_density_bc[dest_id] = lambda t: 10.0
+                destination_flow_bc[dest_id] = (
+                    lambda t: _rp["lane_capacity"]
+                    * sum(lane_counts.values())
+                    / len(lane_counts)
                 )
                 continue
 
-            density_pairs = sorted(
-                (t, sum(vs) / len(vs)) for t, vs in density_pairs_agg.items()
-            )
+            t_vals = sorted(ts_agg.keys())
 
-            n_lanes_total = sum(lane_counts.get(eid, 1) for eid in matched_edges)
+            total_lanes = sum(lane_counts.get(eid, 1) for eid in matched)
 
-            density_fn = _make_interp_from_pairs(
-                density_pairs if density_pairs else None,
-                _FALLBACK_DENSITY,
-            )
-            destination_density_bc[dest_id] = density_fn
+            d_vals_per_lane = [(sum(ts_agg[t]) / total_lanes) for t in t_vals]
 
-            # Changed to use the new flat-top _bc_flow_from_density
-            destination_flow_bc[dest_id] = (
-                lambda t,
-                _dfn=density_fn,
-                _nl=n_lanes_total,
-                _rp=_rp: SUMOPipeline._bc_flow_from_density(_dfn(t), _nl, _rp)
-            )
+            # Define Density BC as PER LANE
+            def get_rho_lane(t, _t=t_vals, _d=d_vals_per_lane):
+                return float(np.interp(t, _t, _d))
+
+            destination_density_bc[dest_id] = get_rho_lane
+
+            # Define Flow BC as PER LINK (total)
+            def get_q_total(t, _rho_fn=get_rho_lane, _nl=total_lanes, _params=_rp):
+                rho_lane = _rho_fn(t)
+                # We pass rho_lane * _nl because bc_flow_from_density expects rho_total
+                # and then divides it back by lanes.
+                rho_total_reconstructed = rho_lane * _nl
+                return self.bc_flow_from_density(rho_total_reconstructed, _nl, _params)
+
+            destination_flow_bc[dest_id] = get_q_total
 
         return destination_flow_bc, destination_density_bc
 
