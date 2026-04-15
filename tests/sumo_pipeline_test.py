@@ -50,7 +50,12 @@ class TestSUMOPipeline:
     def test_init_creates_output_dir(self, tmp_path, monkeypatch, road_params_config):
         # run inside temporary working dir so results/ is created there
         monkeypatch.chdir(tmp_path)
-        p = SUMOPipeline("myloc", "Somewhere", road_params_config)
+        p = SUMOPipeline(
+            "myloc",
+            "Somewhere",
+            road_params_config,
+            os.path.join("results", "myloc"),
+        )
         assert os.path.isdir(os.path.join("results", "myloc"))
 
         # verify that class parameters have been set correctly
@@ -67,7 +72,12 @@ class TestSUMOPipeline:
         self, monkeypatch, tmp_path, capsys, road_params_config
     ):
         monkeypatch.chdir(tmp_path)
-        p = SUMOPipeline("skiptest", "Nowhere", road_params_config)
+        p = SUMOPipeline(
+            "skiptest",
+            "Nowhere",
+            road_params_config,
+            os.path.join("results", "skiptest"),
+        )
 
         # create the osm file so fetch_OSM should be skipped
         os.makedirs(os.path.dirname(p.osm_file), exist_ok=True)
@@ -82,7 +92,12 @@ class TestSUMOPipeline:
         self, monkeypatch, tmp_path, road_params_config
     ):
         monkeypatch.chdir(tmp_path)
-        p = SUMOPipeline("convtest", "Loc", road_params_config)
+        p = SUMOPipeline(
+            "convtest",
+            "Loc",
+            road_params_config,
+            os.path.join("results", "convtest"),
+        )
 
         # create a dummy osm file path
         os.makedirs(os.path.dirname(p.osm_file), exist_ok=True)
@@ -110,7 +125,12 @@ class TestSUMOPipeline:
         self, monkeypatch, tmp_path, capsys, road_params_config
     ):
         monkeypatch.chdir(tmp_path)
-        p = SUMOPipeline("dtest", "Loc", road_params_config)
+        p = SUMOPipeline(
+            "dtest",
+            "Loc",
+            road_params_config,
+            os.path.join("results", "dtest"),
+        )
 
         # ensure SUMO_HOME not set
         monkeypatch.delenv("SUMO_HOME", raising=False)
@@ -125,7 +145,12 @@ class TestSUMOPipeline:
         self, monkeypatch, tmp_path, road_params_config
     ):
         monkeypatch.chdir(tmp_path)
-        p = SUMOPipeline("dtest2", "Loc", road_params_config)
+        p = SUMOPipeline(
+            "dtest2",
+            "Loc",
+            road_params_config,
+            os.path.join("results", "dtest2"),
+        )
 
         # 1. Setup fake SUMO environment
         fake_sumo = tmp_path / "sumo"
@@ -173,7 +198,12 @@ class TestSUMOPipeline:
         self, monkeypatch, tmp_path, capsys, road_params_config
     ):
         monkeypatch.chdir(tmp_path)
-        p = SUMOPipeline("convskip", "Place", road_params_config)
+        p = SUMOPipeline(
+            "convskip",
+            "Place",
+            road_params_config,
+            os.path.join("results", "convskip"),
+        )
 
         # create the net file so convert_to_sumo should be skipped
         os.makedirs(os.path.dirname(p.net_file), exist_ok=True)

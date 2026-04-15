@@ -58,7 +58,14 @@ class SUMOPipeline:
         splits: Dictionary mapping node IDs to their outgoing link split ratios.
     """
 
-    def __init__(self, name: str, location: str, road_params_config_path: str):
+    def __init__(
+        self,
+        name: str,
+        location: str,
+        road_params_config_path: str,
+        output_dir: str,
+        clean_output_dir: bool = False,
+    ) -> None:
         """Initialize the SUMO pipeline.
 
         Args:
@@ -72,8 +79,8 @@ class SUMOPipeline:
         self.road_params_config_path: str = road_params_config_path
 
         # set up output directory
-        self.output_dir: str = os.path.join("results", name)
-        if os.path.exists(self.output_dir):
+        self.output_dir: str = output_dir
+        if os.path.exists(self.output_dir) and clean_output_dir:
             shutil.rmtree(self.output_dir)
         os.makedirs(self.output_dir, exist_ok=True)
 

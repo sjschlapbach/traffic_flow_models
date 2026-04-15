@@ -16,7 +16,9 @@ class SUMOSimulation:
         stats_file: Path to the simulation statistics output file.
     """
 
-    def __init__(self, name, net_file, rou_file, output_dir, detector_file=None):
+    def __init__(
+        self, name, net_file, rou_file, cfg_file, output_dir, detector_file=None
+    ):
         """Initialize the SUMO simulation.
 
         Args:
@@ -30,7 +32,7 @@ class SUMOSimulation:
         self.detector_file = detector_file
         self.rou_file = rou_file
         self.output_dir = output_dir
-        self.cfg_file = os.path.join(self.output_dir, f"{name}.sumocfg")
+        self.cfg_file = cfg_file
         self.stats_file = os.path.join(self.output_dir, f"{self.name}_stats.xml")
         self.edge_data_file = os.path.join(self.output_dir, "edge_data_output.xml")
         self.edge_data_config = os.path.join(
