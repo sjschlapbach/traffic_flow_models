@@ -172,10 +172,17 @@ if __name__ == "__main__":
         preferred_cell_size=preferred_cell_size,
     )
 
+    # destination_flow_bc, destination_density_bc = (
+    #     pipeline.build_destination_boundary_conditions(
+    #         backbone_state_path=backbone_state_path
+    #     )
+    # )
+
+    edge_data_path = os.path.join(pipeline.output_dir, "edge_data_output.xml")
+
+    # Get your boundary conditions from the microscopic data
     destination_flow_bc, destination_density_bc = (
-        pipeline.build_destination_boundary_conditions(
-            backbone_state_path=backbone_state_path
-        )
+        pipeline.build_destination_bc_from_sumo_edges(edge_data_path=edge_data_path)
     )
 
     # plot the network
