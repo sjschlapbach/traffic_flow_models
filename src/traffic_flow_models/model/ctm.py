@@ -717,7 +717,6 @@ class CTM:
                             onramp_queues=onramp_queues,
                             flows=flows,
                             densities=densities,
-                            dt=dt,
                         )
                     else:
                         r_k = casadi.SX(casadi.inf)
