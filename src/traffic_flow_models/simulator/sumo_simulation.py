@@ -71,7 +71,6 @@ class SUMOSimulation:
             f'    <additional-files value="{add_files_attr}"/>\n'
             f'    <route-files value="{os.path.basename(self.rou_file)}"/>\n'
             "  </input>\n"
-            '  <time><end value="86400"/></time>\n'
             "  <output>\n"
             f'    <statistic-output value="{os.path.basename(self.stats_file)}"/>\n'
             "  </output>\n"

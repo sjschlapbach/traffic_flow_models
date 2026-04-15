@@ -4,7 +4,6 @@ import json
 import shutil
 import random
 import json
-import logging
 import subprocess
 import osmnx as ox
 import xml.etree.ElementTree as ET
@@ -15,12 +14,13 @@ import warnings
 from functools import wraps
 from typing import Optional, Tuple, Callable
 
-from traffic_flow_models.network import Network, MotorwayLink, Offramp
+from traffic_flow_models.network import Network, MotorwayLink
 from traffic_flow_models.arbitrator.loop_detector_generator import LoopDetectorGenerator
 from traffic_flow_models.arbitrator.turning_rate_aggregator import TurningRateAggregator
 from traffic_flow_models.arbitrator.network_arbitrator import (
     NetworkArbitrator,
     RoadParamsConfig,
+    RoadTypeParams,
 )
 
 
@@ -619,7 +619,7 @@ class SUMOPipeline:
                 el.set("type", "passenger_car")
                 el.set("id", f"urban_{idx}")
 
-            elements.sort(key=lambda x: float(x.get("depart")))
+            elements.sort(key=lambda x: float(x.get("depart")))  # type: ignore - should fail in case of missing attribute
             urban_root[:] = elements
             urban_tree.write(temp_urban_rou, encoding="utf-8", xml_declaration=True)
 
@@ -680,6 +680,7 @@ class SUMOPipeline:
                     f"departure: {len(from_edges)}, arrival: {len(to_edges)}"
                 )
 
+                # Departure times — same profile logic, independent count
                 if demand_profile:
                     hw_departures = self._sample_from_profile(
                         highway_count, duration_seconds, demand_profile
@@ -688,6 +689,7 @@ class SUMOPipeline:
                     hw_interval = duration_seconds / highway_count
                     hw_departures = [i * hw_interval for i in range(highway_count)]
 
+                # Build raw trips and validate with duarouter
                 hw_trips_root = self._build_highway_trips_xml(
                     hw_departures, from_edges, to_edges, rng
                 )
@@ -696,6 +698,7 @@ class SUMOPipeline:
                 )
                 self._validate_with_duarouter(temp_hw_trips, temp_hw_rou, seed)
 
+                # Report how many highway trips survived routing
                 hw_tree = ET.parse(temp_hw_rou)
                 routed_count = sum(
                     1 for el in hw_tree.getroot() if el.tag in ("vehicle", "trip")
@@ -723,14 +726,14 @@ class SUMOPipeline:
             )
 
         except subprocess.CalledProcessError as e:
-
+            # Re-raise with full stderr visible to the caller rather than silencing.
             stderr = e.stderr.strip() if e.stderr else "(no stderr)"
             raise RuntimeError(
                 f"Subprocess failed (exit {e.returncode}): {' '.join(e.cmd)}\n{stderr}"
             ) from e
 
         finally:
-
+            # Always clean up temp files, even on error
             for path in [temp_urban_trips, temp_urban_rou, temp_hw_trips, temp_hw_rou]:
                 if os.path.exists(path):
                     os.remove(path)
@@ -1284,8 +1287,6 @@ class SUMOPipeline:
 
     def get_edge_lane_counts(self) -> dict[str, int]:
         """Parse the net_file to map edge IDs to their number of lanes."""
-        import xml.etree.ElementTree as ET
-
         tree = ET.parse(self.net_file)
         root = tree.getroot()
         lane_counts = {}
@@ -1303,29 +1304,34 @@ class SUMOPipeline:
 
     @staticmethod
     def bc_flow_from_density(
-        rho_total: float,
+        rho_lane: float,
         n_lanes: int,
-        road_params: dict,
+        road_params: RoadTypeParams,
     ) -> float:
-
         q_max_lane = road_params["lane_capacity"]  # veh/h/lane
         rho_jam_lane = road_params["jam_density"]  # veh/km/lane
         v_f = road_params["free_flow_speed"]  # km/h
 
         # Per-lane density for the FD calculation
-        rho_lane = rho_total / n_lanes if n_lanes > 0 else rho_total
-        rho_lane = max(0.0, min(rho_lane, rho_jam_lane))
+        if rho_lane < 0.0 or rho_lane > rho_jam_lane:
+            warnings.warn(
+                f"Density BC value {rho_lane:.2f} veh/km/lane is out of bounds "
+                f"(0 to {rho_jam_lane:.2f}). Clipping to valid range."
+            )
+            rho_lane_capped = max(0.0, min(rho_lane, rho_jam_lane))
+        else:
+            rho_lane_capped = rho_lane
 
         rho_c = q_max_lane / v_f  # Critical density
         w = q_max_lane / (rho_jam_lane - rho_c)  # Wave speed
 
         # The Hybrid Equation:
-        if rho_lane <= rho_c:
+        if rho_lane_capped <= rho_c:
             # Freeflow: Boundary is wide open at capacity
             q_lane = q_max_lane
         else:
             # Congestion: Boundary flow is restricted by the FD slope
-            q_lane = q_max_lane - w * (rho_lane - rho_c)
+            q_lane = q_max_lane - w * (rho_lane_capped - rho_c)
 
         return max(0.0, q_lane) * n_lanes
 
@@ -1333,9 +1339,6 @@ class SUMOPipeline:
         self,
         edge_data_path: str,
     ) -> tuple[dict[str, Callable], dict[str, Callable]]:
-        import xml.etree.ElementTree as ET
-        import numpy as np
-
         tree = ET.parse(edge_data_path)
         root = tree.getroot()
         edge_density_ts = {}
@@ -1351,10 +1354,22 @@ class SUMOPipeline:
                     edge_density_ts.setdefault(eid, []).append((t_mid, float(d)))
 
         lane_counts = self.get_edge_lane_counts()
-        _rp = self.road_params.get("motorway") or next(iter(self.road_params.values()))
+
+        # extract the road parameters for the motorway
+        if self.road_params is None:
+            raise ValueError("Road parameters are not initialized.")
+        motorway_params = self.road_params.get("motorway") or next(
+            iter(self.road_params.values())
+        )
 
         destination_flow_bc = {}
         destination_density_bc = {}
+
+        # if no destinations are defined, raise an error -> network invalid
+        if self.destination_ids is None:
+            raise ValueError(
+                "Destination boundary conditions cannot be computed in case of missing destinations."
+            )
 
         for dest_id in self.destination_ids:
             upstream_edges = self.get_fringe_edges(
@@ -1372,16 +1387,18 @@ class SUMOPipeline:
             if not matched:
                 destination_density_bc[dest_id] = lambda t: 10.0
                 destination_flow_bc[dest_id] = (
-                    lambda t: _rp["lane_capacity"]
+                    lambda t: motorway_params["lane_capacity"]
                     * sum(lane_counts.values())
                     / len(lane_counts)
+                )
+                warnings.warn(
+                    f"No density data found for any upstream edges of destination '{dest_id}'. "
+                    "Using fallback constant BCs: density=10 veh/km, flow=capacity."
                 )
                 continue
 
             t_vals = sorted(ts_agg.keys())
-
             total_lanes = sum(lane_counts.get(eid, 1) for eid in matched)
-
             d_vals_per_lane = [(sum(ts_agg[t]) / total_lanes) for t in t_vals]
 
             # Define Density BC as PER LANE
@@ -1391,12 +1408,11 @@ class SUMOPipeline:
             destination_density_bc[dest_id] = get_rho_lane
 
             # Define Flow BC as PER LINK (total)
-            def get_q_total(t, _rho_fn=get_rho_lane, _nl=total_lanes, _params=_rp):
+            def get_q_total(
+                t, _rho_fn=get_rho_lane, lanes=total_lanes, _params=motorway_params
+            ):
                 rho_lane = _rho_fn(t)
-                # We pass rho_lane * _nl because bc_flow_from_density expects rho_total
-                # and then divides it back by lanes.
-                rho_total_reconstructed = rho_lane * _nl
-                return self.bc_flow_from_density(rho_total_reconstructed, _nl, _params)
+                return self.bc_flow_from_density(rho_lane, lanes, _params)
 
             destination_flow_bc[dest_id] = get_q_total
 
