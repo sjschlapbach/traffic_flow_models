@@ -1405,7 +1405,9 @@ class SUMOPipeline:
         destination_density_bc: dict[str, Callable[[float], float]] = {}
 
         for dest_id in self.destination_ids:
-            upstream_edges = self._get_fringe_edges([dest_id], direction="to")
+            upstream_edges = self._get_fringe_edges(
+                [dest_id], direction="to", allow_reverse_fallback=True
+            )
 
             if not upstream_edges:
                 warnings.warn(
@@ -1442,7 +1444,10 @@ class SUMOPipeline:
 
             # Since density is already total density per edge, we sum them if multiple edges feed the node.
             # (If you prefer the average density across incoming links, keep your original `sum(vs)/len(vs)`)
-            density_pairs = sorted((t, sum(vs)) for t, vs in density_pairs_agg.items())
+            # density_pairs = sorted((t, sum(vs)) for t, vs in density_pairs_agg.items())
+            density_pairs = sorted(
+                (t, sum(vs) / len(vs)) for t, vs in density_pairs_agg.items()
+            )
 
             flow_label = f"{dest_id}/sumo_flow/{matched_edges}"
             density_label = f"{dest_id}/sumo_density/{matched_edges}"

@@ -62,23 +62,20 @@ class SUMOSimulation:
 
         # backup addtional files code: {f'<additional-files value="{os.path.basename(self.detector_file)}"/>' if self.detector_file is not None else ''}
 
-        config_content = f"""
-        <configuration>
-            <input>
-                <net-file value="{os.path.basename(self.net_file)}"/>
-                <additional-files value="{add_files_attr}"/>
-                <route-files value="{os.path.basename(self.rou_file)}"/>
-            </input>
-            <time>
-                <end value="86400"/>
-            </time>
-            <output>
-            <statistic-output value="{os.path.basename(self.stats_file)}"/>
-            </output>
-             <report>
-                <duration-log.statistics value="true"/>
-            </report>
-        </configuration>"""
+        config_content = (
+            "<configuration>\n"
+            "  <input>\n"
+            f'    <net-file value="{os.path.basename(self.net_file)}"/>\n'
+            f'    <additional-files value="{add_files_attr}"/>\n'
+            f'    <route-files value="{os.path.basename(self.rou_file)}"/>\n'
+            "  </input>\n"
+            '  <time><end value="86400"/></time>\n'
+            "  <output>\n"
+            f'    <statistic-output value="{os.path.basename(self.stats_file)}"/>\n'
+            "  </output>\n"
+            '  <report><duration-log.statistics value="true"/></report>\n'
+            "</configuration>"
+        )
 
         with open(self.cfg_file, "w") as f:
             f.write(config_content.strip())
@@ -94,12 +91,13 @@ class SUMOSimulation:
             [
                 "sumo",
                 "-c",
-                self.cfg_file,
+                os.path.basename(self.cfg_file),
                 "--no-step-log",
                 "true",
                 "--ignore-route-errors",
                 "true",
             ],
+            cwd=self.output_dir,
             check=True,
         )
 
