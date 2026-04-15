@@ -1297,7 +1297,6 @@ class SUMOPipeline:
         lane_counts = {}
 
         for edge in root.findall("edge"):
-            # Skip internal edges if they aren't relevant to your data collection
             if edge.get("function") == "internal":
                 continue
 
@@ -1308,6 +1307,35 @@ class SUMOPipeline:
 
         return lane_counts
 
+    @staticmethod
+    def _bc_flow_from_density(
+        rho_total: float,
+        n_lanes: int,
+        road_params: dict,
+    ) -> float:
+    
+        q_max = road_params["lane_capacity"]    # veh/h/lane
+        rho_jam = road_params["jam_density"]    # veh/km/lane
+        v_f = road_params["free_flow_speed"]    # km/h
+
+        # Per-lane density
+        rho_lane = rho_total / n_lanes if n_lanes > 0 else rho_total
+
+        # Clamp to physical range
+        rho_lane = max(0.0, min(rho_lane, rho_jam))
+
+        rho_c = q_max / v_f                     # Critical density (veh/km/lane)
+        w = q_max / (rho_jam - rho_c)           # Wave speed (km/h)
+
+        # Apply flat-top boundary logic
+        if rho_lane <= rho_c:
+            q_lane = q_max                      # Unrestricted demand
+        else:
+            q_lane = q_max - w * (rho_lane - rho_c)
+
+        # Ensure flow doesn't dip below 0 due to floating point math, scale by lanes
+        return max(0.0, q_lane) * n_lanes
+
     def build_destination_bc_from_sumo_edges(
         self,
         edge_data_path: str,
@@ -1315,19 +1343,7 @@ class SUMOPipeline:
         dict[str, Callable[[float], float]],
         dict[str, Callable[[float], float]],
     ]:
-        """Build destination BCs directly from SUMO edgeData output.
-
-        For each destination node, resolves the SUMO edge(s) immediately upstream
-        via the net XML, then reads flow and total density time series from the SUMO
-        edgeData output file.
-
-        Args:
-            edge_data_path: Path to SUMO edgeData XML output.
-
-        Returns:
-            (destination_flow_bc, destination_density_bc): two dicts mapping
-            destination IDs to callables f(t_hours) -> float.
-        """
+        """Build destination BCs directly from SUMO edgeData output."""
         import xml.etree.ElementTree as ET
         import numpy as np
         import warnings
@@ -1335,7 +1351,6 @@ class SUMOPipeline:
 
         logger = logging.getLogger(__name__)
 
-        _FALLBACK_FLOW = 6000.0  # veh/h
         _FALLBACK_DENSITY = 10.0  # veh/km
 
         if self.consolidated_network is None or self.destination_ids is None:
@@ -1344,69 +1359,49 @@ class SUMOPipeline:
                 "build_destination_bc_from_sumo_edges()."
             )
 
-        # Pre-fetch lane counts to scale density correctly
         lane_counts = self._get_edge_lane_counts()
 
-        # ------------------------------------------------------------------
-        # 1. Parse edgeData XML into per-edge time series
-        # ------------------------------------------------------------------
+        # 1. Parse edgeData XML
         tree = ET.parse(edge_data_path)
         root = tree.getroot()
-
-        edge_flow_ts: dict[str, list[tuple[float, float]]] = {}
         edge_density_ts: dict[str, list[tuple[float, float]]] = {}
 
         for interval in root.findall("interval"):
             t_begin = float(interval.get("begin", 0))
             t_end = float(interval.get("end", 0))
             t_mid = ((t_begin + t_end) / 2.0) / 3600.0  # → hours
-            interval_h = (t_end - t_begin) / 3600.0
 
             for edge_el in interval.findall("edge"):
                 eid = edge_el.get("id")
-                if not eid:
-                    continue
-
-                raw_flow = edge_el.get("flow")
                 raw_dens = edge_el.get("density")
-
-                # Fallback: compute from nVehContrib if flow attr absent
-                if raw_flow is None:
-                    n_veh = float(edge_el.get("nVehContrib", 0))
-                    raw_flow = str(n_veh / interval_h) if interval_h > 0 else "0"
-
-                edge_flow_ts.setdefault(eid, []).append((t_mid, float(raw_flow)))
-
-                if raw_dens is not None:
-                    # SCALE BY LANE COUNT: SUMO density is veh/km/lane
-                    num_lanes = lane_counts.get(eid, 1)
-                    total_density = float(raw_dens) * num_lanes
-                    edge_density_ts.setdefault(eid, []).append((t_mid, total_density))
+                if eid and raw_dens is not None:
+                    edge_density_ts.setdefault(eid, []).append(
+                        (t_mid, float(raw_dens))
+                    )
 
         logger.debug(
-            "edgeData parsed: %d edges with flow data, %d with density data",
-            len(edge_flow_ts),
+            "edgeData parsed: %d edges with density data",
             len(edge_density_ts),
         )
 
-        # ------------------------------------------------------------------
-        # 2. For each destination, resolve its upstream SUMO edge(s)
-        # ------------------------------------------------------------------
+        # 2. For each destination, resolve upstream SUMO edges
         def _make_interp_from_pairs(
             pairs: list[tuple[float, float]] | None,
             fallback: float,
             label: str = "",
         ) -> Callable[[float], float]:
             if not pairs:
-                logger.debug(
-                    "_make_interp [%s]: no data — constant fallback %.2f",
-                    label,
-                    fallback,
-                )
                 return lambda _t, _f=fallback: _f
             t_arr = np.array([p[0] for p in pairs])
             v_arr = np.array([p[1] for p in pairs])
             return lambda t, _t=t_arr, _v=v_arr: float(np.interp(t, _t, _v))
+
+        if self.road_params is None:
+            raise ValueError("road_params not initialised.")
+        _rp: dict = (
+            self.road_params.get("motorway")  # type: ignore
+            or next(iter(self.road_params.values()))
+        )
 
         destination_flow_bc: dict[str, Callable[[float], float]] = {}
         destination_density_bc: dict[str, Callable[[float], float]] = {}
@@ -1417,60 +1412,48 @@ class SUMOPipeline:
             )
 
             if not upstream_edges:
-                warnings.warn(
-                    f"[build_destination_bc] No upstream SUMO edges "
-                    f"found for destination '{dest_id}'. Using fallback constants."
+                warnings.warn(f"No upstream edges for '{dest_id}'. Using fallback.")
+                destination_density_bc[dest_id] = lambda _t, _r=_FALLBACK_DENSITY: _r
+                destination_flow_bc[dest_id] = lambda _t, _r=_FALLBACK_DENSITY: (
+                    SUMOPipeline._bc_flow_from_density(_r, 1, _rp)
                 )
-                destination_flow_bc[dest_id] = lambda _t: _FALLBACK_FLOW
-                destination_density_bc[dest_id] = lambda _t: _FALLBACK_DENSITY
                 continue
 
-            flow_pairs_agg: dict[float, float] = {}
             density_pairs_agg: dict[float, list[float]] = {}
             matched_edges: list[str] = []
 
             for eid in upstream_edges:
-                if eid in edge_flow_ts:
+                if eid in edge_density_ts:
                     matched_edges.append(eid)
-                    for t_mid, f in edge_flow_ts[eid]:
-                        flow_pairs_agg[t_mid] = flow_pairs_agg.get(t_mid, 0.0) + f
-                    for t_mid, d in edge_density_ts.get(eid, []):
+                    for t_mid, d in edge_density_ts[eid]:
                         density_pairs_agg.setdefault(t_mid, []).append(d)
 
             if not matched_edges:
-                warnings.warn(
-                    f"[build_destination_bc] Destination '{dest_id}': "
-                    f"upstream edges {upstream_edges} found in net XML but none appear "
-                    f"in edgeData output. Using fallback."
+                warnings.warn(f"Upstream edges for '{dest_id}' not in edgeData. Using fallback.")
+                destination_density_bc[dest_id] = lambda _t, _r=_FALLBACK_DENSITY: _r
+                destination_flow_bc[dest_id] = lambda _t, _r=_FALLBACK_DENSITY: (
+                    SUMOPipeline._bc_flow_from_density(_r, 1, _rp)
                 )
-                destination_flow_bc[dest_id] = lambda _t: _FALLBACK_FLOW
-                destination_density_bc[dest_id] = lambda _t: _FALLBACK_DENSITY
                 continue
 
-            flow_pairs = sorted(flow_pairs_agg.items())
-
-            # Since density is already total density per edge, we sum them if multiple edges feed the node.
-            # (If you prefer the average density across incoming links, keep your original `sum(vs)/len(vs)`)
-            # density_pairs = sorted((t, sum(vs)) for t, vs in density_pairs_agg.items())
             density_pairs = sorted(
                 (t, sum(vs) / len(vs)) for t, vs in density_pairs_agg.items()
             )
 
-            flow_label = f"{dest_id}/sumo_flow/{matched_edges}"
-            density_label = f"{dest_id}/sumo_density/{matched_edges}"
+            n_lanes_total = sum(lane_counts.get(eid, 1) for eid in matched_edges)
 
-            destination_flow_bc[dest_id] = _make_interp_from_pairs(
-                flow_pairs, _FALLBACK_FLOW, label=flow_label
-            )
-            destination_density_bc[dest_id] = _make_interp_from_pairs(
+            density_fn = _make_interp_from_pairs(
                 density_pairs if density_pairs else None,
                 _FALLBACK_DENSITY,
-                label=density_label,
             )
+            destination_density_bc[dest_id] = density_fn
 
-            print(
-                f"  [dest BC] '{dest_id}' ← SUMO edges {matched_edges} "
-                f"({len(flow_pairs)} time steps)"
+            # Changed to use the new flat-top _bc_flow_from_density
+            destination_flow_bc[dest_id] = (
+                lambda t,
+                _dfn=density_fn,
+                _nl=n_lanes_total,
+                _rp=_rp: SUMOPipeline._bc_flow_from_density(_dfn(t), _nl, _rp)
             )
 
         return destination_flow_bc, destination_density_bc
