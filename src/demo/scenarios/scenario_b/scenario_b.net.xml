@@ -29,17 +29,17 @@
         <lane id=":n1_3_1" index="1" speed="20.36" length="15.82" shape="989.98,3.22 993.02,1.52 995.89,-0.03 999.31,-1.16 1004.00,-1.60"/>
     </edge>
 
-    <edge id="m1" from="n0" to="n1" priority="-1">
+    <edge id="m1" from="n0" to="n1" priority="-1" type="highway.motorway">
         <lane id="m1_0" index="0" speed="27.78" length="988.84" shape="0.00,-8.00 988.84,-8.00"/>
         <lane id="m1_1" index="1" speed="27.78" length="988.84" shape="0.00,-4.80 988.84,-4.80"/>
         <lane id="m1_2" index="2" speed="27.78" length="988.84" shape="0.00,-1.60 988.84,-1.60"/>
     </edge>
-    <edge id="m2" from="n1" to="n2" priority="-1">
+    <edge id="m2" from="n1" to="n2" priority="-1" type="highway.motorway">
         <lane id="m2_0" index="0" speed="27.78" length="1996.00" acceleration="1" shape="1004.00,-8.00 3000.00,-8.00"/>
         <lane id="m2_1" index="1" speed="27.78" length="1996.00" acceleration="1" shape="1004.00,-4.80 3000.00,-4.80"/>
         <lane id="m2_2" index="2" speed="27.78" length="1996.00" shape="1004.00,-1.60 3000.00,-1.60"/>
     </edge>
-    <edge id="onramp" from="nonr" to="n1" priority="-1">
+    <edge id="onramp" from="nonr" to="n1" priority="-1" type="highway.motorway_link">
         <lane id="onramp_0" index="0" speed="27.78" length="213.21" shape="799.28,98.57 989.98,3.22"/>
     </edge>
 
