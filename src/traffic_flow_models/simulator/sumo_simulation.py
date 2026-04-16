@@ -17,7 +17,14 @@ class SUMOSimulation:
     """
 
     def __init__(
-        self, name, net_file, rou_file, cfg_file, output_dir, detector_file=None
+        self,
+        name: str,
+        net_file: str,
+        rou_file: str,
+        cfg_file: str,
+        output_dir: str,
+        simulation_end_time: int,
+        detector_file=None,
     ):
         """Initialize the SUMO simulation.
 
@@ -28,12 +35,17 @@ class SUMOSimulation:
             output_dir: Directory where simulation outputs are stored.
         """
         self.name = name
+        self.simulation_end_time = simulation_end_time
         self.net_file = net_file
         self.detector_file = detector_file
         self.rou_file = rou_file
         self.output_dir = output_dir
         self.cfg_file = cfg_file
         self.stats_file = os.path.join(self.output_dir, f"{self.name}_stats.xml")
+        self.edge_data_file = os.path.join(self.output_dir, "edge_data_output.xml")
+        self.edge_data_config = os.path.join(
+            self.output_dir, "edge_data_config.add.xml"
+        )
 
     def write_config(self):
         """Generate and write the SUMO configuration file.
@@ -41,20 +53,39 @@ class SUMOSimulation:
         Creates a SUMO configuration XML file that specifies input network and route files,
         and configures output statistics reporting.
         """
-        config_content = f"""
-        <configuration>
-            <input>
-                <net-file value="{os.path.basename(self.net_file)}"/>
-                {f'<additional-files value="{os.path.basename(self.detector_file)}"/>' if self.detector_file is not None else ''}
-                <route-files value="{os.path.basename(self.rou_file)}"/>
-            </input>
-            <output>
-            <statistic-output value="{os.path.basename(self.stats_file)}"/>
-            </output>
-             <report>
-                <duration-log.statistics value="true"/>
-            </report>
-        </configuration>"""
+        with open(self.edge_data_config, "w") as f:
+            f.write("<additional>\n")
+            f.write(
+                f'    <edgeData id="dest_bc_data" file="{os.path.basename(self.edge_data_file)}" '
+                f'period="60" excludeEmpty="false"/>\n'
+            )
+            f.write("</additional>")
+
+        # 2. Collect all additional files into a list
+        add_files = []
+        if self.detector_file:
+            add_files.append(os.path.basename(self.detector_file))
+        add_files.append(os.path.basename(self.edge_data_config))
+
+        # Join them with commas for the SUMO config
+        add_files_attr = ",".join(add_files)
+
+        # backup addtional files code: {f'<additional-files value="{os.path.basename(self.detector_file)}"/>' if self.detector_file is not None else ''}
+
+        config_content = (
+            "<configuration>\n"
+            "  <input>\n"
+            f'    <net-file value="{os.path.basename(self.net_file)}"/>\n'
+            f'    <additional-files value="{add_files_attr}"/>\n'
+            f'    <route-files value="{os.path.basename(self.rou_file)}"/>\n'
+            "  </input>\n"
+            f'  <time><end value="{self.simulation_end_time}"/></time>\n'
+            "  <output>\n"
+            f'    <statistic-output value="{os.path.basename(self.stats_file)}"/>\n'
+            "  </output>\n"
+            '  <report><duration-log.statistics value="true"/></report>\n'
+            "</configuration>"
+        )
 
         with open(self.cfg_file, "w") as f:
             f.write(config_content.strip())
@@ -70,12 +101,13 @@ class SUMOSimulation:
             [
                 "sumo",
                 "-c",
-                self.cfg_file,
+                os.path.basename(self.cfg_file),
                 "--no-step-log",
                 "true",
                 "--ignore-route-errors",
                 "true",
             ],
+            cwd=self.output_dir,
             check=True,
         )
 

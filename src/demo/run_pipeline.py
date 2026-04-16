@@ -3,6 +3,7 @@ Run the entire pipeline for a given location or set of SUMO files, culminating i
 
 Example calls:
 python src/demo/run_pipeline.py --location "Zurich, Switzerland" --vehicle-demand 2000 --highway-vehicle-demand 5000 --no-plot
+python src/demo/run_pipeline.py --location "Zurich, Switzerland" --vehicle-demand 2000 --highway-vehicle-demand 5000 --demand-profile "[[0.0,0.3],[0.3,0.5],[0.8,0.2]]" --no-plot
 python src/demo/run_pipeline.py --sumo-cfg-dir "src/demo/scenarios/example" --no-plot
 """
 
@@ -219,6 +220,7 @@ if __name__ == "__main__":
     # run the SUMO simulation
     sim = SUMOSimulation(
         name=name,
+        simulation_end_time=int(duration * 3600),
         net_file=pipeline.net_file,
         detector_file=pipeline.detector_file,
         rou_file=pipeline.rou_file,
@@ -243,15 +245,16 @@ if __name__ == "__main__":
     print("Demand keys:", sorted(origin_demands.keys()))
     print("Missing:", [k for k in origin_ids if k not in origin_demands])
 
+    # compute boundary conditions from microscopic simulation results
+    edge_data_path = os.path.join(pipeline.output_dir, "edge_data_output.xml")
+    destination_flow_bc, destination_density_bc = (
+        pipeline.build_destination_bc_from_sumo_edges(edge_data_path=edge_data_path)
+    )
+
     # compute splits (turning rates) from detector data
     # This is the primary source of splits - detector-based with lane-based fallback
     # Uses rolling window aggregation (2 minutes by default) over small detector intervals (15 seconds)
     splits = pipeline.compute_splits(window_size_minutes=2.0)
-
-    # TODO: replace these, once they can be obtained from data
-    # TODO: once they are available through data, also make sure that the load_results function in the simulation module is updated accordingly
-    destination_density_bc = {dest_id: lambda _t: 10.0 for dest_id in destination_ids}
-    destination_flow_bc = {dest_id: lambda _t: 6000.0 for dest_id in destination_ids}
 
     # initialize the results directory
     timestamp = datetime.now().strftime("simulation_results_%Y-%m-%d_%H%M%S")
@@ -313,7 +316,6 @@ if __name__ == "__main__":
             use_disturbance_from_file=False,  # we will provide disturbance callables instead of using the file-based disturbances
             origin_demands_fn=origin_demands,
             turning_rates_fn=splits,
-            # TODO: once the values are available through data, remove these two arguments and ensure that they are correctly read from the corresponding file
             flow_boundary_conditions_fn=destination_flow_bc,
             density_boundary_conditions_fn=destination_density_bc,
         )

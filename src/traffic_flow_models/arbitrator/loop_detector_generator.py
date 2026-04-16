@@ -38,6 +38,7 @@ class LoopDetectorGenerator:
         diverge_node_info: dict[str, list[str]],
         backbone_node_ids: set[str],
         target_cell_length_km: float,
+        motorway_links: list,
         detection_freq: int = 15,
         detector_filename: str = "detector.xml",
         spec_filename: str = "_detectors_spec.csv",
@@ -71,6 +72,7 @@ class LoopDetectorGenerator:
 
         self.backbone_nodes = backbone_node_ids
         self.target_cell_length_km = target_cell_length_km
+        self.motorway_links = motorway_links
         self.interface_edges: list = []
         self.edge_detectors: list[dict] = []
 
@@ -224,25 +226,36 @@ class LoopDetectorGenerator:
     """
 
     def add_detectors_backbone_network(self) -> int:
-        segment_detector_count = 0
+        """Place E2 area detectors on every consolidated MotorwayLink.
 
+        Iterates the consolidated MotorwayLink objects directly so that
+        merged links (whose intermediate SUMO nodes no longer appear in
+        backbone_node_ids) are correctly instrumented. Each link's id is
+        the SUMO edge id and is used to look up the raw edge geometry.
+        """
         tree = ET.parse(self.sumo_network_path)
         root = tree.getroot()
 
-        for edge in root.findall("edge"):
-            if edge.get("function") == "internal":
-                continue
+        # build a fast lookup: sumo edge_id -> XML element
+        sumo_edges = {
+            e.get("id"): e
+            for e in root.findall("edge")
+            if e.get("function") != "internal" and e.get("id") is not None
+        }
 
-            edge_id = edge.get("id")
+        segment_detector_count = 0
+
+        for link in self.motorway_links:
+            edge = sumo_edges.get(link.id)
+            if edge is None:
+                raise ValueError(
+                    f"[add_detectors_backbone_network] MotorwayLink '{link.id}' "
+                    f"not found in SUMO network XML. "
+                    f"Check that the consolidated network was built from this SUMO file."
+                )
+
             from_node = edge.get("from")
             to_node = edge.get("to")
-
-            # only instrument edges that directly connect two macro backbone nodes
-            if (
-                from_node not in self.backbone_nodes
-                or to_node not in self.backbone_nodes
-            ):
-                continue
 
             lanes = edge.findall("lane")
             for lane_idx, lane in enumerate(lanes):
@@ -254,7 +267,6 @@ class LoopDetectorGenerator:
                 lane_length_m = float(length_str)
                 lane_length_km = lane_length_m / 1000.0
 
-                # replicate partition_link logic from MotorwayLink
                 num_cells = max(
                     1, math.ceil(lane_length_km / self.target_cell_length_km)
                 )
@@ -262,16 +274,15 @@ class LoopDetectorGenerator:
 
                 for cell_idx in range(num_cells):
                     cell_start_m = cell_idx * cell_length_m
-                    # cell_mid_m = cell_start_m + cell_length_m / 2.0
                     actual_length = min(cell_length_m, lane_length_m - cell_start_m)
 
                     self.edge_detectors.append(
                         {
-                            "edge_id": edge_id,
+                            "edge_id": link.id,
                             "lane_id": lane_id,
                             "lane_index": lane_idx,
-                            "position": cell_start_m,  # E2 start position
-                            "detector_length": actual_length,  # E2 spans full cell
+                            "position": cell_start_m,
+                            "detector_length": actual_length,
                             "cell_index": cell_idx,
                             "num_cells": num_cells,
                             "type": "backbone_segment",

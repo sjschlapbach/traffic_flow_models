@@ -1,7 +1,0 @@
-<edges>
-    <edge id="m1" from="n0" to="n1" numLanes="3" speed="27.78"/>
-    
-    <edge id="onramp" from="nonr" to="n1" numLanes="1" speed="27.78"/>
-    
-    <edge id="m2" from="n1" to="n2" numLanes="3" speed="27.78"/>
-</edges>
