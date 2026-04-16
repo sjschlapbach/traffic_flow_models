@@ -220,6 +220,7 @@ if __name__ == "__main__":
     # run the SUMO simulation
     sim = SUMOSimulation(
         name=name,
+        simulation_end_time=int(duration * 3600),
         net_file=pipeline.net_file,
         detector_file=pipeline.detector_file,
         rou_file=pipeline.rou_file,

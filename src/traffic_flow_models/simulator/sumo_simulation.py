@@ -17,7 +17,14 @@ class SUMOSimulation:
     """
 
     def __init__(
-        self, name, net_file, rou_file, cfg_file, output_dir, detector_file=None
+        self,
+        name,
+        net_file,
+        rou_file,
+        cfg_file,
+        output_dir,
+        detector_file=None,
+        simulation_end_time: int = 86400,
     ):
         """Initialize the SUMO simulation.
 
@@ -28,6 +35,7 @@ class SUMOSimulation:
             output_dir: Directory where simulation outputs are stored.
         """
         self.name = name
+        self.simulation_end_time = simulation_end_time
         self.net_file = net_file
         self.detector_file = detector_file
         self.rou_file = rou_file
@@ -71,7 +79,7 @@ class SUMOSimulation:
             f'    <additional-files value="{add_files_attr}"/>\n'
             f'    <route-files value="{os.path.basename(self.rou_file)}"/>\n'
             "  </input>\n"
-            '  <time><end value="86400"/></time>\n'
+            '  <time><end value="{self.simulation_end_time}"/></time>\n'
             "  <output>\n"
             f'    <statistic-output value="{os.path.basename(self.stats_file)}"/>\n'
             "  </output>\n"
