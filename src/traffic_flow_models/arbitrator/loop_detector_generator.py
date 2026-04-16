@@ -268,7 +268,7 @@ class LoopDetectorGenerator:
                 lane_length_km = lane_length_m / 1000.0
 
                 num_cells = max(
-                    1, math.ceil(lane_length_km / self.target_cell_length_km)
+                    1, math.floor(lane_length_km / self.target_cell_length_km)
                 )
                 cell_length_m = lane_length_m / num_cells
 

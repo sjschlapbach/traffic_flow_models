@@ -710,6 +710,7 @@ class SUMOPipeline:
     def create_consolidated_network(
         self,
         min_link_length: float,
+        target_cell_length: float = 0.3,
     ) -> Tuple[
         Network,
         list[str],
@@ -745,6 +746,7 @@ class SUMOPipeline:
             net_xml_path=os.path.normpath(self.net_file),
             road_params_config_path=self.road_params_config_path,
             min_link_length=min_link_length,
+            target_cell_length=target_cell_length,
         )
         (
             self.consolidated_network,

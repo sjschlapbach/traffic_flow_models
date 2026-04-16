@@ -183,7 +183,9 @@ if __name__ == "__main__":
         )
 
     # create an instance of the macroscopic traffic flow model network
-    pipeline.create_consolidated_network(min_link_length=min_link_length)
+    pipeline.create_consolidated_network(
+        min_link_length=min_link_length, target_cell_length=preferred_cell_size
+    )
     detector_def_file, detector_output_file, spec_file = pipeline.generate_detectors(
         cell_size=preferred_cell_size
     )
@@ -364,3 +366,54 @@ if __name__ == "__main__":
             subsampling=1,
         )
         print(f"Video saved to: {video_path}")
+
+        # also generate a backbone (microsimulation) video when available
+        backbone_video_path = os.path.join(results_dir, "backbone_simulation.avi")
+        try:
+            print("\nGenerating backbone (microsimulation) video...")
+
+            sim.visualize(
+                results_filepath=micro_results_path,
+                output_filepath=backbone_video_path,
+                fps=30,
+                subsampling=1,
+            )
+            print(f"Backbone video saved to: {backbone_video_path}")
+        except Exception as e:
+            print(f"Could not generate backbone video: {e}")
+
+        # generate side-by-side comparison video (micro vs macro)
+        comparison_video_path = os.path.join(results_dir, "simulation_comparison.avi")
+        try:
+            print("\nGenerating comparison video (micro vs macro)...")
+
+            # ensure the backbone (micro) results are on the same time grid as
+            # the macro simulation results. Resample the backbone file onto the
+            # macro time array and pass the resampled file to visualize_comparison.
+            macro_time_array, _, _, _ = Simulation.load_results(
+                filepath=os.path.join(results_dir, "simulation_results.json"),
+                network=network,
+            )
+
+            subsampled_micro_data = os.path.join(
+                results_dir, "subsampled_micro_data.json"
+            )
+            Simulation.resample_results_file(
+                source_filepath=micro_results_path,
+                dest_filepath=subsampled_micro_data,
+                target_time_array=macro_time_array,
+            )
+
+            sim.visualize_comparison(
+                result_filepaths=[
+                    subsampled_micro_data,
+                    os.path.join(results_dir, "simulation_results.json"),
+                ],
+                labels=["Backbone (MICRO)", f"Macro {parsed_args.model.upper()}"],
+                output_filepath=comparison_video_path,
+                fps=30,
+                subsampling=1,
+            )
+            print(f"Comparison video saved to: {comparison_video_path}")
+        except Exception as e:
+            print(f"Could not generate comparison video: {e}")

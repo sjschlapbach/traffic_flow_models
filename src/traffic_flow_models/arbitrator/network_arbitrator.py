@@ -812,7 +812,7 @@ class NetworkArbitrator:
                     origin_node_id=u_str,
                     destination_node_id=v_str,
                 )
-                num_cells = max(1, math.ceil(data["length"] / self.target_cell_length))
+                num_cells = max(1, math.floor(data["length"] / self.target_cell_length))
                 cell_len = data["length"] / num_cells
                 for _ in range(num_cells):
                     link.add_cell(length=cell_len)
