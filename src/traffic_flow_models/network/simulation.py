@@ -1647,7 +1647,9 @@ class Simulation:
         # extra final sample in `target_time_array` will be filled by repeating
         # the last available source sample (i.e., copying the last timestep).
         if new_time[0] < old_time[0]:
-            raise ValueError("target_time_array must not start before the source time array")
+            raise ValueError(
+                "target_time_array must not start before the source time array"
+            )
         if new_time[-1] > old_time[-1]:
             # we need at least two source samples to infer the microsimulation timestep
             if old_time.size < 2:
