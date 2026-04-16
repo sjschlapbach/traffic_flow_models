@@ -4,7 +4,6 @@ import json
 import shutil
 import random
 import json
-import logging
 import subprocess
 import osmnx as ox
 import xml.etree.ElementTree as ET
@@ -15,12 +14,13 @@ import warnings
 from functools import wraps
 from typing import Optional, Tuple, Callable
 
-from traffic_flow_models.network import Network, MotorwayLink, Offramp
+from traffic_flow_models.network import Network, MotorwayLink
 from traffic_flow_models.arbitrator.loop_detector_generator import LoopDetectorGenerator
 from traffic_flow_models.arbitrator.turning_rate_aggregator import TurningRateAggregator
 from traffic_flow_models.arbitrator.network_arbitrator import (
     NetworkArbitrator,
     RoadParamsConfig,
+    RoadTypeParams,
 )
 
 
@@ -28,6 +28,8 @@ def skip_if_exists(attr_name):
     def decorator(func):
         @wraps(func)
         def wrapper(self, *args, **kwargs):
+            # If the target output file already exists, skip the work to avoid
+            # re-downloading or regenerating expensive SUMO inputs.
             if os.path.exists(getattr(self, attr_name)):
                 print(f"[SKIP] {getattr(self, attr_name)} already exists.")
                 return
@@ -84,6 +86,7 @@ class SUMOPipeline:
             shutil.rmtree(self.output_dir)
         os.makedirs(self.output_dir, exist_ok=True)
 
+        # paths for intermediate and final SUMO inputs/outputs
         self.osm_file: str = os.path.join(self.output_dir, f"{name}.osm")
         self.net_file: str = os.path.join(self.output_dir, f"{name}.net.xml")
         self.detector_file: str = os.path.join(self.output_dir, f"{name}detectors.xml")
@@ -113,6 +116,8 @@ class SUMOPipeline:
         Fetches road network data from OpenStreetMap, plots the network,
         and saves it as an OSM XML file.
         """
+        # Force all edges to be treated as one-way in the OSM graph to match
+        # SUMO's directed edge semantics for network conversion.
         ox.settings.all_oneway = True
         graph = ox.graph_from_place(self.location, network_type="drive", simplify=False)
         fig, ax = ox.plot_graph(
@@ -145,6 +150,8 @@ class SUMOPipeline:
             self.osm_file,
             "--output-file",
             self.net_file,
+            # Use aggressive topology cleanup and signal inference to create a
+            # cleaner SUMO network from raw OSM input.
             "--geometry.remove",
             "true",
             "--junctions.join",
@@ -178,6 +185,8 @@ class SUMOPipeline:
     ) -> list[float]:
         """Helper to scale relative profile percentages to absolute departure times."""
         # Scale relative times -> absolute seconds
+        # Convert normalized demand profile fractions into actual departure times
+        # and keep the matching fraction values for each segment.
         abs_profile = [
             (t_percentage * duration_seconds, f) for t_percentage, f in demand_profile
         ]
@@ -212,78 +221,6 @@ class SUMOPipeline:
             departures.append(duration_seconds - 1.0)
 
         return sorted(departures[:count])
-
-    # @skip_if_exists('rou_file')
-    # def generate_demand(
-    #     self,
-    #     vehicle_count: int,
-    #     duration_seconds: float,
-    #     demand_profile: list[tuple[float, float]] | None = None,
-    #     seed: int = 42,
-    # ) -> None:
-    #     """
-    #     Generates demand using randomTrips.py and reshapes timing to match a profile.
-    #     """
-    #     if "SUMO_HOME" not in os.environ:
-    #         print("Error: Please set the 'SUMO_HOME' environment variable.")
-    #         return
-
-    #     random_trips = os.path.join(os.environ["SUMO_HOME"], "tools", "randomTrips.py")
-
-    #     # 1. Run randomTrips to generate VALID routes
-    #     # We use a uniform period here just to get the routes created
-    #     cmd = [
-    #         sys.executable,
-    #         random_trips,
-    #         "-n", self.net_file,
-    #         "-o", "temp_trips.xml", # We keep trips separate from routes
-    #         "--route-file", self.rou_file,
-    #         "--end", str(duration_seconds),
-    #         "--period", str(duration_seconds / vehicle_count),
-    #         "--fringe-factor", "10",  # Prioritizes motorway boundaries
-    #         "--validate",             # Ensures every trip is physically possible
-    #         "--remove-loops",
-    #         "--seed", str(seed),
-    #     ]
-
-    #     try:
-    #         subprocess.run(cmd, check=True)
-
-    #         # 2. Reshape departure times to match your Profile
-    #         if demand_profile:
-    #             tree = ET.parse(self.rou_file)
-    #             root = tree.getroot()
-
-    #             # Find all vehicle/trip elements
-    #             elements = [el for el in root if el.tag in ("vehicle", "trip")]
-
-    #             # Sample new times from your profile helper
-    #             new_times = self._sample_from_profile(len(elements), duration_seconds, demand_profile)
-
-    #             # Update the XML elements with the profile-based times
-    #             for el, t in zip(elements, new_times):
-    #                 el.set("depart", f"{t:.2f}")
-    #                 # Optional: Force a standard car type to avoid permission errors
-    #                 el.set("type", "passenger_car")
-
-    #             # Add the vType definition at the top
-    #             vtype = ET.Element("vType", id="passenger_car", vClass="passenger")
-    #             root.insert(0, vtype)
-
-    #             # Sort by departure time (Required for SUMO)
-    #             elements.sort(key=lambda x: float(x.get("depart")))
-    #             root[:] = [vtype] + elements
-
-    #             tree.write(self.rou_file, encoding="utf-8", xml_declaration=True)
-
-    #         print(f"Successfully generated {vehicle_count} validated trips.")
-
-    #         # Cleanup
-    #         if os.path.exists("temp_trips.xml"):
-    #             os.remove("temp_trips.xml")
-
-    #     except subprocess.CalledProcessError as e:
-    #         print(f"An error occurred while generating demand: {e}")
 
     def strip_node_prefix(self, node_id: str) -> str:
         """Return the raw SUMO junction ID by stripping any known role prefix."""
@@ -354,6 +291,7 @@ class SUMOPipeline:
         fallback_index = to_index if direction == "from" else from_index
         fallback_dir = "to" if direction == "from" else "from"
 
+        # Collect unique edge IDs while preserving insertion order.
         edges: list[str] = []
         seen: set[str] = set()
         fallback_nodes: list[str] = []
@@ -364,6 +302,8 @@ class SUMOPipeline:
 
             # Case 3: stripped ID is itself a valid SUMO edge — use it directly.
             if raw in all_edge_ids:
+                # If this ID is already a direct SUMO edge ID, use it as-is instead
+                # of interpreting it as a junction reference.
                 direct_edge_nodes.append(raw)
                 if raw not in seen:
                     seen.add(raw)
@@ -424,6 +364,7 @@ class SUMOPipeline:
             from_edge = rng.choice(from_edges)
             to_edge = rng.choice(to_edges)
             # Avoid trivial same-edge trips (not always avoidable on tiny networks)
+            # by retrying random selection a few times.
             for _ in range(20):
                 if to_edge != from_edge:
                     break
@@ -456,6 +397,8 @@ class SUMOPipeline:
         Raises:
             subprocess.CalledProcessError: If duarouter exits with a non-zero code.
         """
+        # Run duarouter to expand simple trip definitions into full routes based
+        # on the current SUMO network topology.
         cmd = [
             "duarouter",
             "-n",
@@ -575,9 +518,13 @@ class SUMOPipeline:
 
         try:
             # ── Stream 1: Urban random trips ─────────────────────────────────────
+            # randomTrips.py produces a full random route file across the entire
+            # network. This stream covers internal urban travel, not just highway
+            # fringe traffic.
             random_trips_script = os.path.join(
                 os.environ["SUMO_HOME"], "tools", "randomTrips.py"
             )
+            # Generate the urban stream using SUMO's randomTrips.py helper.
             cmd = [
                 sys.executable,
                 random_trips_script,
@@ -611,6 +558,7 @@ class SUMOPipeline:
                 )
             else:
                 # Uniform: re-space whatever randomTrips produced across the window.
+                # This ensures the generated urban departures fill the full horizon.
                 interval = duration_seconds / max(len(elements), 1)
                 new_times = [i * interval for i in range(len(elements))]
 
@@ -619,7 +567,7 @@ class SUMOPipeline:
                 el.set("type", "passenger_car")
                 el.set("id", f"urban_{idx}")
 
-            elements.sort(key=lambda x: float(x.get("depart")))
+            elements.sort(key=lambda x: float(x.get("depart")))  # type: ignore - should fail in case of missing attribute
             urban_root[:] = elements
             urban_tree.write(temp_urban_rou, encoding="utf-8", xml_declaration=True)
 
@@ -680,6 +628,7 @@ class SUMOPipeline:
                     f"departure: {len(from_edges)}, arrival: {len(to_edges)}"
                 )
 
+                # Departure times — same profile logic, independent count
                 if demand_profile:
                     hw_departures = self._sample_from_profile(
                         highway_count, duration_seconds, demand_profile
@@ -688,6 +637,8 @@ class SUMOPipeline:
                     hw_interval = duration_seconds / highway_count
                     hw_departures = [i * hw_interval for i in range(highway_count)]
 
+                # Build raw highway fringe trip definitions and validate them.
+                # duarouter will drop unreachable trips while producing complete routes.
                 hw_trips_root = self._build_highway_trips_xml(
                     hw_departures, from_edges, to_edges, rng
                 )
@@ -696,6 +647,7 @@ class SUMOPipeline:
                 )
                 self._validate_with_duarouter(temp_hw_trips, temp_hw_rou, seed)
 
+                # Report how many highway trips survived routing
                 hw_tree = ET.parse(temp_hw_rou)
                 routed_count = sum(
                     1 for el in hw_tree.getroot() if el.tag in ("vehicle", "trip")
@@ -723,14 +675,14 @@ class SUMOPipeline:
             )
 
         except subprocess.CalledProcessError as e:
-
+            # Re-raise with full stderr visible to the caller rather than silencing.
             stderr = e.stderr.strip() if e.stderr else "(no stderr)"
             raise RuntimeError(
                 f"Subprocess failed (exit {e.returncode}): {' '.join(e.cmd)}\n{stderr}"
             ) from e
 
         finally:
-
+            # Always clean up temp files, even on error
             for path in [temp_urban_trips, temp_urban_rou, temp_hw_trips, temp_hw_rou]:
                 if os.path.exists(path):
                     os.remove(path)
@@ -960,332 +912,8 @@ class SUMOPipeline:
 
         return detector_based_splits
 
-    # ============================================================================
-    # build_destination_boundary_conditions
-    # ============================================================================
-
-    # def build_destination_boundary_conditions(
-    #     self,
-    #     backbone_state_path: str,
-    # ) -> tuple[
-    #     dict[str, Callable[[float], float]], dict[str, Callable[[float], float]]
-    # ]:
-    #     """Build time-varying flow and density boundary conditions for all destinations.
-
-    #     For each destination node the function resolves which upstream MotorwayLink
-    #     to read from, then builds a linear interpolant over the backbone simulation's
-    #     time array.
-
-    #     Resolution rule (Offramp checked BEFORE direct MotorwayLink):
-    #     1. If the host node has an Offramp in its incoming links, walk back
-    #         through the offramp to its origin node and take the MotorwayLink
-    #         feeding *that* node.  This gives the pre-diverge (pre-split) flow.
-    #     2. If the host node has a direct MotorwayLink in its incoming links
-    #         (no Offramp), use that link directly.
-
-    #     Offramp is checked first so that, when a node sits at the end of an
-    #     off-ramp that branches from a diverge, we read the backbone link *before*
-    #     the split rather than the (shorter, lower-flow) off-ramp link.
-
-    #     The last spatial cell of the resolved link is used for both flow and
-    #     density, since that cell is closest to the downstream boundary.
-
-    #     Args:
-    #         backbone_state_path: Path to the backbone_state.json file produced
-    #             by a prior macroscopic simulation step.
-
-    #     Returns:
-    #         (destination_flow_bc, destination_density_bc): two dicts mapping
-    #         destination IDs to callables ``f(t_hours) -> float``.
-    #     """
-    #     logger = logging.getLogger(__name__)
-
-    #     _FALLBACK_FLOW: float = 6000.0  # veh/h — used when no data is available
-    #     _FALLBACK_DENSITY: float = 10.0  # veh/km — used when no data is available
-
-    #     if self.consolidated_network is None:
-    #         raise ValueError(
-    #             "consolidated_network is not initialised. "
-    #             "Call create_consolidated_network() before "
-    #             "build_destination_boundary_conditions()."
-    #         )
-
-    #     if self.destination_ids is None:
-    #         raise ValueError(
-    #             "destination_ids is None. "
-    #             "Call create_consolidated_network() before "
-    #             "build_destination_boundary_conditions()."
-    #         )
-
-    #     # ------------------------------------------------------------------
-    #     # Load backbone state
-    #     # ------------------------------------------------------------------
-    #     with open(backbone_state_path, "r", encoding="utf-8") as fh:
-    #         backbone_state = json.load(fh)
-
-    #     time_array: list[float] = backbone_state["time_array"]
-    #     flows_ts: dict[str, list[list[float]]] = backbone_state["state_time_series"][
-    #         "flows"
-    #     ]
-    #     densities_ts: dict[str, list[list[float]]] = backbone_state[
-    #         "state_time_series"
-    #     ]["densities"]
-    #     t_arr = np.array(time_array)
-    #     n_steps = len(time_array)
-
-    #     logger.debug(
-    #         "backbone_state loaded: %d time steps, %d flow links, %d density links",
-    #         n_steps,
-    #         len(flows_ts),
-    #         len(densities_ts),
-    #     )
-
-    #     # Warn if most of the backbone state is zeros — this is the likely root
-    #     # cause of very low BC values and is worth surfacing loudly.
-    #     for link_id, rows in flows_ts.items():
-    #         non_zero_steps = sum(1 for row in rows if row and any(v > 0.0 for v in row))
-    #         if non_zero_steps < n_steps * 0.1:
-    #             logger.debug(
-    #                 "backbone_state WARNING: link '%s' has only %d / %d non-zero "
-    #                 "time steps — BCs derived from this link will be near-zero "
-    #                 "for most of the simulation. Check that vehicles remain in "
-    #                 "the network throughout the simulation, not just at t=0.",
-    #                 link_id,
-    #                 non_zero_steps,
-    #                 n_steps,
-    #             )
-
-    #     node_by_id = {node.id: node for node in self.consolidated_network}
-
-    #     # ------------------------------------------------------------------
-    #     # _last_cell_series
-    #     #
-    #     # Extract the value of the *last spatial cell* at every time step for
-    #     # a given link.  The last cell is the one at the downstream end of the
-    #     # link, closest to the destination boundary.
-    #     #
-    #     # Empty rows (no cells recorded for that time step) are replaced with
-    #     # 0.0 rather than skipped, so the returned series always has exactly
-    #     # len(time_array) entries.  Skipping them would produce a shorter
-    #     # series which _make_interp would silently treat as "no data", falling
-    #     # back to the constant fallback value.
-    #     # ------------------------------------------------------------------
-    #     def _last_cell_series(
-    #         link_id: str,
-    #         ts: dict[str, list[list[float]]],
-    #     ) -> list[float] | None:
-    #         rows = ts.get(link_id)
-    #         if not rows:
-    #             return None
-    #         # Preserve zeros for empty rows — do NOT use `if row` filter.
-    #         extracted = [row[-1] if row else 0.0 for row in rows]
-    #         return extracted
-
-    #     # ------------------------------------------------------------------
-    #     # _make_interp
-    #     #
-    #     # Build a linear interpolant over time_array.  If the series is
-    #     # missing or has a length mismatch, fall back to a constant function
-    #     # and log the reason so callers can detect the issue.
-    #     # ------------------------------------------------------------------
-    #     def _make_interp(
-    #         series: list[float] | None,
-    #         fallback: float,
-    #         label: str = "",
-    #     ) -> Callable[[float], float]:
-    #         if series is None:
-    #             logger.debug(
-    #                 "_make_interp [%s]: series is None — using constant fallback %.2f",
-    #                 label,
-    #                 fallback,
-    #             )
-    #             return lambda _t, _f=fallback: _f
-    #         if len(series) != n_steps:
-    #             logger.debug(
-    #                 "_make_interp [%s]: series length %d != time_array length %d "
-    #                 "— using constant fallback %.2f",
-    #                 label,
-    #                 len(series),
-    #                 n_steps,
-    #                 fallback,
-    #             )
-    #             return lambda _t, _f=fallback: _f
-    #         v_arr = np.array(series)
-    #         return lambda t, _t=t_arr, _v=v_arr: float(np.interp(t, _t, _v))
-
-    #     # ------------------------------------------------------------------
-    #     # Main loop — resolve upstream link for each destination
-    #     # ------------------------------------------------------------------
-    #     destination_flow_bc: dict[str, Callable[[float], float]] = {}
-    #     destination_density_bc: dict[str, Callable[[float], float]] = {}
-
-    #     for dest_id in self.destination_ids:
-    #         host_node_id = dest_id.removeprefix("dest_")
-    #         host_node = node_by_id.get(host_node_id)
-
-    #         if host_node is None:
-    #             raise ValueError(
-    #                 f"[build_destination_bc] Host node '{host_node_id}' for destination "
-    #                 f"'{dest_id}' not found in consolidated network."
-    #             )
-
-    #         upstream_link: MotorwayLink | None = None
-    #         link_source: str = "unknown"
-
-    #         # ----------------------------------------------------------------
-    #         # Traversal — Offramp checked FIRST.
-    #         #
-    #         # Rationale: a destination that sits at the end of an off-ramp must
-    #         # read from the pre-diverge backbone link (the MotorwayLink that
-    #         # feeds the diverge node where the off-ramp branches off).  If we
-    #         # checked MotorwayLink first, we might accidentally pick up a short
-    #         # post-diverge highway segment that also terminates at the same node,
-    #         # producing a lower (already-split) flow reading.
-    #         # ----------------------------------------------------------------
-    #         offramp_incoming: Offramp | None = None
-    #         motorway_incoming: MotorwayLink | None = None
-
-    #         for incoming in host_node.incoming:
-    #             if isinstance(incoming, Offramp) and offramp_incoming is None:
-    #                 offramp_incoming = incoming
-    #             elif isinstance(incoming, MotorwayLink) and motorway_incoming is None:
-    #                 motorway_incoming = incoming
-
-    #         if offramp_incoming is not None:
-    #             # Case 1: destination is at the end of an off-ramp.
-    #             # Walk back to the MotorwayLink that feeds the diverge node.
-    #             logger.debug(
-    #                 "dest '%s' → Offramp '%s', walking upstream to backbone diverge node",
-    #                 dest_id,
-    #                 offramp_incoming.id,
-    #             )
-    #             offramp_origin = node_by_id.get(offramp_incoming.origin_node_id)
-    #             if offramp_origin is None:
-    #                 raise ValueError(
-    #                     f"[build_destination_bc] Offramp '{offramp_incoming.id}' origin node "
-    #                     f"'{offramp_incoming.origin_node_id}' not found in consolidated network "
-    #                     f"(destination '{dest_id}')."
-    #                 )
-
-    #             for upstream in offramp_origin.incoming:
-    #                 if isinstance(upstream, MotorwayLink):
-    #                     upstream_link = upstream
-    #                     link_source = f"backbone (via offramp '{offramp_incoming.id}')"
-    #                     logger.debug(
-    #                         "dest '%s' → Offramp '%s' → MotorwayLink '%s' (pre-diverge)",
-    #                         dest_id,
-    #                         offramp_incoming.id,
-    #                         upstream.id,
-    #                     )
-    #                     break
-
-    #             if upstream_link is None:
-    #                 raise ValueError(
-    #                     f"[build_destination_bc] No upstream MotorwayLink found behind "
-    #                     f"offramp '{offramp_incoming.id}' at diverge node "
-    #                     f"'{offramp_incoming.origin_node_id}' (destination '{dest_id}')."
-    #                 )
-
-    #         elif motorway_incoming is not None:
-    #             # Case 2: destination is directly at the end of a MotorwayLink
-    #             # (no off-ramp involved).
-    #             upstream_link = motorway_incoming
-    #             link_source = "backbone (direct)"
-    #             logger.debug(
-    #                 "dest '%s' → direct MotorwayLink '%s'",
-    #                 dest_id,
-    #                 motorway_incoming.id,
-    #             )
-
-    #         else:
-    #             raise ValueError(
-    #                 f"[build_destination_bc] Could not resolve upstream MotorwayLink for "
-    #                 f"destination '{dest_id}': host node '{host_node_id}' has neither an "
-    #                 f"Offramp nor a MotorwayLink in its incoming links."
-    #             )
-
-    #         # ----------------------------------------------------------------
-    #         # Extract time series and build interpolants
-    #         # ----------------------------------------------------------------
-    #         flow_series = _last_cell_series(upstream_link.id, flows_ts)
-    #         density_series = _last_cell_series(upstream_link.id, densities_ts)
-
-    #         if flow_series is None:
-    #             warnings.warn(
-    #                 f"[build_destination_bc] Link '{upstream_link.id}' ({link_source}) "
-    #                 f"has no detector coverage in backbone state for destination '{dest_id}'. "
-    #                 f"Flow BC will use fallback constant {_FALLBACK_FLOW} veh/h."
-    #             )
-    #         if density_series is None:
-    #             warnings.warn(
-    #                 f"[build_destination_bc] Link '{upstream_link.id}' ({link_source}) "
-    #                 f"has no detector coverage in backbone state for destination '{dest_id}'. "
-    #                 f"Density BC will use fallback constant {_FALLBACK_DENSITY} veh/km."
-    #             )
-
-    #         if flow_series is not None:
-    #             non_zero = sum(1 for v in flow_series if v > 0)
-    #             logger.debug(
-    #                 "dest '%s' link '%s' flow series: %d steps, %d non-zero, "
-    #                 "min=%.1f max=%.1f mean=%.1f veh/h",
-    #                 dest_id,
-    #                 upstream_link.id,
-    #                 len(flow_series),
-    #                 non_zero,
-    #                 min(flow_series),
-    #                 max(flow_series),
-    #                 sum(flow_series) / len(flow_series),
-    #             )
-    #         if density_series is not None:
-    #             non_zero = sum(1 for v in density_series if v > 0)
-    #             logger.debug(
-    #                 "dest '%s' link '%s' density series: %d steps, %d non-zero, "
-    #                 "min=%.4f max=%.4f mean=%.4f veh/km",
-    #                 dest_id,
-    #                 upstream_link.id,
-    #                 len(density_series),
-    #                 non_zero,
-    #                 min(density_series),
-    #                 max(density_series),
-    #                 sum(density_series) / len(density_series),
-    #             )
-
-    #         flow_label = f"{dest_id}/flow/{upstream_link.id}"
-    #         density_label = f"{dest_id}/density/{upstream_link.id}"
-
-    #         destination_flow_bc[dest_id] = _make_interp(
-    #             flow_series, _FALLBACK_FLOW, label=flow_label
-    #         )
-    #         destination_density_bc[dest_id] = _make_interp(
-    #             density_series, _FALLBACK_DENSITY, label=density_label
-    #         )
-
-    #         # Spot-check the interpolant at 5 evenly spaced times so that
-    #         # near-zero BCs are immediately visible in the debug log.
-    #         if t_arr.size > 0:
-    #             sample_times = np.linspace(t_arr[0], t_arr[-1], 5)
-    #             logger.debug(
-    #                 "dest '%s' BC spot-check — flow (veh/h): %s | density (veh/km): %s",
-    #                 dest_id,
-    #                 [f"{destination_flow_bc[dest_id](t):.1f}" for t in sample_times],
-    #                 [f"{destination_density_bc[dest_id](t):.3f}" for t in sample_times],
-    #             )
-
-    #         print(
-    #             f"  [dest BC] '{dest_id}' ← link '{upstream_link.id}' ({link_source})"
-    #         )
-
-    #     logger.debug(
-    #         "build_destination_boundary_conditions complete: %d destinations resolved",
-    #         len(destination_flow_bc),
-    #     )
-
-    #     return destination_flow_bc, destination_density_bc
-
     def get_edge_lane_counts(self) -> dict[str, int]:
         """Parse the net_file to map edge IDs to their number of lanes."""
-        import xml.etree.ElementTree as ET
-
         tree = ET.parse(self.net_file)
         root = tree.getroot()
         lane_counts = {}
@@ -1303,29 +931,34 @@ class SUMOPipeline:
 
     @staticmethod
     def bc_flow_from_density(
-        rho_total: float,
+        rho_lane: float,
         n_lanes: int,
-        road_params: dict,
+        road_params: RoadTypeParams,
     ) -> float:
-
         q_max_lane = road_params["lane_capacity"]  # veh/h/lane
         rho_jam_lane = road_params["jam_density"]  # veh/km/lane
         v_f = road_params["free_flow_speed"]  # km/h
 
         # Per-lane density for the FD calculation
-        rho_lane = rho_total / n_lanes if n_lanes > 0 else rho_total
-        rho_lane = max(0.0, min(rho_lane, rho_jam_lane))
+        if rho_lane < 0.0 or rho_lane > rho_jam_lane:
+            warnings.warn(
+                f"Density BC value {rho_lane:.2f} veh/km/lane is out of bounds "
+                f"(0 to {rho_jam_lane:.2f}). Clipping to valid range."
+            )
+            rho_lane_capped = max(0.0, min(rho_lane, rho_jam_lane))
+        else:
+            rho_lane_capped = rho_lane
 
         rho_c = q_max_lane / v_f  # Critical density
         w = q_max_lane / (rho_jam_lane - rho_c)  # Wave speed
 
         # The Hybrid Equation:
-        if rho_lane <= rho_c:
+        if rho_lane_capped <= rho_c:
             # Freeflow: Boundary is wide open at capacity
             q_lane = q_max_lane
         else:
             # Congestion: Boundary flow is restricted by the FD slope
-            q_lane = q_max_lane - w * (rho_lane - rho_c)
+            q_lane = q_max_lane - w * (rho_lane_capped - rho_c)
 
         return max(0.0, q_lane) * n_lanes
 
@@ -1333,9 +966,6 @@ class SUMOPipeline:
         self,
         edge_data_path: str,
     ) -> tuple[dict[str, Callable], dict[str, Callable]]:
-        import xml.etree.ElementTree as ET
-        import numpy as np
-
         tree = ET.parse(edge_data_path)
         root = tree.getroot()
         edge_density_ts = {}
@@ -1351,10 +981,22 @@ class SUMOPipeline:
                     edge_density_ts.setdefault(eid, []).append((t_mid, float(d)))
 
         lane_counts = self.get_edge_lane_counts()
-        _rp = self.road_params.get("motorway") or next(iter(self.road_params.values()))
+
+        # extract the road parameters for the motorway
+        if self.road_params is None:
+            raise ValueError("Road parameters are not initialized.")
+        motorway_params = self.road_params.get("motorway") or next(
+            iter(self.road_params.values())
+        )
 
         destination_flow_bc = {}
         destination_density_bc = {}
+
+        # if no destinations are defined, raise an error -> network invalid
+        if self.destination_ids is None:
+            raise ValueError(
+                "Destination boundary conditions cannot be computed in case of missing destinations."
+            )
 
         for dest_id in self.destination_ids:
             upstream_edges = self.get_fringe_edges(
@@ -1372,16 +1014,18 @@ class SUMOPipeline:
             if not matched:
                 destination_density_bc[dest_id] = lambda t: 10.0
                 destination_flow_bc[dest_id] = (
-                    lambda t: _rp["lane_capacity"]
+                    lambda t: motorway_params["lane_capacity"]
                     * sum(lane_counts.values())
                     / len(lane_counts)
+                )
+                warnings.warn(
+                    f"No density data found for any upstream edges of destination '{dest_id}'. "
+                    "Using fallback constant BCs: density=10 veh/km, flow=capacity."
                 )
                 continue
 
             t_vals = sorted(ts_agg.keys())
-
             total_lanes = sum(lane_counts.get(eid, 1) for eid in matched)
-
             d_vals_per_lane = [(sum(ts_agg[t]) / total_lanes) for t in t_vals]
 
             # Define Density BC as PER LANE
@@ -1391,12 +1035,11 @@ class SUMOPipeline:
             destination_density_bc[dest_id] = get_rho_lane
 
             # Define Flow BC as PER LINK (total)
-            def get_q_total(t, _rho_fn=get_rho_lane, _nl=total_lanes, _params=_rp):
+            def get_q_total(
+                t, _rho_fn=get_rho_lane, lanes=total_lanes, _params=motorway_params
+            ):
                 rho_lane = _rho_fn(t)
-                # We pass rho_lane * _nl because bc_flow_from_density expects rho_total
-                # and then divides it back by lanes.
-                rho_total_reconstructed = rho_lane * _nl
-                return self.bc_flow_from_density(rho_total_reconstructed, _nl, _params)
+                return self.bc_flow_from_density(rho_lane, lanes, _params)
 
             destination_flow_bc[dest_id] = get_q_total
 

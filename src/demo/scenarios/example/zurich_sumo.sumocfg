@@ -4,7 +4,6 @@
     <additional-files value="detector.xml,edge_data_config.add.xml"/>
     <route-files value="zurich_sumo.rou.xml"/>
   </input>
-  <time><end value="86400"/></time>
   <output>
     <statistic-output value="zurich_sumo_stats.xml"/>
   </output>
