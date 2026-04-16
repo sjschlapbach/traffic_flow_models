@@ -141,3 +141,15 @@ cache/
 
 # VS code settings (relevant settings covered by GitHub CI actions)
 .vscode/settings.json
+
+# Ignore all files under the demo scenarios directory except certain files needed for the demo
+src/demo/scenarios/**
+# allow directories so git can find and re-include specific files inside them
+!src/demo/scenarios/**/
+# keep .net.xml, .rou.xml and .sumocfg files anywhere under scenarios
+!src/demo/scenarios/**/*.net.xml
+!src/demo/scenarios/**/*.rou.xml
+!src/demo/scenarios/**/*.sumocfg
+# keep any scenario/network folder and its contents
+!src/demo/scenarios/**/scenario/network/
+!src/demo/scenarios/**/scenario/network/**

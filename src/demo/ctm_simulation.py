@@ -3,6 +3,7 @@ import argparse
 from typing import Callable
 from datetime import datetime
 
+
 from traffic_flow_models import CTM, Simulation
 from demo.scenarios import (
     setup_network_a,

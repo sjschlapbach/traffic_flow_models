@@ -13,7 +13,14 @@ class TestSUMOSimulation:
         net.write_text("net")
         rou.write_text("rou")
 
-        sim = SUMOSimulation("testsim", str(net), str(rou), str(out))
+        sim = SUMOSimulation(
+            name="testsim",
+            net_file=str(net),
+            rou_file=str(rou),
+            cfg_file=str(out / "testsim.sumocfg"),
+            output_dir=str(out),
+            simulation_end_time=3600,
+        )
         sim.write_config()
 
         # verify that class attributes are initialized correctly
@@ -23,6 +30,7 @@ class TestSUMOSimulation:
         assert sim.output_dir == str(out)
         assert sim.cfg_file == str(out / "testsim.sumocfg")
         assert sim.stats_file == str(out / "testsim_stats.xml")
+        assert sim.simulation_end_time == 3600
 
         assert os.path.exists(sim.cfg_file)
         content = open(sim.cfg_file).read()
@@ -45,7 +53,14 @@ class TestSUMOSimulation:
         tree = ET.ElementTree(root)
         tree.write(str(stats_file))
 
-        sim = SUMOSimulation("mysim", "n.net.xml", "r.rou.xml", str(out))
+        sim = SUMOSimulation(
+            name="mysim",
+            net_file="n.net.xml",
+            rou_file="r.rou.xml",
+            cfg_file=str(out / "mysim.sumocfg"),
+            output_dir=str(out),
+            simulation_end_time=3600,
+        )
 
         # point sim at our prepared stats file
         sim.stats_file = str(stats_file)
@@ -65,7 +80,14 @@ class TestSUMOSimulation:
         net.write_text("")
         rou.write_text("")
 
-        sim = SUMOSimulation("runme", str(net), str(rou), str(out))
+        sim = SUMOSimulation(
+            name="runme",
+            net_file=str(net),
+            rou_file=str(rou),
+            cfg_file=str(out / "runme.sumocfg"),
+            output_dir=str(out),
+            simulation_end_time=3600,
+        )
         called = {}
 
         monkeypatch.setattr(

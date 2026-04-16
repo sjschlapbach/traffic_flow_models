@@ -35,5 +35,7 @@ jobs:
         run: |
           sumo --version
           netconvert --version
-      - name: Run Zurich demo scenario with SUMO pipeline
-        run: python -m src.demo.pipeline_run_zurich --vehicle-demand 1000 --no-plot
+      - name: Run demo scenario (default location) with SUMO pipeline
+        run: python -m src.demo.run_pipeline --vehicle-demand 1000 --no-plot
+      - name: Run demo scenario (provided SUMO files) with SUMO pipeline
+        run: python -m src.demo.run_pipeline --sumo-cfg-dir "src/demo/scenarios/example" --no-plot
