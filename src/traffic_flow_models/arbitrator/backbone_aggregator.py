@@ -1,4 +1,5 @@
 import csv
+from importlib.resources import path
 import json
 import warnings
 import xml.etree.ElementTree as ET
@@ -297,6 +298,7 @@ class BackboneStateAggregator:
             # DISCARD: If it's not a mainline, we don't even add it to the dict
             if not is_verified_mainline:
                 print(f"[X] Discarding non-mainline origin: {origin_id}")
+                origin_demands[origin_id] = lambda t: 0.0
                 continue
 
             cell_key = f"{target_edge_id}_cell0"
@@ -306,6 +308,7 @@ class BackboneStateAggregator:
                 print(
                     f"[!] Discarding {origin_id}: No detector data found for {cell_key}"
                 )
+                origin_demands[origin_id] = lambda t: 0.0
                 continue
 
             # Extract flow and build the function
@@ -322,6 +325,8 @@ class BackboneStateAggregator:
                     "flow", 0.0
                 )
                 print(f"[OK] Mainline Verified: {origin_id} (Edge: {target_edge_id})")
+            else:
+                origin_demands[origin_id] = lambda t: 0.0
 
         return origin_demands
 
@@ -812,7 +817,7 @@ class BackboneStateAggregator:
             f"{len(self.edge_intervals) - len(state_functions)}"
         )
 
-        return self.write_state_json(
+        path = self.write_state_json(
             state_functions,
             output_path,
             origin_demands=origin_demands,
@@ -824,3 +829,5 @@ class BackboneStateAggregator:
             free_flow_speed=free_flow_speed,
             jam_density=jam_density,
         )
+
+        return path, origin_demands

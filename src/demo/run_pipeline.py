@@ -271,7 +271,7 @@ if __name__ == "__main__":
         detector_spec_path=spec_file,
         window_size_minutes=10.0,
     )
-    backbone_aggregator.run(
+    _, verified_demands = backbone_aggregator.run(
         output_path=micro_results_path,
         time_step_minutes=1.0,
         free_flow_speed=road_params["motorway"]["free_flow_speed"],
@@ -289,7 +289,7 @@ if __name__ == "__main__":
             duration=duration,
             dt=dt,
             preferred_cell_size=preferred_cell_size,
-            origin_demands=origin_demands,
+            origin_demands=verified_demands,
             turning_rates=splits,
             destination_density_bc=destination_density_bc,
             destination_flow_bc=destination_flow_bc,
