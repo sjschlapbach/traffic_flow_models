@@ -355,19 +355,21 @@ class SUMOPipeline:
         demand_profile: list[tuple[float, float]] | None = None,
         seed: int = 42,
     ) -> None:
-
+        """
+        Generates urban and highway demand. Highway demand is strictly filtered
+         to only inject onto edges directly connected to motorway mainlines.
+        """
         if "SUMO_HOME" not in os.environ:
             raise EnvironmentError("Please set the 'SUMO_HOME' environment variable.")
 
         rng = random.Random(seed)
-
         temp_urban_trips = os.path.join(self.output_dir, "_temp_urban_trips.xml")
         temp_urban_rou = os.path.join(self.output_dir, "_temp_urban.rou.xml")
         temp_hw_trips = os.path.join(self.output_dir, "_temp_hw_trips.xml")
         temp_hw_rou = os.path.join(self.output_dir, "_temp_hw.rou.xml")
 
         try:
-
+            # --- 1. URBAN DEMAND GENERATION ---
             random_trips_script = os.path.join(
                 os.environ["SUMO_HOME"], "tools", "randomTrips.py"
             )
@@ -383,7 +385,7 @@ class SUMOPipeline:
                 "--end",
                 str(duration_seconds),
                 "--period",
-                str(duration_seconds / urban_count),
+                str(duration_seconds / max(urban_count, 1)),
                 "--validate",
                 "--remove-loops",
                 "--seed",
@@ -391,136 +393,135 @@ class SUMOPipeline:
             ]
             subprocess.run(cmd, check=True, capture_output=True, text=True)
 
-            # Reshape departure times and namespace IDs.
+            # Reshape urban times based on profile
             urban_tree = ET.parse(temp_urban_rou)
             urban_root = urban_tree.getroot()
-            elements = [el for el in urban_root if el.tag in ("vehicle", "trip")]
+            urban_elements = [el for el in urban_root if el.tag in ("vehicle", "trip")]
 
             if demand_profile:
-                new_times = self._sample_from_profile(
-                    len(elements), duration_seconds, demand_profile
+                u_times = self._sample_from_profile(
+                    len(urban_elements), duration_seconds, demand_profile
                 )
             else:
-                interval = duration_seconds / max(len(elements), 1)
-                new_times = [i * interval for i in range(len(elements))]
+                u_interval = duration_seconds / max(len(urban_elements), 1)
+                u_times = [i * u_interval for i in range(len(urban_elements))]
 
-            for idx, (el, t) in enumerate(zip(elements, new_times)):
+            for idx, (el, t) in enumerate(zip(urban_elements, u_times)):
                 el.set("depart", f"{t:.2f}")
                 el.set("type", "passenger_car")
                 el.set("id", f"urban_{idx}")
 
-            elements.sort(key=lambda x: float(x.get("depart")))
-            urban_root[:] = elements
+            urban_elements.sort(key=lambda x: float(x.get("depart")))
+            urban_root[:] = urban_elements
             urban_tree.write(temp_urban_rou, encoding="utf-8", xml_declaration=True)
 
-            routed_count = 0
+            # --- 2. HIGHWAY DEMAND GENERATION (WITH MAINLINE FILTERING) ---
+            routed_hw_count = 0
             if highway_count > 0:
-                origin_nodes = [
-                    n for n in (self.origin_ids or []) if n.startswith("origin_")
-                ]
-                dest_nodes = [
-                    n
-                    for n in (self.destination_ids or [])
-                    if n.startswith("destination_") or n.startswith("dest_")
-                ]
-
-                if not origin_nodes:
-                    raise ValueError(
-                        "No origin_ nodes found. Cannot generate highway stream."
-                    )
-                if not dest_nodes:
-                    raise ValueError(
-                        "No destination_ nodes found. Cannot generate highway stream."
-                    )
-
                 net_tree = ET.parse(self.net_file)
                 net_root = net_tree.getroot()
 
-                from_index: dict[str, list[str]] = {}
-                to_index: dict[str, list[str]] = {}
+                # Build topological index: node_id -> List[Edge Elements]
+                node_to_out_edges = {}
+                node_to_in_edges = {}
+
                 for edge in net_root.findall("edge"):
                     if edge.get("function") == "internal":
                         continue
-                    eid = edge.get("id")
                     f, t = edge.get("from"), edge.get("to")
-                    if eid and f:
-                        from_index.setdefault(f, []).append(eid)
-                    if eid and t:
-                        to_index.setdefault(t, []).append(eid)
+                    if f:
+                        node_to_out_edges.setdefault(f, []).append(edge)
+                    if t:
+                        node_to_in_edges.setdefault(t, []).append(edge)
 
-                from_edges = [
-                    eid
-                    for n in origin_nodes
-                    for eid in from_index.get(self.strip_node_prefix(n), [])
+                # Filter Origins: Only those connecting directly to a Motorway Mainline
+                verified_from_edges = []
+                origin_nodes = [
+                    n for n in (self.origin_ids or []) if n.startswith("origin_")
                 ]
-                to_edges = [
-                    eid
+
+                for node_name in origin_nodes:
+                    stripped_id = self.strip_node_prefix(node_name)
+                    # Get the initial connector edges leaving our dummy origin node
+                    connector_edges = node_to_out_edges.get(stripped_id, [])
+
+                    for c_edge in connector_edges:
+                        next_node = c_edge.get("to")
+                        # Look-ahead: What kind of edges leave the next junction?
+                        downstream_edges = node_to_out_edges.get(next_node, [])
+
+                        # Verification logic: Must be 'motorway' and NOT 'motorway_link'
+                        if any(
+                            "motorway" in e.get("type", "")
+                            and "link" not in e.get("type", "")
+                            for e in downstream_edges
+                        ):
+                            verified_from_edges.append(c_edge.get("id"))
+                        else:
+                            # We skip the append, effectively DISCARDING this origin
+                            pass
+
+                if not verified_from_edges:
+                    print(
+                        "[WARN] All highway origins were discarded (no mainline connections found)."
+                    )
+                    highway_count = 0  # Prevent further highway processing
+
+                # Simple filter for destinations (incoming edges to dest nodes)
+                dest_nodes = [
+                    n for n in (self.destination_ids or []) if n.startswith("dest")
+                ]
+                verified_to_edges = [
+                    e.get("id")
                     for n in dest_nodes
-                    for eid in to_index.get(self.strip_node_prefix(n), [])
+                    for e in node_to_in_edges.get(self.strip_node_prefix(n), [])
                 ]
 
-                if not from_edges:
+                if not verified_from_edges or not verified_to_edges:
                     raise ValueError(
-                        f"No outgoing edges found for origin nodes: {origin_nodes}. "
-                        "Check that create_consolidated_network() has been called."
-                    )
-                if not to_edges:
-                    raise ValueError(
-                        f"No incoming edges found for destination nodes: {dest_nodes}. "
-                        "Check that create_consolidated_network() has been called."
+                        "No valid mainline origin/destination pairs found after filtering."
                     )
 
-                print(
-                    f"[INFO] Highway stream — "
-                    f"{len(from_edges)} departure edge(s), {len(to_edges)} arrival edge(s)"
-                )
-
-                # Departure times
+                # Generate Highway Departures
                 if demand_profile:
-                    hw_departures = self._sample_from_profile(
+                    hw_deps = self._sample_from_profile(
                         highway_count, duration_seconds, demand_profile
                     )
                 else:
                     hw_interval = duration_seconds / highway_count
-                    hw_departures = [i * hw_interval for i in range(highway_count)]
+                    hw_deps = [i * hw_interval for i in range(highway_count)]
 
+                # Build and Route Highway Trips
                 hw_trips_root = self._build_highway_trips_xml(
-                    hw_departures, from_edges, to_edges, rng
+                    hw_deps, verified_from_edges, verified_to_edges, rng
                 )
                 ET.ElementTree(hw_trips_root).write(
                     temp_hw_trips, encoding="utf-8", xml_declaration=True
                 )
+
                 self._validate_with_duarouter(temp_hw_trips, temp_hw_rou, seed)
 
+                # Count successfully routed vehicles
                 hw_tree = ET.parse(temp_hw_rou)
-                routed_count = sum(
+                routed_hw_count = sum(
                     1 for el in hw_tree.getroot() if el.tag in ("vehicle", "trip")
                 )
-                if routed_count < highway_count:
+
+                if routed_hw_count < highway_count:
                     print(
-                        f"[WARN] Highway stream: {highway_count - routed_count} of "
-                        f"{highway_count} trips were unroutable and dropped by duarouter."
+                        f"[WARN] Highway: {highway_count - routed_hw_count}/{highway_count} dropped (unroutable)."
                     )
 
+            # --- 3. MERGE AND CLEANUP ---
             files_to_merge = [temp_urban_rou]
             if highway_count > 0:
                 files_to_merge.append(temp_hw_rou)
 
             total = self._merge_route_files(files_to_merge, self.rou_file)
-
-            parts = [f"urban={urban_count}"]
-            if highway_count > 0:
-                parts.append(f"highway={routed_count}/{highway_count} routed")
-            print(
-                f"[OK] Generated {total} vehicles ({', '.join(parts)}) → {self.rou_file}"
-            )
+            print(f"[OK] Generated {total} vehicles -> {self.rou_file}")
 
         except subprocess.CalledProcessError as e:
-            stderr = e.stderr.strip() if e.stderr else "(no stderr)"
-            raise RuntimeError(
-                f"Subprocess failed (exit {e.returncode}): {' '.join(e.cmd)}\n{stderr}"
-            ) from e
-
+            raise RuntimeError(f"SUMO Subprocess failed: {e.stderr}") from e
         finally:
             for path in [temp_urban_trips, temp_urban_rou, temp_hw_trips, temp_hw_rou]:
                 if os.path.exists(path):

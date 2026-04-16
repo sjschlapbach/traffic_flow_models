@@ -249,6 +249,82 @@ class BackboneStateAggregator:
                     )
                 )
 
+    def compute_origin_demand_functions(
+        self,
+        origin_ids: list[str],
+        sumo_network_path: str,
+    ) -> dict[str, Callable[[float], float]]:
+        """Derive demand functions ONLY for verified mainline highway origins."""
+
+        net_tree = ET.parse(sumo_network_path)
+        net_root = net_tree.getroot()
+
+        # Map: node_id -> list of XML edge elements
+        node_to_out_edges: dict[str, list[ET.Element]] = {}
+        for edge in net_root.findall("edge"):
+            if edge.get("function") == "internal":
+                continue
+            f_node = edge.get("from")
+            if f_node:
+                node_to_out_edges.setdefault(f_node, []).append(edge)
+
+        origin_demands: dict[str, Callable[[float], float]] = {}
+
+        for origin_id in origin_ids:
+            if not origin_id.startswith("origin_"):
+                continue
+
+            raw_node = origin_id.replace("origin_", "")
+            connector_edges = node_to_out_edges.get(raw_node, [])
+
+            is_verified_mainline = False
+            target_edge_id = None
+
+            for c_edge in connector_edges:
+                downstream_node = c_edge.get("to")
+                next_edges = node_to_out_edges.get(downstream_node, [])
+
+                # HARD FILTER: Must find a downstream motorway segment (not a link)
+                for next_edge in next_edges:
+                    etype = next_edge.get("type", "")
+                    if "motorway" in etype and "link" not in etype:
+                        is_verified_mainline = True
+                        target_edge_id = c_edge.get("id")
+                        break
+                if is_verified_mainline:
+                    break
+
+            # DISCARD: If it's not a mainline, we don't even add it to the dict
+            if not is_verified_mainline:
+                print(f"[X] Discarding non-mainline origin: {origin_id}")
+                continue
+
+            cell_key = f"{target_edge_id}_cell0"
+            matched_intervals = self.edge_intervals.get(cell_key)
+
+            if matched_intervals is None:
+                print(
+                    f"[!] Discarding {origin_id}: No detector data found for {cell_key}"
+                )
+                continue
+
+            # Extract flow and build the function
+            flow_intervals = [(b, c) for b, c, _, _, _, _ in matched_intervals]
+            demand_fn = make_rolling_window_aggregator(
+                intervals={"flow": flow_intervals},
+                window_size_sec=self.window_size_sec,
+                max_time=self.max_time,
+                aggregation_type="demand",
+            )
+
+            if demand_fn:
+                origin_demands[origin_id] = lambda t, fn=demand_fn: fn(t).get(
+                    "flow", 0.0
+                )
+                print(f"[OK] Mainline Verified: {origin_id} (Edge: {target_edge_id})")
+
+        return origin_demands
+
     def compute_traffic_state(
         self, free_flow_speed: float, jam_density: float
     ) -> dict[str, Callable[[float], TrafficState]]:
@@ -425,6 +501,7 @@ class BackboneStateAggregator:
         self,
         state_functions: Mapping[str, Callable[[float], TrafficState]],
         output_path: str,
+        origin_demands: dict[str, Callable[[float], float]] | None = None,
         query_times_hours: list[float] | None = None,
         time_step_minutes: float = 1.0,
         dt: float | None = None,
@@ -528,6 +605,11 @@ class BackboneStateAggregator:
             else:
                 edge_cells[edge_id] = {}
 
+        origin_demands_series: dict[str, list[float]] = {}
+        if origin_demands:
+            for oid in origin_demands.keys():
+                origin_demands_series[oid] = []
+
         # Prepare output containers matching Simulation.save_results layout
         flows_time: dict[str, list] = {}
         densities_time: dict[str, list] = {}
@@ -563,6 +645,11 @@ class BackboneStateAggregator:
                 flows_time[edge_id].append(flows_row)
                 densities_time[edge_id].append(densities_row)
                 speeds_time[edge_id].append(speeds_row)
+
+            if origin_demands:
+                for oid, fn in origin_demands.items():
+                    val = fn(t_h)
+                    origin_demands_series[oid].append(float(round(val, 2)))
 
         # Construct minimal link_properties using available information
         link_properties: dict[str, dict] = {}
@@ -640,14 +727,13 @@ class BackboneStateAggregator:
                 "flows": flows_time,
                 "densities": densities_time,
                 "speeds": speeds_time,
-                # backbone aggregator does not produce queue data; keep placeholders
                 "origin_queues": {},
                 "onramp_queues": {},
                 "offramp_queues": {},
             },
             # no disturbance inputs available from backbone data
             "disturbance_time_series": {
-                "origin_demands": {},
+                "origin_demands": origin_demands_series,
                 "turning_rates": {},
                 "flow_boundary_conditions": {},
                 "density_boundary_conditions": {},
@@ -672,6 +758,8 @@ class BackboneStateAggregator:
         output_path: str,
         free_flow_speed: float,
         jam_density: float,
+        sumo_network_path: str | None = None,
+        origin_ids: list[str] | None = None,
         query_times_hours: list[float] | None = None,
         time_step_minutes: float = 1.0,
         preferred_cell_size: float | None = None,
@@ -709,6 +797,12 @@ class BackboneStateAggregator:
             for ivs in self.edge_intervals.values()
         )
 
+        origin_demands = {}
+        if sumo_network_path and origin_ids:
+            origin_demands = self.compute_origin_demand_functions(
+                origin_ids=origin_ids, sumo_network_path=sumo_network_path
+            )
+
         print("BACKBONE STATE AGGREGATION SUMMARY:")
         print(f"  Backbone edges instrumented: {len(self.edge_intervals)}")
         print(f"  Total vehicles observed:     {total_vehicles}")
@@ -721,6 +815,7 @@ class BackboneStateAggregator:
         return self.write_state_json(
             state_functions,
             output_path,
+            origin_demands=origin_demands,
             query_times_hours=query_times_hours,
             time_step_minutes=time_step_minutes,
             dt=(time_step_minutes / 60.0) if time_step_minutes is not None else None,

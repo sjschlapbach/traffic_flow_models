@@ -277,6 +277,8 @@ if __name__ == "__main__":
         free_flow_speed=road_params["motorway"]["free_flow_speed"],
         jam_density=road_params["motorway"]["jam_density"],
         preferred_cell_size=preferred_cell_size,
+        sumo_network_path=pipeline.net_file,
+        origin_ids=origin_ids,
     )
 
     # run a simulation of the network using the selected model
