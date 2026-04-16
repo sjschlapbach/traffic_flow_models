@@ -183,7 +183,9 @@ if __name__ == "__main__":
         )
 
     # create an instance of the macroscopic traffic flow model network
-    pipeline.create_consolidated_network(min_link_length=min_link_length)
+    pipeline.create_consolidated_network(
+        min_link_length=min_link_length, target_cell_length=preferred_cell_size
+    )
     detector_def_file, detector_output_file, spec_file = pipeline.generate_detectors(
         cell_size=preferred_cell_size
     )
@@ -369,6 +371,7 @@ if __name__ == "__main__":
         backbone_video_path = os.path.join(results_dir, "backbone_simulation.avi")
         try:
             print("\nGenerating backbone (microsimulation) video...")
+
             sim.visualize(
                 results_filepath=micro_results_path,
                 output_filepath=backbone_video_path,
