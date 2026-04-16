@@ -18,13 +18,13 @@ class SUMOSimulation:
 
     def __init__(
         self,
-        name,
-        net_file,
-        rou_file,
-        cfg_file,
-        output_dir,
+        name: str,
+        net_file: str,
+        rou_file: str,
+        cfg_file: str,
+        output_dir: str,
+        simulation_end_time: int,
         detector_file=None,
-        simulation_end_time: int = 86400,
     ):
         """Initialize the SUMO simulation.
 
