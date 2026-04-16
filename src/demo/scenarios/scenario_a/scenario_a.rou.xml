@@ -3,8 +3,8 @@
     <vType id="car" length="5.0" maxSpeed="27.78"/>
 
     
-    <route id="main_route" edges="m1 m2"/>
-    <route id="ramp_route" edges="onramp m2"/>
+    <route id="main_route" edges="1234567 7654321"/>
+    <route id="ramp_route" edges="8963467 7654321"/>
 
     <flow id="main_0" route="main_route" type="car" begin="0" end="300" vehsPerHour="1333.3" departSpeed="max" departLane="best"/>
     <flow id="ramp_0" route="ramp_route" type="car" begin="0" end="300" vehsPerHour="333.3" departSpeed="max" departLane="best"/>
