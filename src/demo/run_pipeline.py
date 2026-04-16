@@ -370,7 +370,7 @@ if __name__ == "__main__":
         try:
             print("\nGenerating backbone (microsimulation) video...")
             sim.visualize(
-                results_filepath=backbone_state_path,
+                results_filepath=micro_results_path,
                 output_filepath=backbone_video_path,
                 fps=30,
                 subsampling=1,
@@ -396,7 +396,7 @@ if __name__ == "__main__":
                 results_dir, "subsampled_micro_data.json"
             )
             Simulation.resample_results_file(
-                source_filepath=backbone_state_path,
+                source_filepath=micro_results_path,
                 dest_filepath=subsampled_micro_data,
                 target_time_array=macro_time_array,
             )

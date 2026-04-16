@@ -1640,8 +1640,31 @@ class Simulation:
             raise ValueError("time arrays must be non-empty")
         if np.any(np.diff(old_time) <= 0) or np.any(np.diff(new_time) <= 0):
             raise ValueError("time arrays must be strictly increasing")
-        if new_time[0] < old_time[0] or new_time[-1] > old_time[-1]:
-            raise ValueError("target_time_array must stay within the source time span")
+
+        # Allow the target time array to extend up to one additional microsimulation
+        # timestep past the source end time. This is useful when resampling
+        # microsimulation results onto a coarser macrosimulation grid: the
+        # extra final sample in `target_time_array` will be filled by repeating
+        # the last available source sample (i.e., copying the last timestep).
+        if new_time[0] < old_time[0]:
+            raise ValueError("target_time_array must not start before the source time array")
+        if new_time[-1] > old_time[-1]:
+            # we need at least two source samples to infer the microsimulation timestep
+            if old_time.size < 2:
+                raise ValueError(
+                    "target_time_array extends beyond the source time span and "
+                    "source time array has fewer than 2 samples"
+                )
+            delta_old = float(np.median(np.diff(old_time)))
+            tol = max(1e-12, delta_old * 1e-12)
+            if new_time[-1] > old_time[-1] + delta_old + tol:
+                raise ValueError(
+                    "target_time_array must stay within the source time span, "
+                    "or extend by at most one microsimulation timestep"
+                )
+            # Otherwise accept the small extension. The interpolation code below
+            # will repeat the last source sample (np.interp returns the last value
+            # for x > xp[-1]), so no further adjustments are required.
 
         state_in = data.get("state_time_series", {})
         dist_in = data.get("disturbance_time_series", {})
