@@ -1,5 +1,4 @@
 import csv
-from importlib.resources import path
 import json
 import warnings
 import xml.etree.ElementTree as ET
@@ -757,10 +756,11 @@ class BackboneStateAggregator:
     def run(
         self,
         output_path: str,
+        urban_demands: dict[str, Callable[[float], float]],
         free_flow_speed: float,
         jam_density: float,
-        sumo_network_path: str | None = None,
-        origin_ids: list[str] | None = None,
+        sumo_network_path: str,
+        origin_ids: list[str],
         query_times_hours: list[float] | None = None,
         time_step_minutes: float = 1.0,
         preferred_cell_size: float | None = None,
@@ -798,11 +798,9 @@ class BackboneStateAggregator:
             for ivs in self.edge_intervals.values()
         )
 
-        origin_demands = {}
-        if sumo_network_path and origin_ids:
-            origin_demands = self.compute_origin_demand_functions(
-                origin_ids=origin_ids, sumo_network_path=sumo_network_path
-            )
+        highway_demands = self.compute_origin_demand_functions(
+            origin_ids=origin_ids, sumo_network_path=sumo_network_path
+        )
 
         print("BACKBONE STATE AGGREGATION SUMMARY:")
         print(f"  Backbone edges instrumented: {len(self.edge_intervals)}")
@@ -816,7 +814,7 @@ class BackboneStateAggregator:
         path = self.write_state_json(
             state_functions,
             output_path,
-            origin_demands=origin_demands,
+            origin_demands={**urban_demands, **highway_demands},
             query_times_hours=query_times_hours,
             time_step_minutes=time_step_minutes,
             dt=(time_step_minutes / 60.0) if time_step_minutes is not None else None,
@@ -826,4 +824,4 @@ class BackboneStateAggregator:
             jam_density=jam_density,
         )
 
-        return path, origin_demands
+        return path, highway_demands

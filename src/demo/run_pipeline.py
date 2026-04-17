@@ -271,6 +271,7 @@ if __name__ == "__main__":
     )
     _, highway_demands = backbone_aggregator.run(
         output_path=micro_results_path,
+        urban_demands=urban_demands,
         time_step_minutes=1.0,
         free_flow_speed=road_params["motorway"]["free_flow_speed"],
         jam_density=road_params["motorway"]["jam_density"],

@@ -411,7 +411,7 @@ class SUMOPipeline:
                 el.set("type", "passenger_car")
                 el.set("id", f"urban_{idx}")
 
-            urban_elements.sort(key=lambda x: float(x.get("depart")))
+            urban_elements.sort(key=lambda x: float(x.get("depart")))  # type: ignore
             urban_root[:] = urban_elements
             urban_tree.write(temp_urban_rou, encoding="utf-8", xml_declaration=True)
 
