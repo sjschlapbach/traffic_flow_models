@@ -1641,71 +1641,93 @@ class Simulation:
         if np.any(np.diff(old_time) <= 0) or np.any(np.diff(new_time) <= 0):
             raise ValueError("time arrays must be strictly increasing")
 
-        # Allow the target time array to extend up to one additional microsimulation
-        # timestep past the source end time. This is useful when resampling
-        # microsimulation results onto a coarser macrosimulation grid: the
-        # extra final sample in `target_time_array` will be filled by repeating
-        # the last available source sample (i.e., copying the last timestep).
-        if new_time[0] < old_time[0]:
+        # infer a sensible tolerance and the typical microsimulation timestep
+        old_step = float(np.median(np.diff(old_time))) if old_time.size >= 2 else 0.0
+        tol = max(1e-12, old_step * 1e-9)
+
+        if new_time[0] < old_time[0] - tol:
             raise ValueError(
                 "target_time_array must not start before the source time array"
             )
-        if new_time[-1] > old_time[-1]:
-            # we need at least two source samples to infer the microsimulation timestep
+
+        # allow extending the target by at most one source timestep
+        extend_allowed = False
+        if new_time[-1] > old_time[-1] + tol:
             if old_time.size < 2:
                 raise ValueError(
                     "target_time_array extends beyond the source time span and "
                     "source time array has fewer than 2 samples"
                 )
-            delta_old = float(np.median(np.diff(old_time)))
-            tol = max(1e-12, delta_old * 1e-12)
-            if new_time[-1] > old_time[-1] + delta_old + tol:
+            if new_time[-1] > old_time[-1] + old_step + tol:
                 raise ValueError(
                     "target_time_array must stay within the source time span, "
                     "or extend by at most one microsimulation timestep"
                 )
-            # Otherwise accept the small extension. The interpolation code below
-            # will repeat the last source sample (np.interp returns the last value
-            # for x > xp[-1]), so no further adjustments are required.
+            extend_allowed = True
 
         state_in = data.get("state_time_series", {})
         dist_in = data.get("disturbance_time_series", {})
 
         new_state = {
-            "flows": {},
-            "densities": {},
-            "speeds": {},
-            "origin_queues": {},
-            "onramp_queues": {},
-            "offramp_queues": {},
+            k: {}
+            for k in (
+                "flows",
+                "densities",
+                "speeds",
+                "origin_queues",
+                "onramp_queues",
+                "offramp_queues",
+            )
         }
 
-        # helper: interpolate a 2-D time x value array (values may be scalar or vector per timestep)
-        def _interp_2d(list_of_vals, t_old, t_new):
-            arr = np.array(list_of_vals, dtype=np.float64)
-            if arr.ndim == 1:
-                arr = arr.reshape((-1, 1))
-            if arr.shape[0] != t_old.shape[0]:
-                raise ValueError("Inconsistent time-series length in source file")
+        def _extend_time(t):
+            return (
+                t
+                if not extend_allowed
+                else np.concatenate(
+                    [t, np.asarray([t[-1] + old_step], dtype=np.float64)]
+                )
+            )
 
-            # handle degenerate single-sample case by repeating
+        def _interp_2d(list_of_vals, t_old, t_new):
+            arr = np.asarray(list_of_vals, dtype=np.float64)
+            if arr.ndim == 1:
+                arr = arr[:, None]
+            t_old_arr = np.asarray(t_old, dtype=np.float64)
+
+            if arr.shape[0] != t_old_arr.shape[0]:
+                diff = arr.shape[0] - t_old_arr.shape[0]
+                if diff == -1:
+                    t_old_arr = t_old_arr[:-1]
+                elif diff == 1:
+                    arr = arr[:-1]
+                else:
+                    raise ValueError("Inconsistent time-series length in source file")
+
             if arr.shape[0] == 1:
                 return np.repeat(arr, t_new.shape[0], axis=0)
 
-            out = np.zeros((t_new.shape[0], arr.shape[1]), dtype=np.float64)
+            out = np.empty((t_new.shape[0], arr.shape[1]), dtype=np.float64)
             for j in range(arr.shape[1]):
-                out[:, j] = np.interp(t_new, t_old, arr[:, j])
+                out[:, j] = np.interp(t_new, t_old_arr, arr[:, j])
             return out
 
+        def _interp_1d(series, t_old, t_new, ref_len=None):
+            arr = np.asarray(series, dtype=np.float64)
+            if arr.size == 1:
+                return np.repeat(arr[0], t_new.shape[0])
+            if extend_allowed and ref_len is not None and arr.shape[0] == ref_len:
+                arr = np.concatenate([arr, np.asarray([arr[-1]])])
+            return np.interp(t_new, np.asarray(t_old, dtype=np.float64), arr)
+
         # state fields (flows/densities/speeds)
+        t_old_for_interp = _extend_time(old_time)
         for field in ("flows", "densities", "speeds"):
             for lk_id, series in state_in.get(field, {}).items():
                 if not series:
                     new_state[field][lk_id] = []
                     continue
-                new_arr = _interp_2d(series, old_time, new_time)
-
-                # store as list-of-lists per timestep (consistent with save_results)
+                new_arr = _interp_2d(series, t_old_for_interp, new_time)
                 new_state[field][lk_id] = [list(row.tolist()) for row in new_arr]
 
         # queue-like state fields (scalar per timestep)
@@ -1714,24 +1736,26 @@ class Simulation:
                 if not series:
                     new_state[field][k] = []
                     continue
-                arr = np.asarray(series, dtype=np.float64)
-                if arr.shape[0] == 1:
-                    new_vals = np.repeat(arr[0], new_time.shape[0])
-                else:
-                    new_vals = np.interp(new_time, old_time, arr)
+                new_vals = _interp_1d(
+                    series, _extend_time(old_time), new_time, ref_len=old_time.shape[0]
+                )
                 new_state[field][k] = [float(x) for x in new_vals.tolist()]
 
         # disturbances: defined on intervals between state timesteps
         new_dist = {
-            "origin_demands": {},
-            "turning_rates": {},
-            "flow_boundary_conditions": {},
-            "density_boundary_conditions": {},
+            k: {}
+            for k in (
+                "origin_demands",
+                "turning_rates",
+                "flow_boundary_conditions",
+                "density_boundary_conditions",
+            )
         }
 
         if old_time.shape[0] >= 2 and new_time.shape[0] >= 2:
             old_intervals = old_time[:-1]
             new_intervals = new_time[:-1]
+            old_intervals_for_interp = _extend_time(old_intervals)
 
             # origin_demands (scalar per interval)
             for k, series in dist_in.get("origin_demands", {}).items():
@@ -1742,7 +1766,12 @@ class Simulation:
                 if arr.shape[0] == 1:
                     new_vals = np.repeat(arr[0], new_intervals.shape[0])
                 else:
-                    new_vals = np.interp(new_intervals, old_intervals, arr)
+                    new_vals = _interp_1d(
+                        series,
+                        old_intervals_for_interp,
+                        new_intervals,
+                        ref_len=old_intervals.shape[0],
+                    )
                 new_dist["origin_demands"][k] = [float(x) for x in new_vals.tolist()]
 
             # turning_rates: nested dict node_id -> link_id -> list
@@ -1756,7 +1785,12 @@ class Simulation:
                     if arr.shape[0] == 1:
                         new_vals = np.repeat(arr[0], new_intervals.shape[0])
                     else:
-                        new_vals = np.interp(new_intervals, old_intervals, arr)
+                        new_vals = _interp_1d(
+                            series,
+                            old_intervals_for_interp,
+                            new_intervals,
+                            ref_len=old_intervals.shape[0],
+                        )
                     new_dist["turning_rates"][node_id][lk] = [
                         float(x) for x in new_vals.tolist()
                     ]
@@ -1771,17 +1805,18 @@ class Simulation:
                     if arr.shape[0] == 1:
                         new_vals = np.repeat(arr[0], new_intervals.shape[0])
                     else:
-                        new_vals = np.interp(new_intervals, old_intervals, arr)
+                        new_vals = _interp_1d(
+                            series,
+                            old_intervals_for_interp,
+                            new_intervals,
+                            ref_len=old_intervals.shape[0],
+                        )
                     new_dist[field][k] = [float(x) for x in new_vals.tolist()]
         else:
-            # degenerate case: no disturbance samples in source or target
-            # preserve empty structures
             for field in new_dist.keys():
-                # copy keys where present but ensure empty lists
                 for k in dist_in.get(field, {}).keys():
                     new_dist[field].setdefault(k, [])
 
-        # assemble output
         out = {
             "metadata": dict(data.get("metadata", {})),
             "time_array": [float(x) for x in new_time.tolist()],
@@ -1789,7 +1824,6 @@ class Simulation:
             "disturbance_time_series": new_dist,
         }
 
-        # annotate provenance
         out.setdefault("metadata", {})["resampled_from"] = os.path.basename(
             source_filepath
         )
@@ -1797,7 +1831,6 @@ class Simulation:
             datetime.utcnow().isoformat() + "Z"
         )
 
-        # write JSON
         with open(dest_filepath, "w", encoding="utf-8") as f:
             json.dump(out, f, indent=2)
 
