@@ -324,6 +324,9 @@ class NetworkArbitrator:
         #         f"Filter priorities: {self.hwy_filter}"
         #     )
 
+        # Restrict selection to motorway types for backbone extraction.
+        # This arbitrator currently focuses on motorway/motorway_link as the
+        # backbone; the hierarchical filter machinery is present but unused.
         self.selected_types = NetworkArbitrator.MOTORWAY_TYPES
 
         # extract junction coordinates
@@ -839,7 +842,8 @@ class NetworkArbitrator:
             if not node_obj.incoming:
                 if any(isinstance(l, Onramp) for l in node_obj.outgoing):
                     for l in node_obj.outgoing:
-                        onramp_ids.append(l.id)
+                        onramp_ids.append(nid_str)
+                        # onramp_ids.append(l.id)
                         # onramp_ids.append(f'onramp_{nid_str}')
 
                     orig = Origin(id=f"origin_{nid}", destination_node_id=nid_str)
@@ -852,7 +856,8 @@ class NetworkArbitrator:
             if not node_obj.outgoing:
                 if any(isinstance(l, Offramp) for l in node_obj.incoming):
                     for l in node_obj.incoming:
-                        offramp_ids.append(l.id)
+                        offramp_ids.append(nid_str)
+                        # offramp_ids.append(l.id)
                         # offramp_ids.append(f'offramp_{nid_str}')
 
                     dest = Destination(id=f"dest_{nid}", origin_node_id=nid_str)

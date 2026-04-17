@@ -60,17 +60,17 @@
     </edge>
 
     <junction id="n0" type="dead_end" x="0.00" y="0.00" incLanes="" intLanes="" shape="0.00,0.00 0.00,-9.60"/>
-    <junction id="n1" type="priority" x="1000.00" y="0.00" incLanes="m1_0 m1_1 m1_2 onramp_0" intLanes=":n1_0_0 :n1_0_1 :n1_0_2 :n1_3_0 :n1_3_1" shape="1004.00,0.00 1004.00,-9.60 988.84,-9.60 988.84,0.00 989.27,1.79 990.70,4.65 993.38,3.21 995.38,2.04 997.07,1.14 998.82,0.51 1001.01,0.13">
+    <junction id="n1" type="zipper" x="1000.00" y="0.00" incLanes="m1_0 m1_1 m1_2 onramp_0" intLanes=":n1_0_0 :n1_0_1 :n1_0_2 :n1_3_0 :n1_3_1" shape="1004.00,0.00 1004.00,-9.60 988.84,-9.60 988.84,0.00 989.27,1.79 990.70,4.65 993.38,3.21 995.38,2.04 997.07,1.14 998.82,0.51 1001.01,0.13">
         <request index="0" response="00000" foes="11000" cont="0"/>
         <request index="1" response="00000" foes="11000" cont="0"/>
         <request index="2" response="00000" foes="11000" cont="0"/>
         <request index="3" response="00111" foes="00111" cont="0"/>
         <request index="4" response="00111" foes="00111" cont="0"/>
     </junction>
-    <junction id="n2" type="priority" x="2000.00" y="0.00" incLanes="m2_0 m2_1 m2_2" intLanes=":n2_0_0" shape="2004.00,0.00 2004.00,-3.20 2001.98,-3.67 2000.79,-4.86 1999.21,-7.94 1998.02,-9.13 1996.00,-9.60 1996.00,0.00">
+    <junction id="n2" type="zipper" x="2000.00" y="0.00" incLanes="m2_0 m2_1 m2_2" intLanes=":n2_0_0" shape="2004.00,0.00 2004.00,-3.20 2001.98,-3.67 2000.79,-4.86 1999.21,-7.94 1998.02,-9.13 1996.00,-9.60 1996.00,0.00">
         <request index="0" response="0" foes="0" cont="0"/>
     </junction>
-    <junction id="n3" type="priority" x="2500.00" y="0.00" incLanes="m3_0" intLanes=":n3_0_0 :n3_0_1 :n3_0_2" shape="2504.00,0.00 2504.00,-9.60 2501.98,-9.13 2500.79,-7.94 2499.21,-4.86 2498.02,-3.67 2496.00,-3.20 2496.00,0.00">
+    <junction id="n3" type="zipper" x="2500.00" y="0.00" incLanes="m3_0" intLanes=":n3_0_0 :n3_0_1 :n3_0_2" shape="2504.00,0.00 2504.00,-9.60 2501.98,-9.13 2500.79,-7.94 2499.21,-4.86 2498.02,-3.67 2496.00,-3.20 2496.00,0.00">
         <request index="0" response="000" foes="000" cont="0"/>
         <request index="1" response="000" foes="000" cont="0"/>
         <request index="2" response="000" foes="000" cont="0"/>

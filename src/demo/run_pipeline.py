@@ -242,6 +242,7 @@ if __name__ == "__main__":
     )
     urban_demands = demand_generator.run(
         origin_ids=origin_ids,
+        onramp_ids=onramp_ids,
         sumo_network_path=pipeline.net_file,
     )
 

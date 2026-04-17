@@ -1,21 +1,39 @@
 <?xml version="1.0" encoding="UTF-8"?>
 
-<!-- generated on 2026-04-14 10:56:45 by Eclipse SUMO netconvert Version 1.24.0
-<netconvertConfiguration xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://sumo.dlr.de/xsd/netconvertConfiguration.xsd">
+<!-- generated on 2026-04-18T00:53:01.570444+01:00 by Eclipse SUMO netedit 1.26.0
+<neteditConfiguration xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://sumo.dlr.de/xsd/neteditConfiguration.xsd">
 
     <input>
-        <node-files value="scenario.nod.xml"/>
-        <edge-files value="scenario.edg.xml"/>
+        <sumo-net-file value="/Users/krishnakanth/Documents/traffic_flow_models/src/demo/scenarios/scenario_a/scenario_a.net.xml"/>
     </input>
 
     <output>
-        <output-file value="scenario.net.xml"/>
+        <output-file value="/Users/krishnakanth/Documents/traffic_flow_models/src/demo/scenarios/scenario_a/scenario_a.net.xml"/>
     </output>
 
-</netconvertConfiguration>
+    <processing>
+        <geometry.min-radius.fix.railways value="false"/>
+        <geometry.avoid-overlap value="false"/>
+        <geometry.max-grade.fix value="false"/>
+        <offset.disable-normalization value="true"/>
+        <lefthand value="0"/>
+    </processing>
+
+    <junctions>
+        <no-turnarounds value="true"/>
+        <junctions.corner-detail value="5"/>
+        <junctions.limit-turn-speed value="5.50"/>
+        <rectangular-lane-cut value="0"/>
+    </junctions>
+
+    <pedestrian>
+        <walkingareas value="0"/>
+    </pedestrian>
+
+</neteditConfiguration>
 -->
 
-<net version="1.20" junctionCornerDetail="5" limitTurnSpeed="5.50" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://sumo.dlr.de/xsd/net_file.xsd">
+<net version="1.20" junctionCornerDetail="5" limitTurnSpeed="5.50" avoidOverlap="0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://sumo.dlr.de/xsd/net_file.xsd">
 
     <location netOffset="0.00,0.00" convBoundary="0.00,0.00,3000.00,100.00" origBoundary="0.00,0.00,3000.00,100.00" projParameter="!"/>
 
@@ -43,22 +61,22 @@
         <lane id="8963467_0" index="0" speed="27.78" length="213.21" shape="799.28,98.57 989.98,3.22"/>
     </edge>
 
+    <junction id="123123" type="dead_end" x="800.00" y="100.00" incLanes="" intLanes="" shape="800.00,100.00 798.57,97.14"/>
     <junction id="123678" type="dead_end" x="0.00" y="0.00" incLanes="" intLanes="" shape="0.00,0.00 0.00,-9.60"/>
-    <junction id="369369" type="priority" x="1000.00" y="0.00" incLanes="1234567_0 1234567_1 1234567_2 8963467_0" intLanes=":369369_0_0 :369369_0_1 :369369_0_2 :369369_3_0 :369369_3_1" shape="1004.00,0.00 1004.00,-9.60 988.84,-9.60 988.84,0.00 989.27,1.79 990.70,4.65 993.38,3.21 995.38,2.04 997.07,1.14 998.82,0.51 1001.01,0.13">
-        <request index="0" response="00000" foes="11000" cont="0"/>
-        <request index="1" response="00000" foes="11000" cont="0"/>
-        <request index="2" response="00000" foes="11000" cont="0"/>
-        <request index="3" response="00111" foes="00111" cont="0"/>
-        <request index="4" response="00111" foes="00111" cont="0"/>
+    <junction id="369369" type="zipper" x="1000.00" y="0.00" incLanes="1234567_0 1234567_1 1234567_2 8963467_0" intLanes=":369369_0_0 :369369_0_1 :369369_0_2 :369369_3_0 :369369_3_1" shape="1004.00,0.00 1004.00,-9.60 988.84,-9.60 988.84,0.00 989.27,1.79 990.70,4.65 993.38,3.21 995.38,2.04 997.07,1.14 998.82,0.51 1001.01,0.13">
+        <request index="0" response="00000" foes="00000" cont="0"/>
+        <request index="1" response="01000" foes="01000" cont="0"/>
+        <request index="2" response="11000" foes="11000" cont="0"/>
+        <request index="3" response="00110" foes="00110" cont="0"/>
+        <request index="4" response="00100" foes="00100" cont="0"/>
     </junction>
     <junction id="456456" type="dead_end" x="3000.00" y="0.00" incLanes="7654321_0 7654321_1 7654321_2" intLanes="" shape="3000.00,-9.60 3000.00,0.00"/>
-    <junction id="123123" type="dead_end" x="800.00" y="100.00" incLanes="" intLanes="" shape="800.00,100.00 798.57,97.14"/>
 
     <connection from="1234567" to="7654321" fromLane="0" toLane="0" via=":369369_0_0" dir="s" state="M"/>
-    <connection from="1234567" to="7654321" fromLane="1" toLane="1" via=":369369_0_1" dir="s" state="M"/>
-    <connection from="1234567" to="7654321" fromLane="2" toLane="2" via=":369369_0_2" dir="s" state="M"/>
-    <connection from="8963467" to="7654321" fromLane="0" toLane="1" via=":369369_3_0" dir="s" state="m"/>
-    <connection from="8963467" to="7654321" fromLane="0" toLane="2" via=":369369_3_1" dir="s" state="m"/>
+    <connection from="1234567" to="7654321" fromLane="1" toLane="1" via=":369369_0_1" dir="s" state="Z"/>
+    <connection from="1234567" to="7654321" fromLane="2" toLane="2" via=":369369_0_2" dir="s" state="Z"/>
+    <connection from="8963467" to="7654321" fromLane="0" toLane="1" via=":369369_3_0" dir="s" state="Z"/>
+    <connection from="8963467" to="7654321" fromLane="0" toLane="2" via=":369369_3_1" dir="s" state="Z"/>
 
     <connection from=":369369_0" to="7654321" fromLane="0" toLane="0" dir="s" state="M"/>
     <connection from=":369369_0" to="7654321" fromLane="1" toLane="1" dir="s" state="M"/>

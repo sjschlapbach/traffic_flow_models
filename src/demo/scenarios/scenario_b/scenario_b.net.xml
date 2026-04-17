@@ -44,7 +44,7 @@
     </edge>
 
     <junction id="n0" type="dead_end" x="0.00" y="0.00" incLanes="" intLanes="" shape="0.00,0.00 0.00,-9.60"/>
-    <junction id="n1" type="priority" x="1000.00" y="0.00" incLanes="m1_0 m1_1 m1_2 onramp_0" intLanes=":n1_0_0 :n1_0_1 :n1_0_2 :n1_3_0 :n1_3_1" shape="1004.00,0.00 1004.00,-9.60 988.84,-9.60 988.84,0.00 989.27,1.79 990.70,4.65 993.38,3.21 995.38,2.04 997.07,1.14 998.82,0.51 1001.01,0.13">
+    <junction id="n1" type="zipper" x="1000.00" y="0.00" incLanes="m1_0 m1_1 m1_2 onramp_0" intLanes=":n1_0_0 :n1_0_1 :n1_0_2 :n1_3_0 :n1_3_1" shape="1004.00,0.00 1004.00,-9.60 988.84,-9.60 988.84,0.00 989.27,1.79 990.70,4.65 993.38,3.21 995.38,2.04 997.07,1.14 998.82,0.51 1001.01,0.13">
         <request index="0" response="00000" foes="11000" cont="0"/>
         <request index="1" response="00000" foes="11000" cont="0"/>
         <request index="2" response="00000" foes="11000" cont="0"/>
