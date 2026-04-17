@@ -240,12 +240,10 @@ if __name__ == "__main__":
     demand_generator = DemandAggregator(
         detector_output_path=detector_output_file, detector_spec_path=spec_file
     )
-    origin_demands = demand_generator.run(
+    urban_demands = demand_generator.run(
         origin_ids=origin_ids,
         sumo_network_path=pipeline.net_file,
     )
-    print("Demand keys:", sorted(origin_demands.keys()))
-    print("Missing:", [k for k in origin_ids if k not in origin_demands])
 
     # compute boundary conditions from microscopic simulation results
     edge_data_path = os.path.join(pipeline.output_dir, "edge_data_output.xml")
@@ -271,7 +269,7 @@ if __name__ == "__main__":
         detector_spec_path=spec_file,
         window_size_minutes=10.0,
     )
-    _, verified_demands = backbone_aggregator.run(
+    _, highway_demands = backbone_aggregator.run(
         output_path=micro_results_path,
         time_step_minutes=1.0,
         free_flow_speed=road_params["motorway"]["free_flow_speed"],
@@ -281,6 +279,14 @@ if __name__ == "__main__":
         origin_ids=origin_ids,
     )
 
+    # combine the highway demands and urban demands into one origin demands dictionary
+    # urban_demands technically contains demands for highway origins, these should be overwritten
+    origin_demands = {**urban_demands, **highway_demands}
+
+    # log the generated demands for use in the macroscopic simulation
+    print("Demand keys:", sorted(origin_demands.keys()))
+    print("Missing:", [k for k in origin_ids if k not in origin_demands])
+
     # run a simulation of the network using the selected model
     if parsed_args.model.upper() == "CTM":
         ctm = CTM()
@@ -289,7 +295,7 @@ if __name__ == "__main__":
             duration=duration,
             dt=dt,
             preferred_cell_size=preferred_cell_size,
-            origin_demands=verified_demands,
+            origin_demands=origin_demands,
             turning_rates=splits,
             destination_density_bc=destination_density_bc,
             destination_flow_bc=destination_flow_bc,

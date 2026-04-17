@@ -283,7 +283,7 @@ class BackboneStateAggregator:
 
             for c_edge in connector_edges:
                 downstream_node = c_edge.get("to")
-                next_edges = node_to_out_edges.get(downstream_node, [])
+                next_edges = node_to_out_edges.get(downstream_node, [])  # type: ignore
 
                 # HARD FILTER: Must find a downstream motorway segment (not a link)
                 for next_edge in next_edges:
@@ -298,7 +298,6 @@ class BackboneStateAggregator:
             # DISCARD: If it's not a mainline, we don't even add it to the dict
             if not is_verified_mainline:
                 print(f"[X] Discarding non-mainline origin: {origin_id}")
-                origin_demands[origin_id] = lambda t: 0.0
                 continue
 
             cell_key = f"{target_edge_id}_cell0"
@@ -308,7 +307,6 @@ class BackboneStateAggregator:
                 print(
                     f"[!] Discarding {origin_id}: No detector data found for {cell_key}"
                 )
-                origin_demands[origin_id] = lambda t: 0.0
                 continue
 
             # Extract flow and build the function
@@ -325,8 +323,6 @@ class BackboneStateAggregator:
                     "flow", 0.0
                 )
                 print(f"[OK] Mainline Verified: {origin_id} (Edge: {target_edge_id})")
-            else:
-                origin_demands[origin_id] = lambda t: 0.0
 
         return origin_demands
 
@@ -768,7 +764,7 @@ class BackboneStateAggregator:
         query_times_hours: list[float] | None = None,
         time_step_minutes: float = 1.0,
         preferred_cell_size: float | None = None,
-    ) -> str:
+    ) -> tuple[str, dict[str, Callable[[float], float]]]:
         """Execute the full backbone state estimation pipeline.
 
         Parses detector output, maps detectors to backbone edges, aggregates
@@ -786,7 +782,7 @@ class BackboneStateAggregator:
                 discretization in metadata (units as per network configuration).
 
         Returns:
-            Path to the written JSON file.
+            Path to the written JSON file and a dictionary of origin demand functions.
         """
         self.reset_state()
         self.parse_detector_output()
