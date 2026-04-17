@@ -269,6 +269,7 @@ class SUMOPipeline:
             trip = ET.SubElement(
                 root, "trip", id=f"hw_{i}", depart=f"{t:.2f}", type="passenger_car"
             )
+            trip.set("departLane", "random")
             trip.set("from", from_edge)
             trip.set("to", to_edge)
         return root
@@ -410,6 +411,7 @@ class SUMOPipeline:
                 el.set("depart", f"{t:.2f}")
                 el.set("type", "passenger_car")
                 el.set("id", f"urban_{idx}")
+                el.set("departLane", "random")
 
             urban_elements.sort(key=lambda x: float(x.get("depart")))  # type: ignore
             urban_root[:] = urban_elements
