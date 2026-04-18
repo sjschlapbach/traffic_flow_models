@@ -269,9 +269,10 @@ class SUMOPipeline:
             trip = ET.SubElement(
                 root, "trip", id=f"hw_{i}", depart=f"{t:.2f}", type="passenger_car"
             )
-            trip.set("departLane", "random")
             trip.set("from", from_edge)
             trip.set("to", to_edge)
+            trip.set("departPos", "0")
+            trip.set("departLane", "random")
         return root
 
     def _validate_with_duarouter(

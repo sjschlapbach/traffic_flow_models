@@ -149,7 +149,8 @@ class LoopDetectorGenerator:
                 # Place detector near the downstream end of the lane but ensure
                 # it is at least 1 m from the start and at most 5 m from the end
                 # (or 90% of lane length for very short lanes).
-                detector_pos = min(lane_length * 0.9, max(1.0, lane_length - 5.0))
+                # detector_pos = min(lane_length * 0.9, max(1.0, lane_length - 5.0))
+                detector_pos = min(5.0, lane_length * 0.1)
 
                 self.edge_detectors.append(
                     {

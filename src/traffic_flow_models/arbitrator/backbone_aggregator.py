@@ -364,6 +364,9 @@ class BackboneStateAggregator:
 
             flow_intervals: list[tuple[float, float]] = sorted(time_count_agg.items())
 
+            # TODO: Diagnostic
+            print(flow_intervals)
+
             demand_fn = make_rolling_window_aggregator(
                 intervals={"flow": flow_intervals},
                 window_size_sec=self.window_size_sec,
@@ -733,8 +736,14 @@ class BackboneStateAggregator:
                     except Exception:
                         n_lanes_vals.append(0)
 
+            # avg_lanes = (
+            #     float(sum(n_lanes_vals) / len(n_lanes_vals)) if n_lanes_vals else 0.0
+            # )
+            valid_lane_vals = [v for v in n_lanes_vals if v > 0]
             avg_lanes = (
-                float(sum(n_lanes_vals) / len(n_lanes_vals)) if n_lanes_vals else 0.0
+                float(sum(valid_lane_vals) / len(valid_lane_vals))
+                if valid_lane_vals
+                else 0.0
             )
 
             link_properties[edge_id] = {

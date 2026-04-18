@@ -12,23 +12,6 @@ from traffic_flow_models.arbitrator.aggregation_helpers import (
 
 
 class DemandAggregator:
-    """Aggregate inflow/outflow detector counts into time-varying origin demands.
-
-    The DemandAggregator parses SUMO detector output and a detector
-    specification CSV to map lane-level detectors to network nodes. It then
-    spatially aggregates multi-lane detector counts into node-level intervals
-    and builds smoothed, rolling-window demand functions (veh/h) for macroscopic
-    model entry points (typically onramps / origin nodes).
-
-    Attributes:
-        detector_output_path: Path to SUMO detector output XML file.
-        detector_spec_path: Path to detector specification CSV file.
-        window_size_sec: Rolling window length in seconds used to smooth counts.
-        detector_intervals: Raw per-detector interval tuples (begin_sec, count).
-        detector_mapping: Mapping from detector_id variants to node/type metadata.
-        node_intervals: Aggregated per-node intervals (begin_sec, count).
-        max_time: Maximum observed begin time in detector outputs (seconds).
-    """
 
     def __init__(
         self,
@@ -93,16 +76,17 @@ class DemandAggregator:
                 det_id = row["detector_id"].strip().strip('"').strip("'")
                 det_type = row["type"].strip().lower()
 
-                # Exclude detectors owned by other aggregators / purposes
-                if det_type in {
-                    "backbone_segment",
-                    "mainline_origin_interface",
-                    "turning_rate",
-                }:
+                # 1. EXCLUSION FILTER:
+                # We skip 'backbone_segment' because they measure density/speed on the highway mainline.
+                # We skip 'turning_rate' because they are used for split-ratios at diverges.
+                if det_type in {"backbone_segment", "turning_rate"}:
                     continue
 
-                # This aggregator should only handle inflow/outflow detectors
-                if det_type not in {"inflow", "outflow"}:
+                # 2. INCLUSION FILTER:
+                # We only want entries (inflow, mainline_origin_interface) and exits (outflow).
+                # Note: Including 'mainline_origin_interface' allows the aggregator to see highway demand.
+                valid_demand_types = {"inflow", "outflow", "mainline_origin_interface"}
+                if det_type not in valid_demand_types:
                     continue
 
                 det_id_variants = [
@@ -111,10 +95,13 @@ class DemandAggregator:
                     f"detector_{det_id}",
                 ]
 
+                # 3. NODE MAPPING LOGIC:
+                # Use 'backbone_node' if present; otherwise fall back to edge-based nodes.
                 node_id = row.get("backbone_node", "").strip().strip('"').strip("'")
 
                 if not node_id:
-                    if det_type == "inflow":
+                    # 'to' for entries, 'from' for exits
+                    if det_type in {"inflow", "mainline_origin_interface"}:
                         node_id = row["to"].strip().strip('"').strip("'")
                     elif det_type == "outflow":
                         node_id = row["from"].strip().strip('"').strip("'")

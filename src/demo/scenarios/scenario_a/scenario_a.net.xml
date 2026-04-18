@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 
-<!-- generated on 2026-04-18T00:53:01.570444+01:00 by Eclipse SUMO netedit 1.26.0
+<!-- generated on 2026-04-18T13:30:03.297834+01:00 by Eclipse SUMO netedit 1.26.0
 <neteditConfiguration xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://sumo.dlr.de/xsd/neteditConfiguration.xsd">
 
     <input>
@@ -43,8 +43,8 @@
         <lane id=":369369_0_2" index="2" speed="27.78" length="15.16" shape="988.84,-1.60 1004.00,-1.60"/>
     </edge>
     <edge id=":369369_3" function="internal">
-        <lane id=":369369_3_0" index="0" speed="21.36" length="15.82" shape="989.98,3.22 992.92,1.02 995.64,-1.63 999.03,-3.86 1004.00,-4.80"/>
-        <lane id=":369369_3_1" index="1" speed="20.36" length="15.82" shape="989.98,3.22 993.02,1.52 995.89,-0.03 999.31,-1.16 1004.00,-1.60"/>
+        <lane id=":369369_3_0" index="0" speed="21.27" length="15.68" shape="990.10,3.16 993.04,0.97 995.73,-1.66 999.08,-3.87 1004.00,-4.80"/>
+        <lane id=":369369_3_1" index="1" speed="20.27" length="15.68" shape="990.10,3.16 993.13,1.47 995.97,-0.06 999.36,-1.17 1004.00,-1.60"/>
     </edge>
 
     <edge id="1234567" from="123678" to="369369" priority="-1" type="highway.motorway">
@@ -58,12 +58,12 @@
         <lane id="7654321_2" index="2" speed="27.78" length="1996.00" shape="1004.00,-1.60 3000.00,-1.60"/>
     </edge>
     <edge id="8963467" from="123123" to="369369" priority="-1" type="highway.motorway_link">
-        <lane id="8963467_0" index="0" speed="27.78" length="213.21" shape="799.28,98.57 989.98,3.22"/>
+        <lane id="8963467_0" index="0" speed="27.78" length="213.34" shape="799.28,98.57 990.10,3.16"/>
     </edge>
 
     <junction id="123123" type="dead_end" x="800.00" y="100.00" incLanes="" intLanes="" shape="800.00,100.00 798.57,97.14"/>
     <junction id="123678" type="dead_end" x="0.00" y="0.00" incLanes="" intLanes="" shape="0.00,0.00 0.00,-9.60"/>
-    <junction id="369369" type="zipper" x="1000.00" y="0.00" incLanes="1234567_0 1234567_1 1234567_2 8963467_0" intLanes=":369369_0_0 :369369_0_1 :369369_0_2 :369369_3_0 :369369_3_1" shape="1004.00,0.00 1004.00,-9.60 988.84,-9.60 988.84,0.00 989.27,1.79 990.70,4.65 993.38,3.21 995.38,2.04 997.07,1.14 998.82,0.51 1001.01,0.13">
+    <junction id="369369" type="zipper" x="1000.00" y="0.00" incLanes="1234567_0 1234567_1 1234567_2 8963467_0" intLanes=":369369_0_0 :369369_0_1 :369369_0_2 :369369_3_0 :369369_3_1" shape="1004.00,0.00 1004.00,-9.60 988.84,-9.60 988.84,0.00 990.70,4.65 993.38,3.21 995.38,2.04 998.82,0.51 1001.01,0.13" customShape="1">
         <request index="0" response="00000" foes="00000" cont="0"/>
         <request index="1" response="01000" foes="01000" cont="0"/>
         <request index="2" response="11000" foes="11000" cont="0"/>
