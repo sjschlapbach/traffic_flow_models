@@ -329,8 +329,17 @@ class SUMOPipeline:
             Total number of vehicle/trip elements written.
         """
         merged_root = ET.Element("routes")
-        ET.SubElement(merged_root, "vType", id="urban", vClass="passenger")
+        # ET.SubElement(merged_root, "vType", id="urban", vClass="passenger")
         ET.SubElement(merged_root, "vType", id="passenger_car", vClass="passenger")
+        urban_vtype = ET.SubElement(
+            merged_root, "vType", id="urban", vClass="passenger"
+        )
+        urban_vtype.set("maxSpeed", "50")
+        urban_vtype.set("accel", "2.6")
+        urban_vtype.set("decel", "4.5")
+        urban_vtype.set("length", "5.0")
+        urban_vtype.set("minGap", "2.5")
+        urban_vtype.set("sigma", "0.5")
 
         all_vehicles: list[ET.Element] = []
         for path in paths:
