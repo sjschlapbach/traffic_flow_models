@@ -10,6 +10,7 @@ python src/demo/run_pipeline.py --sumo-cfg-dir "src/demo/scenarios/example" --no
 import argparse
 import os
 from datetime import datetime
+import warnings
 
 from traffic_flow_models import (
     CTM,
@@ -225,6 +226,7 @@ if __name__ == "__main__":
         simulation_end_time=int(duration * 3600),
         net_file=pipeline.net_file,
         detector_file=pipeline.detector_file,
+        v_type_file=pipeline.v_type_file,
         rou_file=pipeline.rou_file,
         cfg_file=(
             os.path.join(pipeline.output_dir, f"{name}.sumocfg")
@@ -288,6 +290,14 @@ if __name__ == "__main__":
     # log the generated demands for use in the macroscopic simulation
     print("Demand keys:", sorted(origin_demands.keys()))
     print("Missing:", [k for k in origin_ids if k not in origin_demands])
+
+    for origin_id in origin_ids:
+        if origin_id not in origin_demands:
+            warnings.warn(
+                f"No demand data for origin '{origin_id}'. Defaulting to zero.",
+                stacklevel=2,
+            )
+            origin_demands[origin_id] = lambda t: 0.0
 
     # run a simulation of the network using the selected model
     if parsed_args.model.upper() == "CTM":

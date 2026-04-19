@@ -85,7 +85,7 @@ class DemandAggregator:
                 # 2. INCLUSION FILTER:
                 # We only want entries (inflow, mainline_origin_interface) and exits (outflow).
                 # Note: Including 'mainline_origin_interface' allows the aggregator to see highway demand.
-                valid_demand_types = {"inflow", "outflow", "mainline_origin_interface"}
+                valid_demand_types = {"inflow", "outflow"}
                 if det_type not in valid_demand_types:
                     continue
 

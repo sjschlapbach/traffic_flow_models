@@ -76,6 +76,29 @@ class LoopDetectorGenerator:
         self.processed_lane_roles.add(key)
         return True
 
+    def _offramp_downstream_nodes(self, root) -> set[str]:
+        """Nodes reachable from offramp exits via non-motorway edges (post-exit routes)."""
+        import networkx as nx
+
+        urban_graph = nx.DiGraph()
+        for edge in root.findall("edge"):
+            if edge.get("function") == "internal":
+                continue
+            if "motorway" in edge.get("type", "").lower():
+                continue
+            fn, tn = edge.get("from"), edge.get("to")
+            if fn and tn:
+                urban_graph.add_edge(fn, tn)
+
+        downstream: set[str] = set()
+        for offramp_node in self.offramp_ids:
+            if urban_graph.has_node(offramp_node):
+                reachable = nx.single_source_shortest_path_length(
+                    urban_graph, offramp_node, cutoff=8
+                )
+                downstream.update(reachable.keys())
+        return downstream
+
     def find_interface_edges(self) -> Tuple[int, int]:
         """Find interface detectors and classify them without colliding with backbone cells.
 
@@ -95,6 +118,7 @@ class LoopDetectorGenerator:
         boundary_nodes = (
             self.backbone_nodes | set(self.onramp_ids) | set(self.offramp_ids)
         )
+        offramp_downstream = self._offramp_downstream_nodes(root)
 
         for edge in root.findall("edge"):
             if edge.get("function") == "internal":
@@ -120,12 +144,23 @@ class LoopDetectorGenerator:
                 detector_node = to_node
                 inflow_count += 1
 
-            elif to_is_boundary and (not is_backbone_road):
+            # elif to_is_boundary and (not is_backbone_road):
+            elif (
+                to_is_boundary
+                and not is_backbone_road
+                and (from_node not in boundary_nodes)
+            ):
+                # elif (to_is_boundary and not is_backbone_road and from_node not in boundary_nodes and from_node not in offramp_downstream):
                 detector_type = "inflow"
                 detector_node = to_node
                 inflow_count += 1
 
-            elif from_is_boundary and not is_backbone_road:
+            # elif from_is_boundary and not is_backbone_road:
+            elif (
+                from_is_boundary
+                and not is_backbone_road
+                and (to_node not in boundary_nodes)
+            ):
                 detector_type = "outflow"
                 detector_node = from_node
                 outflow_count += 1
@@ -150,7 +185,10 @@ class LoopDetectorGenerator:
                 # it is at least 1 m from the start and at most 5 m from the end
                 # (or 90% of lane length for very short lanes).
                 # detector_pos = min(lane_length * 0.9, max(1.0, lane_length - 5.0))
-                detector_pos = min(5.0, lane_length * 0.1)
+                if detector_type == "outflow":
+                    detector_pos = min(lane_length * 0.9, max(1.0, lane_length - 5.0))
+                else:  # inflow, mainline_origin_interface
+                    detector_pos = min(5.0, lane_length * 0.1)
 
                 self.edge_detectors.append(
                     {
@@ -313,14 +351,67 @@ class LoopDetectorGenerator:
 
         return base
 
+    # def write_detector_xml(self) -> str:
+    #     output_file = f"{self.output_dir}/{self.detector_filename}"
+    #     root = ET.Element("additional")
+
+    #     for det in self.edge_detectors:
+    #         det_id = self.build_det_id(det)
+
+    #         if det["type"] == "backbone_segment":
+    #             detector = ET.SubElement(root, "laneAreaDetector")
+    #             detector.set("id", det_id)
+    #             detector.set("lane", det["lane_id"])
+    #             detector.set("pos", f"{det['position']:.2f}")
+    #             detector.set("length", f"{det['detector_length']:.2f}")
+    #             detector.set("freq", str(self.detection_freq))
+    #             detector.set("file", self.output_xml_filename)
+    #         else:
+    #             detector = ET.SubElement(root, "inductionLoop")
+    #             detector.set("id", det_id)
+    #             detector.set("lane", det["lane_id"])
+    #             detector.set("pos", f"{det['position']:.2f}")
+    #             detector.set("freq", str(self.detection_freq))
+    #             detector.set("file", self.output_xml_filename)
+    #             if det["type"] in {"inflow", "outflow"}:
+    #                 detector.set("vTypes", "urban")
+
+    #     tree = ET.ElementTree(root)
+    #     ET.indent(tree, space="  ")
+    #     tree.write(output_file, encoding="utf-8", xml_declaration=True)
+
+    #     return output_file
+
     def write_detector_xml(self) -> str:
+        """Write SUMO additional XML with detector definitions.
+
+        Detector vTypes logic
+        ─────────────────────
+        backbone_segment      → laneAreaDetector, no vTypes filter (counts all)
+        mainline_origin_interface → inductionLoop, no vTypes filter (counts all)
+        turning_rate          → inductionLoop, no vTypes filter (counts all)
+        inflow / outflow      → inductionLoop, vTypes="urban" (counts ONLY urban-typed vehicles)
+
+        For this to work correctly the route file MUST:
+        1. define  <vType id="urban" vClass="passenger" ... />
+        2. assign  type="urban" to every vehicle whose origin is an onramp node.
+        See write_vtype_additional() below for how to emit the vType definition as
+        a standalone additional file (load it before detector.xml in sumocfg).
+        """
         output_file = f"{self.output_dir}/{self.detector_filename}"
         root = ET.Element("additional")
 
+        # Types that should only observe urban (ramp-entering) vehicles.
+        URBAN_FILTERED_TYPES = {"inflow", "outflow"}
+
+        # Types that use laneAreaDetectors instead of inductionLoops.
+        AREA_DETECTOR_TYPES = {"backbone_segment"}
+
         for det in self.edge_detectors:
             det_id = self.build_det_id(det)
+            det_type = det["type"]
 
-            if det["type"] == "backbone_segment":
+            if det_type in AREA_DETECTOR_TYPES:
                 detector = ET.SubElement(root, "laneAreaDetector")
                 detector.set("id", det_id)
                 detector.set("lane", det["lane_id"])
@@ -328,6 +419,8 @@ class LoopDetectorGenerator:
                 detector.set("length", f"{det['detector_length']:.2f}")
                 detector.set("freq", str(self.detection_freq))
                 detector.set("file", self.output_xml_filename)
+                # No vTypes — backbone detectors must see every vehicle.
+
             else:
                 detector = ET.SubElement(root, "inductionLoop")
                 detector.set("id", det_id)
@@ -336,10 +429,42 @@ class LoopDetectorGenerator:
                 detector.set("freq", str(self.detection_freq))
                 detector.set("file", self.output_xml_filename)
 
+                if det_type in URBAN_FILTERED_TYPES:
+                    # Only count vehicles explicitly typed "urban" in the route file.
+                    # mainline_origin_interface and turning_rate detectors intentionally
+                    # have NO filter here — they must observe all vehicle types.
+                    detector.set("vTypes", "urban")
+
         tree = ET.ElementTree(root)
         ET.indent(tree, space="  ")
         tree.write(output_file, encoding="utf-8", xml_declaration=True)
+        return output_file
 
+    def write_vtype_additional(self, filename: str = "vtypes.xml") -> str:
+        """Emit a SUMO additional file that defines the 'urban' vehicle type.
+
+        This must be listed before detector.xml in the sumocfg additional-files
+        attribute so SUMO recognises the type before evaluating vTypes filters.
+
+        The parameters below mirror the SUMO passenger car defaults — adjust
+        maxSpeed / accel / decel / length to match your calibration.
+        """
+        output_file = f"{self.output_dir}/{filename}"
+        root = ET.Element("additional")
+
+        vtype = ET.SubElement(root, "vType")
+        vtype.set("id", "urban")
+        vtype.set("vClass", "passenger")
+        vtype.set("maxSpeed", "50")  # m/s — ~180 km/h cap, typical for urban
+        vtype.set("accel", "2.6")
+        vtype.set("decel", "4.5")
+        vtype.set("length", "5.0")
+        vtype.set("minGap", "2.5")
+        vtype.set("sigma", "0.5")  # Krauss driver imperfection
+
+        tree = ET.ElementTree(root)
+        ET.indent(tree, space="  ")
+        tree.write(output_file, encoding="utf-8", xml_declaration=True)
         return output_file
 
     def write_detector_spec_csv(self) -> str:

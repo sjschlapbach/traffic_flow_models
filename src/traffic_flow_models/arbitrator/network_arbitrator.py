@@ -698,6 +698,23 @@ class NetworkArbitrator:
                     print(f"    ... and {len(all_fused_links) - 5} more")
             print("-" * 60)
 
+    def _nodes_with_nonmotorway_incoming(self) -> set[str]:
+        """Return the set of node IDs that have at least one non-motorway
+        incoming edge in the full SUMO network."""
+        tree = ET.parse(self.path)
+        root = tree.getroot()
+        reachable: set[str] = set()
+        for edge in root.findall("edge"):
+            if edge.get("function") == "internal":
+                continue
+            etype = edge.get("type", "")
+            if "motorway" in etype:  # skip motorway and motorway_link
+                continue
+            to_node = edge.get("to")
+            if to_node:
+                reachable.add(to_node)
+        return reachable
+
     def instantiate_network(
         self,
     ) -> Tuple[
@@ -749,13 +766,33 @@ class NetworkArbitrator:
         onramp_source_nodes: set[str] = set()
         offramp_sink_nodes: set[str] = set()
 
+        # for nid in self.graph.nodes():
+        #     if self.graph.in_degree(nid) == 0:
+        #         out_edges = list(self.graph.out_edges(nid, data=True))
+        #         if out_edges and all(
+        #             "motorway_link" in d.get("type", "") for _, _, d in out_edges
+        #         ):
+        #             onramp_source_nodes.add(str(nid))
+
+        urban_reachable = self._nodes_with_nonmotorway_incoming()
+
         for nid in self.graph.nodes():
             if self.graph.in_degree(nid) == 0:
                 out_edges = list(self.graph.out_edges(nid, data=True))
                 if out_edges and all(
                     "motorway_link" in d.get("type", "") for _, _, d in out_edges
                 ):
-                    onramp_source_nodes.add(str(nid))
+                    if str(nid) not in urban_reachable:
+                        warnings.warn(
+                            f"Onramp candidate node '{nid}' has no non-motorway incoming "
+                            f"edges in the SUMO network. It will be treated as a mainline "
+                            f"origin (no urban demand can reach it). Check OSM coverage.",
+                            stacklevel=2,
+                        )
+                        # Do NOT add to onramp_source_nodes — its Onramp link becomes a
+                        # MotorwayLink, and the origin receives mainline-type demand only.
+                    else:
+                        onramp_source_nodes.add(str(nid))
 
             if self.graph.out_degree(nid) == 0:
                 in_edges = list(self.graph.in_edges(nid, data=True))

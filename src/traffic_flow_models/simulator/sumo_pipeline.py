@@ -99,6 +99,7 @@ class SUMOPipeline:
         self.detector_output_path: str = os.path.join(
             self.output_dir, "detectors_output.xml"
         )
+        self.v_type_file: Optional[str] = None
         self.consolidated_network: Optional[Network] = None
         self.arbitrator: Optional[NetworkArbitrator] = None
         self.origin_ids: Optional[list[str]] = None
@@ -328,9 +329,8 @@ class SUMOPipeline:
             Total number of vehicle/trip elements written.
         """
         merged_root = ET.Element("routes")
-        vtype = ET.SubElement(
-            merged_root, "vType", id="passenger_car", vClass="passenger"
-        )
+        ET.SubElement(merged_root, "vType", id="urban", vClass="passenger")
+        ET.SubElement(merged_root, "vType", id="passenger_car", vClass="passenger")
 
         all_vehicles: list[ET.Element] = []
         for path in paths:
@@ -340,7 +340,7 @@ class SUMOPipeline:
                     all_vehicles.append(el)
 
         all_vehicles.sort(key=lambda x: float(x.get("depart", "0")))
-        merged_root[:] = [vtype] + all_vehicles
+        merged_root.extend(all_vehicles)
 
         ET.ElementTree(merged_root).write(
             output_path, encoding="utf-8", xml_declaration=True
@@ -410,7 +410,7 @@ class SUMOPipeline:
 
             for idx, (el, t) in enumerate(zip(urban_elements, u_times)):
                 el.set("depart", f"{t:.2f}")
-                el.set("type", "passenger_car")
+                el.set("type", "urban")
                 el.set("id", f"urban_{idx}")
                 el.set("departLane", "random")
 

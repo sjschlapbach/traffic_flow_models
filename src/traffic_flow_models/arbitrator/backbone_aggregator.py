@@ -364,9 +364,6 @@ class BackboneStateAggregator:
 
             flow_intervals: list[tuple[float, float]] = sorted(time_count_agg.items())
 
-            # TODO: Diagnostic
-            print(flow_intervals)
-
             demand_fn = make_rolling_window_aggregator(
                 intervals={"flow": flow_intervals},
                 window_size_sec=self.window_size_sec,

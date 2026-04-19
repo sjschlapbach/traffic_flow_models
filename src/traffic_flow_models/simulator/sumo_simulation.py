@@ -25,6 +25,7 @@ class SUMOSimulation:
         output_dir: str,
         simulation_end_time: int,
         detector_file=None,
+        v_type_file=None,
     ):
         """Initialize the SUMO simulation.
 
@@ -38,6 +39,7 @@ class SUMOSimulation:
         self.simulation_end_time = simulation_end_time
         self.net_file = net_file
         self.detector_file = detector_file
+        self.v_type_file = v_type_file
         self.rou_file = rou_file
         self.output_dir = output_dir
         self.cfg_file = cfg_file
@@ -63,6 +65,8 @@ class SUMOSimulation:
 
         # 2. Collect all additional files into a list
         add_files = []
+        if self.v_type_file:
+            add_files.append(os.path.basename(self.v_type_file))
         if self.detector_file:
             add_files.append(os.path.basename(self.detector_file))
         add_files.append(os.path.basename(self.edge_data_config))
