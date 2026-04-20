@@ -775,6 +775,10 @@ class NetworkArbitrator:
         #             onramp_source_nodes.add(str(nid))
 
         urban_reachable = self._nodes_with_nonmotorway_incoming()
+        # Synthetic scenarios have no urban edges anywhere; in that case the
+        # urban-reachability filter is meaningless and would wrongly demote
+        # every onramp candidate to a mainline origin.
+        topology_only = not urban_reachable
 
         for nid in self.graph.nodes():
             if self.graph.in_degree(nid) == 0:
@@ -782,7 +786,7 @@ class NetworkArbitrator:
                 if out_edges and all(
                     "motorway_link" in d.get("type", "") for _, _, d in out_edges
                 ):
-                    if str(nid) not in urban_reachable:
+                    if str(nid) not in urban_reachable and not topology_only:
                         warnings.warn(
                             f"Onramp candidate node '{nid}' has no non-motorway incoming "
                             f"edges in the SUMO network. It will be treated as a mainline "

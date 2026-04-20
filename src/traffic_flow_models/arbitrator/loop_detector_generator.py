@@ -135,6 +135,7 @@ class LoopDetectorGenerator:
             is_motorway_mainline = "motorway" in edge_type and "link" not in edge_type
             is_motorway_link = "motorway_link" in edge_type
             is_backbone_road = is_motorway_mainline or is_motorway_link
+            onramp_node_set = set(self.onramp_ids)
 
             detector_type = None
             detector_node = None
@@ -142,6 +143,11 @@ class LoopDetectorGenerator:
             if to_is_boundary and is_motorway_mainline:
                 detector_type = "mainline_origin_interface"
                 detector_node = to_node
+                inflow_count += 1
+
+            elif is_motorway_link and from_node in onramp_node_set:
+                detector_type = "inflow"
+                detector_node = from_node
                 inflow_count += 1
 
             # elif to_is_boundary and (not is_backbone_road):
