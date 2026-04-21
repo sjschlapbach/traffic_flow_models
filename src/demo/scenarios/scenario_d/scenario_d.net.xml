@@ -1,38 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
 
-<!-- generated on 2026-04-18T13:44:07.624686+01:00 by Eclipse SUMO netedit 1.26.0
-<neteditConfiguration xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://sumo.dlr.de/xsd/neteditConfiguration.xsd">
-
-    <input>
-        <sumo-net-file value="/Users/krishnakanth/Documents/traffic_flow_models/src/demo/scenarios/scenario_d/scenario_d.net.xml"/>
-    </input>
-
-    <output>
-        <output-file value="/Users/krishnakanth/Documents/traffic_flow_models/src/demo/scenarios/scenario_d/scenario_d.net.xml"/>
-    </output>
-
-    <processing>
-        <geometry.min-radius.fix.railways value="false"/>
-        <geometry.avoid-overlap value="false"/>
-        <geometry.max-grade.fix value="false"/>
-        <offset.disable-normalization value="true"/>
-        <lefthand value="0"/>
-    </processing>
-
-    <junctions>
-        <no-turnarounds value="true"/>
-        <junctions.corner-detail value="5"/>
-        <junctions.limit-turn-speed value="5.50"/>
-        <rectangular-lane-cut value="0"/>
-    </junctions>
-
-    <pedestrian>
-        <walkingareas value="0"/>
-    </pedestrian>
-
-</neteditConfiguration>
--->
-
 <net version="1.20" junctionCornerDetail="5" limitTurnSpeed="5.50" avoidOverlap="0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://sumo.dlr.de/xsd/net_file.xsd">
 
     <location netOffset="0.00,100.00" convBoundary="0.00,0.00,3500.00,200.00" origBoundary="0.00,-100.00,3500.00,100.00" projParameter="!"/>
@@ -43,8 +10,8 @@
         <lane id=":n1_0_2" index="2" speed="27.78" length="15.16" shape="988.84,98.40 1004.00,98.40"/>
     </edge>
     <edge id=":n1_3" function="internal">
-        <lane id=":n1_3_0" index="0" speed="21.36" length="15.82" shape="989.98,103.22 992.92,101.02 995.64,98.37 999.03,96.14 1004.00,95.20"/>
-        <lane id=":n1_3_1" index="1" speed="20.36" length="15.82" shape="989.98,103.22 993.02,101.52 995.89,99.97 999.31,98.84 1004.00,98.40"/>
+        <lane id=":n1_3_0" index="0" speed="21.36" length="15.82" shape="990.70,85.75 993.38,87.19 995.64,89.84 999.03,92.07 1004.00,95.20"/>
+        <lane id=":n1_3_1" index="1" speed="20.36" length="15.82" shape="990.70,85.75 993.38,87.19 995.89,88.74 999.31,89.87 1004.00,98.40"/>
     </edge>
     <edge id=":n2_0" function="internal">
         <lane id=":n2_0_0" index="0" speed="10.28" length="3.71" shape="2010.54,92.00 2011.64,91.98 2012.40,91.89 2013.11,91.64 2014.10,91.16"/>
@@ -60,8 +27,8 @@
         <lane id="m1_2" index="2" speed="27.78" length="988.84" shape="0.00,98.40 988.84,98.40"/>
     </edge>
     <edge id="m2" from="n1" to="n2" priority="-1" type="highway.motorway">
-        <lane id="m2_0" index="0" speed="27.78" length="1006.54" acceleration="1" shape="1004.00,92.00 2010.54,92.00"/>
-        <lane id="m2_1" index="1" speed="27.78" length="1006.54" acceleration="1" shape="1004.00,95.20 2010.54,95.20"/>
+        <lane id="m2_0" index="0" speed="27.78" length="1006.54" shape="1004.00,92.00 2010.54,92.00"/>
+        <lane id="m2_1" index="1" speed="27.78" length="1006.54" shape="1004.00,95.20 2010.54,95.20"/>
         <lane id="m2_2" index="2" speed="27.78" length="1006.54" shape="1004.00,98.40 2010.54,98.40"/>
     </edge>
     <edge id="m3" from="n2" to="n3" priority="-1" type="highway.motorway">
@@ -72,11 +39,11 @@
         <lane id="offramp_0" index="0" speed="27.78" length="207.04" shape="2014.10,91.16 2199.28,-1.43"/>
     </edge>
     <edge id="onramp" from="nonr" to="n1" priority="-1" type="highway.motorway_link">
-        <lane id="onramp_0" index="0" speed="27.78" length="213.21" shape="799.28,198.57 989.98,103.22"/>
+        <lane id="onramp_0" index="0" speed="27.78" length="213.21" shape="799.28,1.43 990.70,85.75"/>
     </edge>
 
     <junction id="n0" type="dead_end" x="0.00" y="100.00" incLanes="" intLanes="" shape="0.00,100.00 0.00,90.40"/>
-    <junction id="n1" type="zipper" x="1000.00" y="100.00" incLanes="m1_0 m1_1 m1_2 onramp_0" intLanes=":n1_0_0 :n1_0_1 :n1_0_2 :n1_3_0 :n1_3_1" shape="1004.00,100.00 1004.00,90.40 988.84,90.40 988.84,100.00 989.27,101.79 990.70,104.65 993.38,103.21 995.38,102.04 997.07,101.14 998.82,100.51 1001.01,100.13">
+    <junction id="n1" type="zipper" x="1000.00" y="100.00" incLanes="m1_0 m1_1 m1_2 onramp_0" intLanes=":n1_0_0 :n1_0_1 :n1_0_2 :n1_3_0 :n1_3_1" shape="1004.00,100.00 1004.00,90.40 1001.01,90.27 998.82,89.89 995.38,88.36 993.38,87.19 990.70,85.75 988.84,90.40 988.84,100.00">
         <request index="0" response="00000" foes="00000" cont="0"/>
         <request index="1" response="01000" foes="01000" cont="0"/>
         <request index="2" response="11000" foes="11000" cont="0"/>
@@ -90,7 +57,7 @@
     </junction>
     <junction id="n3" type="dead_end" x="3500.00" y="100.00" incLanes="m3_0 m3_1" intLanes="" shape="3500.00,93.60 3500.00,100.00"/>
     <junction id="noffr" type="dead_end" x="2200.00" y="0.00" incLanes="offramp_0" intLanes="" shape="2198.57,-2.86 2200.00,-0.00"/>
-    <junction id="nonr" type="dead_end" x="800.00" y="200.00" incLanes="" intLanes="" shape="800.00,200.00 798.57,197.14"/>
+    <junction id="nonr" type="dead_end" x="800.00" y="0.00" incLanes="" intLanes="" shape="800.00,0.00 798.57,-2.86"/>
 
     <connection from="m1" to="m2" fromLane="0" toLane="0" via=":n1_0_0" dir="s" state="M"/>
     <connection from="m1" to="m2" fromLane="1" toLane="1" via=":n1_0_1" dir="s" state="Z"/>
