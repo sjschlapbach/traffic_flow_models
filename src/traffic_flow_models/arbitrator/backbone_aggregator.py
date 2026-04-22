@@ -198,18 +198,25 @@ class BackboneStateAggregator:
                     cell_index_str = row.get("cell_index", "").strip()
                     cell_index = int(cell_index_str) if cell_index_str != "" else None
 
+                if cell_index is None:
+                    raise ValueError(
+                        f"Backbone detector '{det_id}' has cell_key '{cell_key}' but missing or invalid cell_index."
+                    )
+
                 for variant in [
                     det_id,
                     det_id.replace("detector_", ""),
                     f"detector_{det_id}",
                 ]:
-                    self.detector_mapping[variant] = {
-                        "edge_id": edge_id,
-                        "cell_key": cell_key,
-                        "cell_index": cell_index,
-                        "type": det_type,
-                        "position": position,
-                    }
+                    self.detector_mapping[variant] = DetectorMetadata(
+                        {
+                            "edge_id": edge_id,
+                            "cell_key": cell_key,
+                            "cell_index": cell_index,
+                            "type": det_type,
+                            "position": position,
+                        }
+                    )
 
     def aggregate_spatially(self) -> None:
         cell_time_data: defaultdict[str, defaultdict[float, CellAggregate]] = (
