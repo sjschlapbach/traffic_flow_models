@@ -320,34 +320,37 @@ class BackboneStateAggregator:
             raw_node = origin_id.replace("origin_", "")
             connector_edges = node_to_out_edges.get(raw_node, [])
 
-            target_edge_id = None
-
+            # Collect ALL outgoing pure-mainline motorway edges. A mainline origin
+            # that splits into multiple motorway carriageways at the boundary has
+            # its demand distributed across them; we must aggregate all to get the
+            # true total inflow.
+            target_edge_ids: list[str] = []
             for c_edge in connector_edges:
                 etype = c_edge.get("type", "").lower()
                 eid = c_edge.get("id", "")
-
                 if "motorway" in etype and "link" not in etype:
-                    target_edge_id = eid
-                    break
+                    target_edge_ids.append(eid)
 
-            if target_edge_id is None:
+            if not target_edge_ids:
                 continue
 
-            det_ids = mainline_interface_by_edge.get(target_edge_id, [])
-            if not det_ids:
+            # Aggregate detectors from every target edge by summing counts per
+            # timestamp across all lanes of all edges.
+            det_ids_all: list[str] = []
+            for edge_id in target_edge_ids:
+                det_ids_all.extend(mainline_interface_by_edge.get(edge_id, []))
+
+            if not det_ids_all:
                 print(
-                    f"[X] Skipping {origin_id}: no mainline_origin_interface detector "
-                    f"found for edge {target_edge_id}."
+                    f"[X] Skipping {origin_id}: no mainline_origin_interface detectors "
+                    f"found for edges {target_edge_ids}."
                 )
                 continue
 
-            # Aggregate all lane detectors by summing counts per timestamp.
-            # Previously used list.extend() which concatenated raw intervals from
-            # each lane, producing duplicate timestamps and multi-lane overcounting.
             time_count_agg: defaultdict[float, float] = defaultdict(float)
             found_any_data = False
 
-            for det_id in det_ids:
+            for det_id in det_ids_all:
                 det_intervals = self.detector_intervals.get(det_id)
                 if det_intervals is None:
                     continue
@@ -358,7 +361,7 @@ class BackboneStateAggregator:
             if not found_any_data or not time_count_agg:
                 print(
                     f"[!] Warning: No detector data for verified highway origin "
-                    f"{origin_id} on edge {target_edge_id}"
+                    f"{origin_id} on edges {target_edge_ids}"
                 )
                 continue
 
@@ -377,9 +380,8 @@ class BackboneStateAggregator:
                 )
                 print(
                     f"[OK] Highway mainline origin secured: {origin_id} "
-                    f"(Edge: {target_edge_id}, interface detectors: {len(det_ids)})"
+                    f"(Edges: {target_edge_ids}, interface detectors: {len(det_ids_all)})"
                 )
-
         return origin_demands
 
     def compute_traffic_state(

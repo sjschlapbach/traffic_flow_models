@@ -12,6 +12,18 @@ from traffic_flow_models.arbitrator.aggregation_helpers import (
 
 
 class DemandAggregator:
+    """Aggregate SUMO detector output into time-varying demand functions for onramp origins.
+
+    Parses SUMO detector output XML and a detector specification CSV, maps
+    lane-level inflow counts to macroscopic network nodes, and produces
+    rolling-window demand functions (veh/h) for each onramp origin in the
+    macroscopic model.
+
+    Typical usage::
+
+        agg = DemandAggregator(detector_output_path, detector_spec_path)
+        demand = agg.run(origin_ids, onramp_ids, sumo_network_path)
+    """
 
     def __init__(
         self,
@@ -69,6 +81,17 @@ class DemandAggregator:
             self.max_time = max(self.max_time, begin)
 
     def classify_and_map(self) -> None:
+        """Read the detector spec CSV and build self.detector_mapping.
+
+        Filters detector entries to only `inflow` and `outflow` types —
+        `backbone_segment` and `turning_rate` detectors are excluded.
+        For each retained entry, resolves the associated network node ID from
+        the `backbone_node` column, falling back to the `to` column for inflow
+        and the `from` column for outflow when `backbone_node` is empty.
+
+        Populates self.detector_mapping with a dict per detector ID variant,
+        each containing ``{"node_id": ..., "type": ...}``.
+        """
         with open(self.detector_spec_path, "r", encoding="utf-8-sig") as f:
             reader = csv.DictReader(f)
 
@@ -180,17 +203,32 @@ class DemandAggregator:
                 raw_node_id,
                 raw_origin_nodes,
             )
-
             aggregated_bins = self._aggregate_demand(upstream_nodes)
 
-            # Always provide a function, even if no data was found
             if not aggregated_bins:
-                origin_demands[demand_key] = lambda t: 0.0
-            else:
-                demand_fn = self._make_demand_function(aggregated_bins)
-                origin_demands[demand_key] = (
-                    demand_fn if demand_fn is not None else (lambda t: 0.0)
+                raise ValueError(
+                    f"No detector intervals found for origin '{demand_key}' "
+                    f"(node '{raw_node_id}'). Upstream catchment was "
+                    f"{sorted(upstream_nodes)}. This indicates a wiring problem: "
+                    f"either the detector spec CSV maps no 'inflow' detectors to "
+                    f"any node in this catchment, or SUMO emitted no interval rows "
+                    f"for those detectors. A legitimate zero-demand origin should "
+                    f"still produce interval rows with count=0 and reach this code "
+                    f"with a non-empty bins list."
                 )
+
+            demand_fn = self._make_demand_function(aggregated_bins)
+            if demand_fn is None:
+                raise ValueError(
+                    f"Failed to build demand function for origin '{demand_key}' "
+                    f"(node '{raw_node_id}') despite having {len(aggregated_bins)} "
+                    f"interval bins (total count "
+                    f"{sum(c for _, c in aggregated_bins)}). The rolling-window "
+                    f"aggregator returned None — inspect "
+                    f"make_single_stream_rolling_window_aggregator for edge cases."
+                )
+
+            origin_demands[demand_key] = demand_fn
 
         all_detector_vehicles = sum(
             sum(count for _, count in intervals)

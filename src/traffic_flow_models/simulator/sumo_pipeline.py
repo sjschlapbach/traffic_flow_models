@@ -56,8 +56,10 @@ class SUMOPipeline:
         arbitrator: NetworkArbitrator instance used for network conversion.
         origin_ids: List of origin node IDs in the network.
         onramp_ids: List of onramp node IDs in the network.
+        offramp_ids: List of offramp node IDs in the network.
         destination_ids: List of destination node IDs in the network.
-        splits: Dictionary mapping node IDs to their outgoing link split ratios.
+        backbone_node_ids: Set of node IDs that form the motorway backbone.
+        diverge_node_info: Dictionary mapping diverge node IDs to lists of SUMO edge IDs.
     """
 
     def __init__(
@@ -75,6 +77,8 @@ class SUMOPipeline:
             location: Geographic location to fetch OSM data from.
             road_params_config_path: Path to JSON configuration file containing
                 road parameters (lane_capacity, jam_density, free_flow_speed for each road type).
+            output_dir: Directory where all intermediate and final output files are stored.
+            clean_output_dir: If True, deletes and recreates output_dir before starting.
         """
         self.name: str = name
         self.location: str = location
@@ -318,8 +322,8 @@ class SUMOPipeline:
 
         Extracts ``<vehicle>`` and ``<trip>`` elements from each source file
         (preserving nested ``<route>`` children produced by duarouter), prepends
-        a single ``<vType id="passenger_car">`` definition, and writes the merged
-        tree to *output_path*.
+        ``<vType>`` definitions for both ``passenger_car`` and ``urban`` vehicle
+        classes, and writes the merged tree to *output_path*.
 
         Args:
             paths:       Ordered list of source route/trip XML file paths.
@@ -446,52 +450,65 @@ class SUMOPipeline:
                     if t:
                         node_to_in_edges.setdefault(t, []).append(edge)
 
-                # Filter Origins: Only those connecting directly to a Motorway Mainline
-                verified_from_edges = []
+                # --- Highway origins: mainline cuts only (edges of the map) ---
+                # Urban demand covers onramps; highway demand represents traffic
+                # entering from outside the map on the motorway itself. Exclude
+                # onramp nodes explicitly (using the arbitrator's own classification)
+                # and verify the connector edge is a pure motorway, not a ramp link.
+                onramp_id_set = {str(n) for n in (self.onramp_ids or [])}
+                offramp_id_set = {str(n) for n in (self.offramp_ids or [])}
+
+                verified_from_edges: list[str] = []
                 origin_nodes = [
                     n for n in (self.origin_ids or []) if n.startswith("origin_")
                 ]
 
                 for node_name in origin_nodes:
                     stripped_id = self.strip_node_prefix(node_name)
-                    # Get the initial connector edges leaving our dummy origin node
-                    connector_edges = node_to_out_edges.get(stripped_id, [])
 
-                    for c_edge in connector_edges:
-                        next_node = c_edge.get("to")
-                        # Look-ahead: What kind of edges leave the next junction?
-                        downstream_edges = node_to_out_edges.get(next_node, [])
+                    # Onramp origins are served by urban demand. Never use them
+                    # as highway entries, regardless of what lies downstream.
+                    if stripped_id in onramp_id_set:
+                        continue
 
-                        # Verification logic: Must be 'motorway' and NOT 'motorway_link'
-                        if any(
-                            "motorway" in e.get("type", "")
-                            and "link" not in e.get("type", "")
-                            for e in downstream_edges
-                        ):
+                    for c_edge in node_to_out_edges.get(stripped_id, []):
+                        etype = c_edge.get("type", "")
+                        # Must sit on the motorway mainline itself, not a ramp stub.
+                        if "motorway" in etype and "link" not in etype:
                             verified_from_edges.append(c_edge.get("id"))
-                        else:
-                            # We skip the append, effectively DISCARDING this origin
-                            pass
 
                 if not verified_from_edges:
                     print(
-                        "[WARN] All highway origins were discarded (no mainline connections found)."
+                        "[WARN] No mainline-cut origins found; skipping highway demand."
                     )
-                    highway_count = 0  # Prevent further highway processing
+                    highway_count = 0
 
-                # Simple filter for destinations (incoming edges to dest nodes)
+                # --- Highway destinations: mainline cuts only, symmetric to origins ---
+                verified_to_edges: list[str] = []
                 dest_nodes = [
                     n for n in (self.destination_ids or []) if n.startswith("dest")
                 ]
-                verified_to_edges = [
-                    e.get("id")
-                    for n in dest_nodes
-                    for e in node_to_in_edges.get(self.strip_node_prefix(n), [])
-                ]
 
-                if not verified_from_edges or not verified_to_edges:
+                for node_name in dest_nodes:
+                    stripped_id = self.strip_node_prefix(node_name)
+
+                    # Offramp destinations feed urban streets. A highway through-trip
+                    # should exit at a mainline cut, not dive off into the city.
+                    if stripped_id in offramp_id_set:
+                        continue
+
+                    for e in node_to_in_edges.get(stripped_id, []):
+                        etype = e.get("type", "")
+                        if "motorway" in etype and "link" not in etype:
+                            verified_to_edges.append(e.get("id"))
+
+                if highway_count > 0 and (
+                    not verified_from_edges or not verified_to_edges
+                ):
                     raise ValueError(
-                        "No valid mainline origin/destination pairs found after filtering."
+                        "No valid mainline origin/destination pairs found after filtering. "
+                        "Highway demand requires at least one mainline-cut origin AND one "
+                        "mainline-cut destination on this network."
                     )
 
                 # Generate Highway Departures
@@ -590,9 +607,11 @@ class SUMOPipeline:
                 - consolidated_network: Network object representing the macroscopic network.
                 - origin_ids: List of origin node IDs in the network.
                 - onramp_ids: List of onramp node IDs in the network.
+                - offramp_ids: List of offramp node IDs in the network.
                 - destination_ids: List of destination node IDs in the network.
                 - road_params: Road parameters configuration used for the network.
                 - diverge_node_info: Dictionary mapping diverge node IDs to lists of SUMO edge IDs.
+                - backbone_node_ids: Set of node IDs that form the motorway backbone.
         """
         self.arbitrator = NetworkArbitrator(
             net_xml_path=os.path.normpath(self.net_file),
@@ -820,7 +839,27 @@ class SUMOPipeline:
         self,
         edge_data_path: str,
     ) -> tuple[dict[str, Callable], dict[str, Callable]]:
+        """Build time-varying flow and density boundary conditions for each destination node.
 
+        Parses SUMO edge data output to extract per-interval density time series for the
+        edges immediately upstream of each destination. Density is aggregated across all
+        upstream edges weighted by lane count, then converted to a boundary flow via the
+        triangular fundamental diagram defined in road_params.
+
+        Args:
+            edge_data_path: Path to a SUMO ``<edgeData>`` output XML file containing
+                per-interval density measurements (``density`` attribute on ``<edge>`` elements).
+
+        Returns:
+            A tuple of two dictionaries, both keyed by destination node ID:
+                - destination_flow_bc: Maps each destination to a callable ``f(t) -> float``
+                  returning total flow in veh/h at time *t* (hours).
+                - destination_density_bc: Maps each destination to a callable ``f(t) -> float``
+                  returning per-lane density in veh/km at time *t* (hours).
+
+        Raises:
+            ValueError: If destination_ids or road_params have not been initialized.
+        """
         if self.destination_ids is None:
             raise ValueError(
                 "Destination boundary conditions cannot be computed in case of missing destinations."
@@ -922,17 +961,19 @@ class SUMOPipeline:
         """Retrieve the consolidated macroscopic network and metadata.
 
         Provides access to the previously generated network and its
-        associated metadata. This method should be called after either
-        generate_detectors() or create_consolidated_network() has been executed.
+        associated metadata. This method should be called after
+        create_consolidated_network() has been executed.
 
         Returns:
             A tuple containing:
                 - consolidated_network: Network object representing the macroscopic network.
                 - origin_ids: List of origin node IDs in the network.
                 - onramp_ids: List of onramp node IDs in the network.
+                - offramp_ids: List of offramp node IDs in the network.
                 - destination_ids: List of destination node IDs in the network.
                 - road_params: Road parameters configuration used for the network.
                 - diverge_node_info: Dictionary mapping diverge node IDs to lists of SUMO edge IDs.
+                - backbone_node_ids: Set of node IDs that form the motorway backbone.
 
         Raises:
             ValueError: If consolidated network has not been created yet.

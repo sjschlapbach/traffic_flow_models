@@ -5,26 +5,27 @@ from typing import Tuple
 
 
 class LoopDetectorGenerator:
-    # """Generate SUMO detectors for the macro–micro interface and backbone links.
+    """Generate SUMO detectors for the macro-micro interface and backbone links.
 
-    # This class inspects a SUMO network (.net.xml) and produces two kinds of
-    # detectors:
-    # - point induction loops (`inductionLoop`) used for interface/turning-rate
-    #     measurements, and
-    # - lane-area detectors (`laneAreaDetector`) placed along backbone motorway
-    #     links that represent macroscopic cells for state aggregation.
+    This class inspects a SUMO network (.net.xml) and produces two kinds of
+    detectors:
+    - Point induction loops (`inductionLoop`) used for interface and
+      turning-rate measurements.
+    - Lane-area detectors (`laneAreaDetector`) placed along backbone motorway
+      links that represent macroscopic cells for state aggregation.
 
-    # The generator tracks processed ``(lane_id, role)`` pairs so a single lane
-    # can receive both an interface detector and one or more backbone cell
-    # detectors without duplication.
+    The generator tracks processed ``(lane_id, role)`` pairs so a single lane
+    can receive both an interface detector and one or more backbone cell
+    detectors without duplication.
 
-    # Methods of interest:
-    # - find_interface_edges(): detect and classify interface detectors
-    # - add_detectors_backbone_network(): create backbone cell detectors
-    # - find_turning_rate_edges(): add detectors to diverge outgoing edges
-    # - write_detector_xml(): write SUMO additional XML with detector defs
-    # - write_detector_spec_csv(): write a CSV mapping detectors to edges/nodes
-    # """
+    Methods of interest:
+        find_interface_edges(): detect and classify interface detectors.
+        add_detectors_backbone_network(): create backbone cell detectors.
+        find_turning_rate_edges(): add detectors to diverge outgoing edges.
+        write_detector_xml(): write SUMO additional XML with detector definitions.
+        write_detector_spec_csv(): write a CSV mapping detectors to edges/nodes.
+        generate(): run the full pipeline and write all output files.
+    """
 
     def __init__(
         self,
@@ -43,6 +44,29 @@ class LoopDetectorGenerator:
         spec_filename: str = "_detectors_spec.csv",
         output_xml_filename: str = "detectors_output.xml",
     ):
+        """Initialize the loop detector generator.
+
+        Args:
+            sumo_network_path: Path to the SUMO network XML file (.net.xml).
+            origin_ids: List of mainline origin node IDs from the macroscopic network.
+            onramp_ids: List of onramp source node IDs from the macroscopic network.
+            offramp_ids: List of offramp sink node IDs from the macroscopic network.
+            destination_ids: List of destination node IDs from the macroscopic network.
+            output_dir: Directory where output files will be written.
+            diverge_node_info: Mapping from diverge node IDs to lists of outgoing SUMO
+                edge IDs, used to place turning-rate detectors.
+            backbone_node_ids: Set of node IDs belonging to the mainline motorway backbone.
+            target_cell_length_km: Target macroscopic cell length in kilometres, used to
+                divide backbone links into equally-sized detector segments.
+            motorway_links: List of MotorwayLink objects representing consolidated backbone
+                links. Each link must have a matching edge in the SUMO network XML.
+            detection_freq: Detector aggregation interval in seconds (default: 15).
+            detector_filename: Output filename for the SUMO additional XML (default: "detector.xml").
+            spec_filename: Output filename for the detector specification CSV
+                (default: "_detectors_spec.csv").
+            output_xml_filename: Filename for the SUMO detector output XML referenced
+                inside the additional file (default: "detectors_output.xml").
+        """
         self.sumo_network_path: str = sumo_network_path
         self.origin_ids: list[str] = origin_ids
         self.onramp_ids: list[str] = onramp_ids
@@ -102,10 +126,19 @@ class LoopDetectorGenerator:
     def find_interface_edges(self) -> Tuple[int, int]:
         """Find interface detectors and classify them without colliding with backbone cells.
 
-        Detector types:
-        - mainline_origin_interface: motorway mainline entering the modeled backbone
-        - inflow: urban or ramp inflow entering the modeled backbone
-        - outflow: traffic leaving the modeled backbone toward non-backbone roads
+        Detector types assigned per edge:
+        - mainline_origin_interface: motorway mainline edge whose downstream node is a
+          backbone boundary (mainline entry point).
+        - inflow: non-backbone edge (or onramp motorway_link) whose downstream node is a
+          backbone boundary (urban or ramp demand entering the backbone).
+        - outflow: non-backbone edge whose upstream node is a backbone boundary
+          (traffic leaving the backbone toward non-backbone roads).
+
+        Results are appended to self.edge_detectors.
+
+        Returns:
+            A tuple (inflow_count, outflow_count) with the number of inflow and
+            outflow detector entries added.
         """
         tree = ET.parse(self.sumo_network_path)
         root = tree.getroot()
@@ -213,7 +246,18 @@ class LoopDetectorGenerator:
         return inflow_count, outflow_count
 
     def add_detectors_backbone_network(self) -> int:
-        """Place E2 area detectors along each consolidated motorway link as true cells."""
+        """Place E2 area detectors along each consolidated motorway link as true cells.
+
+        For each MotorwayLink in self.motorway_links, divides the lane length into
+        evenly-spaced cells based on target_cell_length_km and appends one
+        laneAreaDetector entry per cell per lane to self.edge_detectors.
+
+        Returns:
+            Total number of backbone segment detector entries added.
+
+        Raises:
+            ValueError: If a MotorwayLink ID is not found in the SUMO network XML.
+        """
         tree = ET.parse(self.sumo_network_path)
         root = tree.getroot()
 
@@ -285,7 +329,15 @@ class LoopDetectorGenerator:
         return segment_detector_count
 
     def find_turning_rate_edges(self) -> int:
-        """Place detectors at diverge-node outgoing edges for turning-rate measurement."""
+        """Place detectors at diverge-node outgoing edges for turning-rate measurement.
+
+        Iterates over self.diverge_node_info and appends one inductionLoop entry per
+        lane per outgoing edge to self.edge_detectors. Each detector is positioned
+        near the start of the lane (at most 5 m or 10% of lane length).
+
+        Returns:
+            Total number of turning-rate detector entries added.
+        """
         if not self.diverge_node_info:
             return 0
 
@@ -343,11 +395,17 @@ class LoopDetectorGenerator:
         return turning_rate_count
 
     def build_det_id(self, det: dict) -> str:
-        """Build a unique detector ID.
+        """Build a unique detector ID from a detector entry dictionary.
 
-        Rules:
-        - backbone_segment detectors include cell index
-        - interface and turning-rate detectors never use cell indexing
+        ID format:
+        - backbone_segment: ``detector_backbonesegment_<edge_id>_<lane_index>_cell<cell_index>``
+        - all other types:  ``detector_<type>_<edge_id>_<lane_index>``
+
+        Args:
+            det: Detector entry dictionary as stored in self.edge_detectors.
+
+        Returns:
+            Unique string identifier for the detector.
         """
         det_type = det.get("type", "interface").replace("_", "")
         base = f"detector_{det_type}_{det['edge_id']}_{det['lane_index']}"
@@ -391,18 +449,14 @@ class LoopDetectorGenerator:
     def write_detector_xml(self) -> str:
         """Write SUMO additional XML with detector definitions.
 
-        Detector vTypes logic
-        ─────────────────────
-        backbone_segment      → laneAreaDetector, no vTypes filter (counts all)
-        mainline_origin_interface → inductionLoop, no vTypes filter (counts all)
-        turning_rate          → inductionLoop, no vTypes filter (counts all)
-        inflow / outflow      → inductionLoop, vTypes="urban" (counts ONLY urban-typed vehicles)
+        Detector element mapping:
+        - backbone_segment             → laneAreaDetector, no vTypes filter (counts all vehicles)
+        - mainline_origin_interface    → inductionLoop,    no vTypes filter (counts all vehicles)
+        - turning_rate                 → inductionLoop,    no vTypes filter (counts all vehicles)
+        - inflow / outflow             → inductionLoop,    no vTypes filter (counts all vehicles)
 
-        For this to work correctly the route file MUST:
-        1. define  <vType id="urban" vClass="passenger" ... />
-        2. assign  type="urban" to every vehicle whose origin is an onramp node.
-        See write_vtype_additional() below for how to emit the vType definition as
-        a standalone additional file (load it before detector.xml in sumocfg).
+        Returns:
+            Absolute path to the written detector XML file.
         """
         output_file = f"{self.output_dir}/{self.detector_filename}"
         root = ET.Element("additional")
@@ -435,45 +489,27 @@ class LoopDetectorGenerator:
                 detector.set("freq", str(self.detection_freq))
                 detector.set("file", self.output_xml_filename)
 
-                if det_type in URBAN_FILTERED_TYPES:
-                    # Only count vehicles explicitly typed "urban" in the route file.
-                    # mainline_origin_interface and turning_rate detectors intentionally
-                    # have NO filter here — they must observe all vehicle types.
-                    detector.set("vTypes", "urban")
+                # if det_type in URBAN_FILTERED_TYPES:
+                #     # Only count vehicles explicitly typed "urban" in the route file.
+                #     # mainline_origin_interface and turning_rate detectors intentionally
+                #     # have NO filter here — they must observe all vehicle types.
+                #     detector.set("vTypes", "urban")
 
         tree = ET.ElementTree(root)
         ET.indent(tree, space="  ")
         tree.write(output_file, encoding="utf-8", xml_declaration=True)
         return output_file
 
-    def write_vtype_additional(self, filename: str = "vtypes.xml") -> str:
-        """Emit a SUMO additional file that defines the 'urban' vehicle type.
-
-        This must be listed before detector.xml in the sumocfg additional-files
-        attribute so SUMO recognises the type before evaluating vTypes filters.
-
-        The parameters below mirror the SUMO passenger car defaults — adjust
-        maxSpeed / accel / decel / length to match your calibration.
-        """
-        output_file = f"{self.output_dir}/{filename}"
-        root = ET.Element("additional")
-
-        vtype = ET.SubElement(root, "vType")
-        vtype.set("id", "urban")
-        vtype.set("vClass", "passenger")
-        vtype.set("maxSpeed", "50")  # m/s — ~180 km/h cap, typical for urban
-        vtype.set("accel", "2.6")
-        vtype.set("decel", "4.5")
-        vtype.set("length", "5.0")
-        vtype.set("minGap", "2.5")
-        vtype.set("sigma", "0.5")  # Krauss driver imperfection
-
-        tree = ET.ElementTree(root)
-        ET.indent(tree, space="  ")
-        tree.write(output_file, encoding="utf-8", xml_declaration=True)
-        return output_file
 
     def write_detector_spec_csv(self) -> str:
+        """Write a CSV file mapping each detector to its edge, node, and cell metadata.
+
+        Columns: detector_id, type, from, to, edge_id, backbone_node,
+        diverge_node_id, position, cell_index, cell_key, detector_length.
+
+        Returns:
+            Absolute path to the written CSV file.
+        """
         output_file = f"{self.output_dir}/{self.spec_filename}"
 
         with open(output_file, "w", newline="") as f:
@@ -517,6 +553,17 @@ class LoopDetectorGenerator:
         return output_file
 
     def generate(self) -> Tuple[str, str, str]:
+        """Run the full detector generation pipeline and write all output files.
+
+        Calls find_interface_edges(), find_turning_rate_edges(),
+        add_detectors_backbone_network(), write_detector_xml(), and
+        write_detector_spec_csv() in sequence, then prints a placement summary.
+
+        Returns:
+            A tuple (detector_xml_path, detector_output_xml_path, detector_csv_path)
+            with the paths to the written SUMO additional XML, the detector output XML
+            reference path, and the detector specification CSV respectively.
+        """
         inflow_count, outflow_count = self.find_interface_edges()
         turning_rate_count = self.find_turning_rate_edges()
         backbone_detector_count = self.add_detectors_backbone_network()
