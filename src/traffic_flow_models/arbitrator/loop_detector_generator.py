@@ -100,29 +100,6 @@ class LoopDetectorGenerator:
         self.processed_lane_roles.add(key)
         return True
 
-    def _offramp_downstream_nodes(self, root) -> set[str]:
-        """Nodes reachable from offramp exits via non-motorway edges (post-exit routes)."""
-        import networkx as nx
-
-        urban_graph = nx.DiGraph()
-        for edge in root.findall("edge"):
-            if edge.get("function") == "internal":
-                continue
-            if "motorway" in edge.get("type", "").lower():
-                continue
-            fn, tn = edge.get("from"), edge.get("to")
-            if fn and tn:
-                urban_graph.add_edge(fn, tn)
-
-        downstream: set[str] = set()
-        for offramp_node in self.offramp_ids:
-            if urban_graph.has_node(offramp_node):
-                reachable = nx.single_source_shortest_path_length(
-                    urban_graph, offramp_node, cutoff=8
-                )
-                downstream.update(reachable.keys())
-        return downstream
-
     def find_interface_edges(self) -> Tuple[int, int]:
         """Find interface detectors and classify them without colliding with backbone cells.
 
@@ -151,7 +128,8 @@ class LoopDetectorGenerator:
         boundary_nodes = (
             self.backbone_nodes | set(self.onramp_ids) | set(self.offramp_ids)
         )
-        offramp_downstream = self._offramp_downstream_nodes(root)
+
+        # edges between two boundary nodes are intentionally excluded; ramp demand is captured via the motorway_link branch
 
         for edge in root.findall("edge"):
             if edge.get("function") == "internal":

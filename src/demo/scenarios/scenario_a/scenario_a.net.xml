@@ -1,38 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
 
-<!-- generated on 2026-04-18T13:30:03.297834+01:00 by Eclipse SUMO netedit 1.26.0
-<neteditConfiguration xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://sumo.dlr.de/xsd/neteditConfiguration.xsd">
-
-    <input>
-        <sumo-net-file value="/Users/krishnakanth/Documents/traffic_flow_models/src/demo/scenarios/scenario_a/scenario_a.net.xml"/>
-    </input>
-
-    <o>
-        <output-file value="/Users/krishnakanth/Documents/traffic_flow_models/src/demo/scenarios/scenario_a/scenario_a.net.xml"/>
-    </o>
-
-    <processing>
-        <geometry.min-radius.fix.railways value="false"/>
-        <geometry.avoid-overlap value="false"/>
-        <geometry.max-grade.fix value="false"/>
-        <offset.disable-normalization value="true"/>
-        <lefthand value="0"/>
-    </processing>
-
-    <junctions>
-        <no-turnarounds value="true"/>
-        <junctions.corner-detail value="5"/>
-        <junctions.limit-turn-speed value="5.50"/>
-        <rectangular-lane-cut value="0"/>
-    </junctions>
-
-    <pedestrian>
-        <walkingareas value="0"/>
-    </pedestrian>
-
-</neteditConfiguration>
--->
-
 <net version="1.20" junctionCornerDetail="5" limitTurnSpeed="5.50" avoidOverlap="0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://sumo.dlr.de/xsd/net_file.xsd">
 
     <location netOffset="0.00,0.00" convBoundary="0.00,-109.60,3000.00,100.00" origBoundary="0.00,-109.60,3000.00,100.00" projParameter="!"/>
