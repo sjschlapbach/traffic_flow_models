@@ -291,14 +291,6 @@ if __name__ == "__main__":
     print("Demand keys:", sorted(origin_demands.keys()))
     print("Missing:", [k for k in origin_ids if k not in origin_demands])
 
-    for origin_id in origin_ids:
-        if origin_id not in origin_demands:
-            warnings.warn(
-                f"No demand data for origin '{origin_id}'. Defaulting to zero.",
-                stacklevel=2,
-            )
-            origin_demands[origin_id] = lambda t: 0.0
-
     # run a simulation of the network using the selected model
     if parsed_args.model.upper() == "CTM":
         ctm = CTM()

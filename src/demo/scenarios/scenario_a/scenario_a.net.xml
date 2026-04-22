@@ -1,14 +1,15 @@
 <?xml version="1.0" encoding="UTF-8"?>
 
 <!-- generated on 2026-04-18T13:30:03.297834+01:00 by Eclipse SUMO netedit 1.26.0
-<neteditConfiguration xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://sumo.dlr.de/xsd/neteditConfiguration.xsd">
+<neteditConfiguration xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+xsi:noNamespaceSchemaLocation="http://sumo.dlr.de/xsd/neteditConfiguration.xsd">
 
     <input>
-        <sumo-net-file value="/Users/krishnakanth/Documents/traffic_flow_models/src/demo/scenarios/scenario_a/scenario_a.net.xml"/>
+        <sumo-net-file value="src/demo/scenarios/scenario_a/scenario_a.net.xml"/>
     </input>
 
     <o>
-        <output-file value="/Users/krishnakanth/Documents/traffic_flow_models/src/demo/scenarios/scenario_a/scenario_a.net.xml"/>
+        <output-file value="src/demo/scenarios/scenario_a/scenario_a.net.xml"/>
     </o>
 
     <processing>
@@ -33,63 +34,87 @@
 </neteditConfiguration>
 -->
 
-<net version="1.20" junctionCornerDetail="5" limitTurnSpeed="5.50" avoidOverlap="0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://sumo.dlr.de/xsd/net_file.xsd">
+<net version="1.20" junctionCornerDetail="5" limitTurnSpeed="5.50" avoidOverlap="0"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:noNamespaceSchemaLocation="http://sumo.dlr.de/xsd/net_file.xsd">
 
-    <location netOffset="0.00,0.00" convBoundary="0.00,-109.60,3000.00,100.00" origBoundary="0.00,-109.60,3000.00,100.00" projParameter="!"/>
+    <location netOffset="0.00,0.00" convBoundary="0.00,-109.60,3000.00,100.00"
+        origBoundary="0.00,-109.60,3000.00,100.00" projParameter="!" />
 
     <edge id=":369369_0" function="internal">
-        <lane id=":369369_0_0" index="0" speed="27.78" length="15.16" shape="988.84,-8.00 1004.00,-8.00"/>
-        <lane id=":369369_0_1" index="1" speed="27.78" length="15.16" shape="988.84,-4.80 1004.00,-4.80"/>
-        <lane id=":369369_0_2" index="2" speed="27.78" length="15.16" shape="988.84,-1.60 1004.00,-1.60"/>
+        <lane id=":369369_0_0" index="0" speed="27.78" length="15.16"
+            shape="988.84,-8.00 1004.00,-8.00" />
+        <lane id=":369369_0_1" index="1" speed="27.78" length="15.16"
+            shape="988.84,-4.80 1004.00,-4.80" />
+        <lane id=":369369_0_2" index="2" speed="27.78" length="15.16"
+            shape="988.84,-1.60 1004.00,-1.60" />
     </edge>
 
     <edge id=":369369_3" function="internal">
-        <lane id=":369369_3_0" index="0" speed="21.27" length="15.68" shape="990.10,-12.76 993.04,-10.57 995.73,-7.94 999.08,-5.73 1004.00,-4.80"/>
-        <lane id=":369369_3_1" index="1" speed="20.27" length="15.68" shape="990.10,-12.76 993.13,-9.80 995.97,-6.50 999.36,-3.50 1004.00,-1.60"/>
+        <lane id=":369369_3_0" index="0" speed="21.27" length="15.68"
+            shape="990.10,-12.76 993.04,-10.57 995.73,-7.94 999.08,-5.73 1004.00,-4.80" />
+        <lane id=":369369_3_1" index="1" speed="20.27" length="15.68"
+            shape="990.10,-12.76 993.13,-9.80 995.97,-6.50 999.36,-3.50 1004.00,-1.60" />
     </edge>
 
-  
+
     <edge id="1234567" from="123678" to="369369" priority="-1" type="highway.motorway">
-        <lane id="1234567_0" index="0" speed="27.78" length="988.84" shape="0.00,-8.00 988.84,-8.00"/>
-        <lane id="1234567_1" index="1" speed="27.78" length="988.84" shape="0.00,-4.80 988.84,-4.80"/>
-        <lane id="1234567_2" index="2" speed="27.78" length="988.84" shape="0.00,-1.60 988.84,-1.60"/>
+        <lane id="1234567_0" index="0" speed="27.78" length="988.84" shape="0.00,-8.00 988.84,-8.00" />
+        <lane id="1234567_1" index="1" speed="27.78" length="988.84" shape="0.00,-4.80 988.84,-4.80" />
+        <lane id="1234567_2" index="2" speed="27.78" length="988.84" shape="0.00,-1.60 988.84,-1.60" />
     </edge>
 
     <edge id="7654321" from="369369" to="456456" priority="-1" type="highway.motorway">
-        <lane id="7654321_0" index="0" speed="27.78" length="1996.00" acceleration="1" shape="1004.00,-8.00 3000.00,-8.00"/>
-        <lane id="7654321_1" index="1" speed="27.78" length="1996.00" acceleration="1" shape="1004.00,-4.80 3000.00,-4.80"/>
-        <lane id="7654321_2" index="2" speed="27.78" length="1996.00" shape="1004.00,-1.60 3000.00,-1.60"/>
+        <lane id="7654321_0" index="0" speed="27.78" length="1996.00" acceleration="1"
+            shape="1004.00,-8.00 3000.00,-8.00" />
+        <lane id="7654321_1" index="1" speed="27.78" length="1996.00" acceleration="1"
+            shape="1004.00,-4.80 3000.00,-4.80" />
+        <lane id="7654321_2" index="2" speed="27.78" length="1996.00"
+            shape="1004.00,-1.60 3000.00,-1.60" />
     </edge>
 
-   
+
     <edge id="8963467" from="123123" to="369369" priority="-1" type="highway.motorway_link">
-        <lane id="8963467_0" index="0" speed="27.78" length="213.34" shape="799.28,-98.57 990.10,-12.76"/>
+        <lane id="8963467_0" index="0" speed="27.78" length="213.34"
+            shape="799.28,-98.57 990.10,-12.76" />
     </edge>
 
 
-    <junction id="123678" type="dead_end" x="0.00" y="0.00" incLanes="" intLanes="" shape="0.00,0.00 0.00,-9.60"/>
+    <junction id="123678" type="dead_end" x="0.00" y="0.00" incLanes="" intLanes=""
+        shape="0.00,0.00 0.00,-9.60" />
 
-    <junction id="123123" type="dead_end" x="800.00" y="-100.00" incLanes="" intLanes="" shape="800.00,-100.00 798.57,-102.86"/>
+    <junction id="123123" type="dead_end" x="800.00" y="-100.00" incLanes="" intLanes=""
+        shape="800.00,-100.00 798.57,-102.86" />
 
-    <junction id="369369" type="zipper" x="1000.00" y="0.00" incLanes="1234567_0 1234567_1 1234567_2 8963467_0" intLanes=":369369_0_0 :369369_0_1 :369369_0_2 :369369_3_0 :369369_3_1" shape="1004.00,0.00 1004.00,-9.60 1001.01,-9.73 998.82,-10.11 995.38,-11.64 993.38,-12.81 990.70,-14.25 988.84,-9.60 988.84,0.00" customShape="1">
-        <request index="0" response="00000" foes="00000" cont="0"/>
-        <request index="1" response="01000" foes="01000" cont="0"/>
-        <request index="2" response="11000" foes="11000" cont="0"/>
-        <request index="3" response="00110" foes="00110" cont="0"/>
-        <request index="4" response="00100" foes="00100" cont="0"/>
+    <junction id="369369" type="zipper" x="1000.00" y="0.00"
+        incLanes="1234567_0 1234567_1 1234567_2 8963467_0"
+        intLanes=":369369_0_0 :369369_0_1 :369369_0_2 :369369_3_0 :369369_3_1"
+        shape="1004.00,0.00 1004.00,-9.60 1001.01,-9.73 998.82,-10.11 995.38,-11.64 993.38,-12.81 990.70,-14.25 988.84,-9.60 988.84,0.00"
+        customShape="1">
+        <request index="0" response="00000" foes="00000" cont="0" />
+        <request index="1" response="01000" foes="01000" cont="0" />
+        <request index="2" response="11000" foes="11000" cont="0" />
+        <request index="3" response="00110" foes="00110" cont="0" />
+        <request index="4" response="00100" foes="00100" cont="0" />
     </junction>
 
-    <junction id="456456" type="dead_end" x="3000.00" y="0.00" incLanes="7654321_0 7654321_1 7654321_2" intLanes="" shape="3000.00,-9.60 3000.00,0.00"/>
+    <junction id="456456" type="dead_end" x="3000.00" y="0.00"
+        incLanes="7654321_0 7654321_1 7654321_2" intLanes="" shape="3000.00,-9.60 3000.00,0.00" />
 
-    <connection from="1234567" to="7654321" fromLane="0" toLane="0" via=":369369_0_0" dir="s" state="Z"/>
-    <connection from="1234567" to="7654321" fromLane="1" toLane="1" via=":369369_0_1" dir="s" state="Z"/>
-    <connection from="1234567" to="7654321" fromLane="2" toLane="2" via=":369369_0_2" dir="s" state="Z"/>
-    <connection from="8963467" to="7654321" fromLane="0" toLane="1" via=":369369_3_0" dir="s" state="Z"/>
-    <connection from="8963467" to="7654321" fromLane="0" toLane="2" via=":369369_3_1" dir="s" state="Z"/>
-    <connection from=":369369_0" to="7654321" fromLane="0" toLane="0" dir="s" state="Z"/>
-    <connection from=":369369_0" to="7654321" fromLane="1" toLane="1" dir="s" state="Z"/>
-    <connection from=":369369_0" to="7654321" fromLane="2" toLane="2" dir="s" state="Z"/>
-    <connection from=":369369_3" to="7654321" fromLane="0" toLane="1" dir="s" state="Z"/>
-    <connection from=":369369_3" to="7654321" fromLane="1" toLane="2" dir="s" state="Z"/>
+    <connection from="1234567" to="7654321" fromLane="0" toLane="0" via=":369369_0_0" dir="s"
+        state="Z" />
+    <connection from="1234567" to="7654321" fromLane="1" toLane="1" via=":369369_0_1" dir="s"
+        state="Z" />
+    <connection from="1234567" to="7654321" fromLane="2" toLane="2" via=":369369_0_2" dir="s"
+        state="Z" />
+    <connection from="8963467" to="7654321" fromLane="0" toLane="1" via=":369369_3_0" dir="s"
+        state="Z" />
+    <connection from="8963467" to="7654321" fromLane="0" toLane="2" via=":369369_3_1" dir="s"
+        state="Z" />
+    <connection from=":369369_0" to="7654321" fromLane="0" toLane="0" dir="s" state="Z" />
+    <connection from=":369369_0" to="7654321" fromLane="1" toLane="1" dir="s" state="Z" />
+    <connection from=":369369_0" to="7654321" fromLane="2" toLane="2" dir="s" state="Z" />
+    <connection from=":369369_3" to="7654321" fromLane="0" toLane="1" dir="s" state="Z" />
+    <connection from=":369369_3" to="7654321" fromLane="1" toLane="2" dir="s" state="Z" />
 
 </net>
