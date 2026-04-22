@@ -39,6 +39,7 @@ class LoopDetectorGenerator:
         backbone_node_ids: set[str],
         target_cell_length_km: float,
         motorway_links: list,
+        sumo_edge_id_map: "dict[str, list[str]] | None" = None,
         detection_freq: int = 15,
         detector_filename: str = "detector.xml",
         spec_filename: str = "_detectors_spec.csv",
@@ -53,13 +54,20 @@ class LoopDetectorGenerator:
             offramp_ids: List of offramp sink node IDs from the macroscopic network.
             destination_ids: List of destination node IDs from the macroscopic network.
             output_dir: Directory where output files will be written.
-            diverge_node_info: Mapping from diverge node IDs to lists of outgoing SUMO
-                edge IDs, used to place turning-rate detectors.
+            diverge_node_info: Mapping from diverge node IDs to lists of outgoing macroscopic
+                link IDs (resolved to real SUMO edges via sumo_edge_id_map), used to place
+                turning-rate detectors.
             backbone_node_ids: Set of node IDs belonging to the mainline motorway backbone.
             target_cell_length_km: Target macroscopic cell length in kilometres, used to
                 divide backbone links into equally-sized detector segments.
             motorway_links: List of MotorwayLink objects representing consolidated backbone
-                links. Each link must have a matching edge in the SUMO network XML.
+                links. Each link's .id must be resolvable to one or more real SUMO edges
+                via sumo_edge_id_map.
+            sumo_edge_id_map: Optional mapping from macroscopic link ID to the ordered list
+                of original SUMO edge IDs that compose it. Required whenever the network
+                arbitrator applied serial-edge merging (merge_serial_edges), because the
+                resulting "merged_A_B" IDs do not exist in the .net.xml. If None, each link
+                ID is assumed to be a real SUMO edge ID (backward-compatible behaviour).
             detection_freq: Detector aggregation interval in seconds (default: 15).
             detector_filename: Output filename for the SUMO additional XML (default: "detector.xml").
             spec_filename: Output filename for the detector specification CSV
@@ -82,6 +90,7 @@ class LoopDetectorGenerator:
         self.backbone_nodes = backbone_node_ids
         self.target_cell_length_km = target_cell_length_km
         self.motorway_links = motorway_links
+        self.sumo_edge_id_map: dict[str, list[str]] = dict(sumo_edge_id_map or {})
 
         self.interface_edges: list = []
         self.edge_detectors: list[dict] = []
@@ -91,6 +100,19 @@ class LoopDetectorGenerator:
         # - an interface detector
         # - one or more backbone cell detectors
         self.processed_lane_roles: set[tuple[str, str]] = set()
+
+        # Mainline origin nodes are macro-graph nodes that serve as network
+        # entry points on the motorway backbone (an Origin feeds them and they
+        # are NOT onramp source nodes). find_interface_edges() needs this set
+        # because merge_serial_edges can absorb the downstream node of a
+        # mainline-origin macro link: the original "to_is_boundary" test then
+        # never fires on the first constituent SUMO edge, and the aggregator
+        # drops the origin for missing detectors. Recognising the origin by
+        # its FROM node fixes that.
+        self._mainline_origin_nodes: set[str] = {
+            oid[len("origin_") :] if oid.startswith("origin_") else oid
+            for oid in self.origin_ids
+        } - set(self.onramp_ids)
 
     def _mark_lane_role(self, lane_id: str, role: str) -> bool:
         """Return True if this (lane, role) is new and should be processed."""
@@ -154,6 +176,17 @@ class LoopDetectorGenerator:
             if to_is_boundary and is_motorway_mainline:
                 detector_type = "mainline_origin_interface"
                 detector_node = to_node
+                inflow_count += 1
+
+            # Recognise the mainline-origin side even when the downstream node
+            # was absorbed by merge_serial_edges. In that case to_is_boundary
+            # fails for this first constituent SUMO edge (its "to" node is no
+            # longer in the macro graph), but the edge is still the first
+            # segment of a mainline origin's outgoing macro link, so the
+            # aggregator expects a mainline_origin_interface detector here.
+            elif is_motorway_mainline and from_node in self._mainline_origin_nodes:
+                detector_type = "mainline_origin_interface"
+                detector_node = from_node
                 inflow_count += 1
 
             elif is_motorway_link and from_node in onramp_node_set:
@@ -226,15 +259,24 @@ class LoopDetectorGenerator:
     def add_detectors_backbone_network(self) -> int:
         """Place E2 area detectors along each consolidated motorway link as true cells.
 
-        For each MotorwayLink in self.motorway_links, divides the lane length into
-        evenly-spaced cells based on target_cell_length_km and appends one
-        laneAreaDetector entry per cell per lane to self.edge_detectors.
+        For each MotorwayLink in self.motorway_links, divides the combined lane length
+        across all constituent SUMO edges into evenly-spaced cells based on
+        target_cell_length_km, then places one laneAreaDetector per cell per lane. The
+        detector for cell i is anchored at the SUMO lane that contains the cell's
+        upstream boundary, and its length is truncated to remain within that SUMO lane
+        so SUMO accepts the placement.
+
+        This method resolves a macroscopic link ID to its real SUMO edges via
+        self.sumo_edge_id_map. Unmerged links resolve to a single SUMO edge and behave
+        identically to the original implementation; serial-merged links resolve to an
+        ordered list of SUMO edges that together form the macro link.
 
         Returns:
             Total number of backbone segment detector entries added.
 
         Raises:
-            ValueError: If a MotorwayLink ID is not found in the SUMO network XML.
+            ValueError: If a constituent SUMO edge of any MotorwayLink is missing from
+                the SUMO network XML.
         """
         tree = ET.parse(self.sumo_network_path)
         root = tree.getroot()
@@ -248,61 +290,131 @@ class LoopDetectorGenerator:
         segment_detector_count = 0
 
         for link in self.motorway_links:
-            edge = sumo_edges.get(link.id)
-            if edge is None:
-                raise ValueError(
-                    f"[add_detectors_backbone_network] MotorwayLink '{link.id}' "
-                    f"not found in SUMO network XML. "
-                    f"Check that the consolidated network was built from this SUMO file."
-                )
+            # Resolve the macro link ID to the ordered list of real SUMO edge
+            # IDs that compose it. For unmerged links this is [link.id]; for
+            # serial-merged links it's the original upstream-to-downstream
+            # sequence. Fall back to [link.id] so callers that skip the map
+            # (backward compatibility) still work on unmerged networks.
+            sumo_ids = self.sumo_edge_id_map.get(link.id, [link.id])
 
-            from_node = edge.get("from")
-            to_node = edge.get("to")
+            constituent_edges = []
+            for sid in sumo_ids:
+                e = sumo_edges.get(sid)
+                if e is None:
+                    raise ValueError(
+                        f"[add_detectors_backbone_network] Constituent SUMO edge '{sid}' "
+                        f"of MotorwayLink '{link.id}' not found in SUMO network XML. "
+                        f"Check that sumo_edge_id_map was built from this SUMO file."
+                    )
+                constituent_edges.append(e)
 
-            for lane_idx, lane in enumerate(edge.findall("lane")):
-                lane_id = lane.get("id")
-                if lane_id is None:
+            if not constituent_edges:
+                continue
+
+            # merge_serial_edges only merges edges with equal lane counts, so
+            # every constituent edge has the same number of lanes. Use the
+            # first edge as the reference.
+            num_lanes = len(constituent_edges[0].findall("lane"))
+
+            for lane_idx in range(num_lanes):
+                # Build ordered list of lane segments (one entry per
+                # constituent SUMO edge) for this lane index.
+                lane_segments: list[tuple[str, float, str, str, str]] = []
+                for e in constituent_edges:
+                    lanes = e.findall("lane")
+                    if lane_idx >= len(lanes):
+                        continue
+                    lane = lanes[lane_idx]
+                    lane_id = lane.get("id")
+                    length_str = lane.get("length")
+                    if lane_id is None or length_str is None:
+                        continue
+                    lane_segments.append(
+                        (
+                            lane_id,
+                            float(length_str),
+                            e.get("id"),
+                            e.get("from"),
+                            e.get("to"),
+                        )
+                    )
+
+                if not lane_segments:
                     continue
 
-                if not self._mark_lane_role(lane_id, "backbone_segment"):
-                    continue
+                total_lane_len_m = sum(seg[1] for seg in lane_segments)
+                total_lane_len_km = total_lane_len_m / 1000.0
 
-                length_str = lane.get("length")
-                if length_str is None:
-                    continue
-
-                lane_length_m = float(length_str)
-                lane_length_km = lane_length_m / 1000.0
-                # Determine number of macroscopic cells by dividing the lane
-                # length by the target cell length (in km). Always keep at
-                # least one cell per lane.
+                # Keep this cell count consistent with the macroscopic cell
+                # division performed by NetworkArbitrator.instantiate_network
+                # so detector cell indices line up with model cell indices.
                 num_cells = max(
-                    1, math.floor(lane_length_km / self.target_cell_length_km)
+                    1,
+                    math.floor(total_lane_len_km / self.target_cell_length_km),
                 )
-                cell_length_m = lane_length_m / num_cells
+                cell_len_m = total_lane_len_m / num_cells
 
                 for cell_idx in range(num_cells):
-                    cell_start_m = cell_idx * cell_length_m
-                    actual_length = min(cell_length_m, lane_length_m - cell_start_m)
-                    cell_key = f"{link.id}_cell{cell_idx}"
+                    cell_start_global = cell_idx * cell_len_m
+                    cell_end_global = cell_start_global + cell_len_m
 
-                    self.edge_detectors.append(
-                        {
-                            "edge_id": link.id,
-                            "lane_id": lane_id,
-                            "lane_index": lane_idx,
-                            "position": cell_start_m,
-                            "detector_length": actual_length,
-                            "cell_index": cell_idx,
-                            "cell_key": cell_key,
-                            "num_cells": num_cells,
-                            "type": "backbone_segment",
-                            "from_node": from_node,
-                            "to_node": to_node,
-                            "node_id": None,
-                        }
-                    )
-                    segment_detector_count += 1
+                    # Walk the lane segments to find which SUMO segment
+                    # contains the cell's upstream boundary. Place the
+                    # laneAreaDetector there, truncating its length so the
+                    # detector stays within that SUMO lane.
+                    cum = 0.0
+                    for (
+                        seg_lane_id,
+                        seg_len,
+                        seg_edge_id,
+                        seg_from,
+                        seg_to,
+                    ) in lane_segments:
+                        seg_start = cum
+                        seg_end = cum + seg_len
+                        cum = seg_end
+
+                        if cell_start_global >= seg_end - 1e-9:
+                            continue
+
+                        local_pos = max(0.0, cell_start_global - seg_start)
+                        available = seg_len - local_pos
+                        actual_length = min(
+                            cell_len_m,
+                            cell_end_global - cell_start_global,
+                            available,
+                        )
+                        if actual_length <= 0.0:
+                            break
+
+                        # Role is unique per cell so we can place multiple
+                        # backbone cell detectors on the same SUMO lane (large
+                        # SUMO edges commonly hold several cells).
+                        role = f"backbone_segment_cell{cell_idx}"
+                        if not self._mark_lane_role(seg_lane_id, role):
+                            break
+
+                        cell_key = f"{link.id}_cell{cell_idx}"
+                        self.edge_detectors.append(
+                            {
+                                # Use the macroscopic link ID so the backbone
+                                # aggregator can group detectors by macro link.
+                                "edge_id": link.id,
+                                "lane_id": seg_lane_id,
+                                "lane_index": lane_idx,
+                                "position": local_pos,
+                                "detector_length": actual_length,
+                                "cell_index": cell_idx,
+                                "cell_key": cell_key,
+                                "num_cells": num_cells,
+                                "type": "backbone_segment",
+                                "from_node": seg_from,
+                                "to_node": seg_to,
+                                "node_id": None,
+                            }
+                        )
+                        segment_detector_count += 1
+                        break
 
         return segment_detector_count
 
@@ -325,9 +437,19 @@ class LoopDetectorGenerator:
 
         for diverge_node_id, edge_ids in self.diverge_node_info.items():
             for edge_id in edge_ids:
+                # diverge_node_info values are macroscopic link IDs. For merged
+                # links these look like "merged_A_B" and no such edge exists in
+                # the SUMO .net.xml, so we must resolve to the real SUMO edge
+                # that actually leaves the diverge node — which is the FIRST
+                # constituent SUMO edge (upstream-most) of the macro link.
+                resolved_ids = self.sumo_edge_id_map.get(edge_id, [edge_id])
+                if not resolved_ids:
+                    continue
+                sumo_edge_id = resolved_ids[0]
+
                 edge = None
                 for e in root.findall("edge"):
-                    if e.get("id") == edge_id and e.get("function") != "internal":
+                    if e.get("id") == sumo_edge_id and e.get("function") != "internal":
                         edge = e
                         break
 
@@ -357,6 +479,8 @@ class LoopDetectorGenerator:
 
                     self.edge_detectors.append(
                         {
+                            # Keep the macroscopic edge_id so the turning-rate
+                            # aggregator can group detectors by macro link.
                             "edge_id": edge_id,
                             "lane_id": lane_id,
                             "lane_index": lane_idx,

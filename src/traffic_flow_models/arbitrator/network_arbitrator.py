@@ -211,6 +211,7 @@ class NetworkArbitrator:
         RoadParamsConfig,
         dict[str, list[str]],
         set[str],
+        dict[str, list[str]],
     ]:
         """Execute the complete network arbitration pipeline.
 
@@ -231,6 +232,11 @@ class NetworkArbitrator:
                     detector data via TurningRateAggregator.
                 - backbone_node_ids: Set of node IDs belonging to the mainline motorway backbone
                     (excludes onramp source and offramp sink nodes).
+                - sumo_edge_id_map: Dictionary mapping each macroscopic link ID to the ordered
+                    list of original SUMO edge IDs that compose it. Pass this to
+                    LoopDetectorGenerator so it can place detectors on real SUMO edges even
+                    when merge_serial_edges has collapsed a mainline run into a synthetic
+                    "merged_A_B" link ID that no longer appears in the .net.xml.
 
         Raises:
             ValueError: If no edges are found after parsing, if no matching road types exist,
@@ -265,6 +271,7 @@ class NetworkArbitrator:
             destination_ids,
             diverge_node_info,
             backbone_node_ids,
+            sumo_edge_id_map,
         ) = self.instantiate_network()
         self._log_network_statistics(macroscopic_network)
 
@@ -277,6 +284,7 @@ class NetworkArbitrator:
             self.road_params,
             diverge_node_info,
             backbone_node_ids,
+            sumo_edge_id_map,
         )
 
     def parse_sumo_xml(self) -> None:
@@ -383,10 +391,16 @@ class NetworkArbitrator:
                 continue
 
             # add edge to graph with attributes
+            # sumo_ids tracks the ordered list of original SUMO edge IDs that
+            # compose this graph edge. At parse time it is a singleton list;
+            # merge_serial_edges() concatenates these lists when it collapses
+            # degree-2 nodes, so downstream consumers can always recover the
+            # real SUMO edges that live in the .net.xml.
             self.graph.add_edge(
                 edge.get("from"),
                 edge.get("to"),
                 id=edge.get("id"),
+                sumo_ids=[edge.get("id")],
                 length=length_km,
                 speed=speed_kmh,
                 lanes=len(lanes),
@@ -537,6 +551,11 @@ class NetworkArbitrator:
                 if same_lanes and same_speed and same_type and not is_type_transition:
                     new_attr = {
                         "id": f"merged_{d_in['id']}_{d_out['id']}",
+                        # Concatenate the constituent SUMO edge ID lists so
+                        # downstream code can translate this merged graph edge
+                        # back to the real edges that still live in the .net.xml.
+                        "sumo_ids": list(d_in.get("sumo_ids", [d_in["id"]]))
+                        + list(d_out.get("sumo_ids", [d_out["id"]])),
                         "length": d_in["length"] + d_out["length"],
                         "speed": min(d_in["speed"], d_out["speed"]),
                         "lanes": d_in["lanes"],
@@ -803,6 +822,7 @@ class NetworkArbitrator:
         list[str],
         dict[str, list[str]],
         set[str],
+        dict[str, list[str]],
     ]:
         """Create macroscopic network objects from the processed graph.
 
@@ -834,6 +854,10 @@ class NetworkArbitrator:
                     for their outgoing motorway links.
                 - backbone_node_ids: Set of node IDs belonging to the mainline motorway backbone
                     (excludes onramp source and offramp sink nodes).
+                - sumo_edge_id_map: Dictionary mapping each macroscopic link ID to the ordered
+                    list of original SUMO edge IDs that compose it. For unmerged links this is a
+                    single-element list; for serial-merged links it contains every constituent
+                    SUMO edge in upstream-to-downstream order.
         """
 
         macro_nodes = {}
@@ -1010,6 +1034,19 @@ class NetworkArbitrator:
             - offramp_sink_nodes
         )
 
+        # Build a lookup from each macroscopic link ID to the ordered list of
+        # SUMO edge IDs that still exist in the .net.xml file. merge_serial_edges
+        # invents synthetic "merged_A_B" IDs that do not appear in the SUMO XML,
+        # so every downstream consumer that needs to touch real SUMO edges
+        # (detector placement, turning-rate measurement, backbone cell layout)
+        # must go through this map.
+        sumo_edge_id_map: dict[str, list[str]] = {}
+        for _u, _v, data in self.graph.edges(data=True):
+            link_id = str(data["id"])
+            sumo_edge_id_map[link_id] = [
+                str(sid) for sid in data.get("sumo_ids", [data["id"]])
+            ]
+
         return (
             Network(nodes=list(macro_nodes.values())),
             origin_ids,
@@ -1018,6 +1055,7 @@ class NetworkArbitrator:
             destination_ids,
             diverge_node_info,
             backbone_node_ids,
+            sumo_edge_id_map,
         )
 
     def _log_network_statistics(self, network: Network) -> None:
