@@ -5,26 +5,26 @@ from typing import Tuple
 
 
 class LoopDetectorGenerator:
-    """Generate loop detectors at macroscopic-microscopic network interface points.
+    """Generate SUMO detectors for the macro-micro interface and backbone links.
 
-    This class identifies interface edges between the consolidated macroscopic network
-    and the detailed microscopic SUMO network, then generates loop detector
-    configurations to measure traffic flow at these boundaries. Detectors are
-    placed strategically to capture inflow and outflow at network interfaces.
+    This class inspects a SUMO network (.net.xml) and produces two kinds of
+    detectors:
+    - Point induction loops (`inductionLoop`) used for interface and
+      turning-rate measurements.
+    - Lane-area detectors (`laneAreaDetector`) placed along backbone motorway
+      links that represent macroscopic cells for state aggregation.
 
-    Attributes:
-        sumo_network_path: Path to the SUMO network XML file.
-        origin_ids: List of origin node IDs in the network.
-        onramp_ids: List of onramp node IDs in the network.
-        destination_ids: List of destination node IDs in the network.
-        output_dir: Directory for output files.
-        detection_freq: Detector measurement frequency in seconds.
-        detector_filename: Name of the detector configuration XML file.
-        spec_filename: Name of the detector specification CSV file.
-        output_xml_filename: Name of the detector output XML file.
-        backbone_nodes: Set of nodes belonging to the macroscopic backbone.
-        interface_edges: List of edges at the network interface.
-        edge_detectors: List of detector specifications.
+    The generator tracks processed ``(lane_id, role)`` pairs so a single lane
+    can receive both an interface detector and one or more backbone cell
+    detectors without duplication.
+
+    Methods of interest:
+        find_interface_edges(): detect and classify interface detectors.
+        add_detectors_backbone_network(): create backbone cell detectors.
+        find_turning_rate_edges(): add detectors to diverge outgoing edges.
+        write_detector_xml(): write SUMO additional XML with detector definitions.
+        write_detector_spec_csv(): write a CSV mapping detectors to edges/nodes.
+        generate(): run the full pipeline and write all output files.
     """
 
     def __init__(
@@ -47,21 +47,30 @@ class LoopDetectorGenerator:
         """Initialize the loop detector generator.
 
         Args:
-            sumo_network_path: Path to the SUMO network XML file.
-            origin_ids: List of origin node IDs in the network.
-            onramp_ids: List of onramp node IDs in the network.
-            destination_ids: List of destination node IDs in the network.
+            sumo_network_path: Path to the SUMO network XML file (.net.xml).
+            origin_ids: List of mainline origin node IDs from the macroscopic network.
+            onramp_ids: List of onramp source node IDs from the macroscopic network.
+            offramp_ids: List of offramp sink node IDs from the macroscopic network.
+            destination_ids: List of destination node IDs from the macroscopic network.
             output_dir: Directory where output files will be written.
-            diverge_node_info: Dictionary mapping diverge node IDs to lists of SUMO edge IDs.
-            detection_freq: Measurement frequency in seconds (default: 15).
-            detector_filename: Output detector XML filename (default: "detector.xml").
-            spec_filename: Output specification CSV filename (default: "_detectors_spec.csv").
-            output_xml_filename: Detector output XML filename (default: "detectors_output.xml").
+            diverge_node_info: Mapping from diverge node IDs to lists of outgoing SUMO
+                edge IDs, used to place turning-rate detectors.
+            backbone_node_ids: Set of node IDs belonging to the mainline motorway backbone.
+            target_cell_length_km: Target macroscopic cell length in kilometres, used to
+                divide backbone links into equally-sized detector segments.
+            motorway_links: List of MotorwayLink objects representing consolidated backbone
+                links. Each link must have a matching edge in the SUMO network XML.
+            detection_freq: Detector aggregation interval in seconds (default: 15).
+            detector_filename: Output filename for the SUMO additional XML (default: "detector.xml").
+            spec_filename: Output filename for the detector specification CSV
+                (default: "_detectors_spec.csv").
+            output_xml_filename: Filename for the SUMO detector output XML referenced
+                inside the additional file (default: "detectors_output.xml").
         """
-
         self.sumo_network_path: str = sumo_network_path
         self.origin_ids: list[str] = origin_ids
         self.onramp_ids: list[str] = onramp_ids
+        self.offramp_ids: list[str] = offramp_ids
         self.destination_ids: list[str] = destination_ids
         self.output_dir: str = output_dir
         self.diverge_node_info: dict[str, list[str]] = diverge_node_info or {}
@@ -73,31 +82,54 @@ class LoopDetectorGenerator:
         self.backbone_nodes = backbone_node_ids
         self.target_cell_length_km = target_cell_length_km
         self.motorway_links = motorway_links
+
         self.interface_edges: list = []
         self.edge_detectors: list[dict] = []
 
-    def find_interface_edges(self) -> Tuple[int, int]:
-        """Find interface points between macroscopic and microscopic networks.
+        # Track processed lanes per role, not globally.
+        # This allows one lane to have both:
+        # - an interface detector
+        # - one or more backbone cell detectors
+        self.processed_lane_roles: set[tuple[str, str]] = set()
 
-        Identifies edges where the macroscopic backbone network interfaces with
-        the detailed microscopic SUMO network. Classifies interface edges as
-        inflow (entering backbone), outflow (leaving backbone), or ramp
-        connections. Places detectors on each lane of interface edges.
+    def _mark_lane_role(self, lane_id: str, role: str) -> bool:
+        """Return True if this (lane, role) is new and should be processed."""
+        key = (lane_id, role)
+        if key in self.processed_lane_roles:
+            return False
+        self.processed_lane_roles.add(key)
+        return True
+
+    def find_interface_edges(self) -> Tuple[int, int]:
+        """Find interface detectors and classify them without colliding with backbone cells.
+
+        Detector types assigned per edge:
+        - mainline_origin_interface: motorway mainline edge whose downstream node is a
+          backbone boundary (mainline entry point).
+        - inflow: non-backbone edge (or onramp motorway_link) whose downstream node is a
+          backbone boundary (urban or ramp demand entering the backbone).
+        - outflow: non-backbone edge whose upstream node is a backbone boundary
+          (traffic leaving the backbone toward non-backbone roads).
+
+        Results are appended to self.edge_detectors.
 
         Returns:
-            A tuple containing:
-                - inflow_count: Number of inflow detectors created.
-                - outflow_count: Number of outflow detectors created.
+            A tuple (inflow_count, outflow_count) with the number of inflow and
+            outflow detector entries added.
         """
-
         tree = ET.parse(self.sumo_network_path)
         root = tree.getroot()
 
         inflow_count = 0
         outflow_count = 0
 
-        inflow_boundary_nodes = self.backbone_nodes | set(self.onramp_ids)
-        onramp_nodes = set(self.onramp_ids)
+        # offramp nodes are now included so outflow detectors are placed at
+        # offramp exits even when they are not backbone nodes.
+        boundary_nodes = (
+            self.backbone_nodes | set(self.onramp_ids) | set(self.offramp_ids)
+        )
+
+        # edges between two boundary nodes are intentionally excluded; ramp demand is captured via the motorway_link branch
 
         for edge in root.findall("edge"):
             if edge.get("function") == "internal":
@@ -108,135 +140,105 @@ class LoopDetectorGenerator:
             from_node = edge.get("from")
             to_node = edge.get("to")
 
-            to_is_backbone = to_node in inflow_boundary_nodes
-            from_is_backbone = from_node in inflow_boundary_nodes
+            to_is_boundary = to_node in boundary_nodes
+            from_is_boundary = from_node in boundary_nodes
+
+            is_motorway_mainline = "motorway" in edge_type and "link" not in edge_type
+            is_motorway_link = "motorway_link" in edge_type
+            is_backbone_road = is_motorway_mainline or is_motorway_link
+            onramp_node_set = set(self.onramp_ids)
 
             detector_type = None
             detector_node = None
 
-            if edge_id is None:
-                raise ValueError("Edge is missing 'id' attribute")
+            if to_is_boundary and is_motorway_mainline:
+                detector_type = "mainline_origin_interface"
+                detector_node = to_node
+                inflow_count += 1
 
-            is_motorway_mainline = edge_type == "motorway"
-            is_motorway_link = "motorway_link" in edge_type
-            is_backbone_edge = is_motorway_mainline or is_motorway_link
+            elif is_motorway_link and from_node in onramp_node_set:
+                detector_type = "inflow"
+                detector_node = from_node
+                inflow_count += 1
 
-            # urban road entering backbone (mainline origin interface)
-            if to_is_backbone and not is_backbone_edge:
+            # elif to_is_boundary and (not is_backbone_road):
+            elif (
+                to_is_boundary
+                and not is_backbone_road
+                and (from_node not in boundary_nodes)
+            ):
+                # elif (to_is_boundary and not is_backbone_road and from_node not in boundary_nodes and from_node not in offramp_downstream):
                 detector_type = "inflow"
                 detector_node = to_node
                 inflow_count += 1
 
-            # motorway_link entering an onramp node — treat as inflow too
-            elif to_node in onramp_nodes and is_motorway_link:
-                detector_type = "inflow"
-                detector_node = to_node
-                inflow_count += 1
-
-            # backbone exiting to urban road (mainline destination interface)
-            elif from_is_backbone and not is_backbone_edge:
+            # elif from_is_boundary and not is_backbone_road:
+            elif (
+                from_is_boundary
+                and not is_backbone_road
+                and (to_node not in boundary_nodes)
+            ):
                 detector_type = "outflow"
                 detector_node = from_node
                 outflow_count += 1
 
-            # motorway_link ramp connections
-            elif is_motorway_link:
-                if to_is_backbone and not from_is_backbone:
-                    detector_type = "ramp_inflow"  # onramp merging onto mainline
-                    detector_node = to_node
-                    inflow_count += 1
-                elif from_is_backbone and not to_is_backbone:
-                    detector_type = "ramp_outflow"  # offramp leaving mainline
-                    detector_node = from_node
-                    outflow_count += 1
-
-            if detector_type:
-                lanes = edge.findall("lane")
-                for lane_idx, lane in enumerate(lanes):
-                    lane_id = lane.get("id")
-                    length_str = lane.get("length")
-                    if length_str is None:
-                        continue
-                    lane_length = float(length_str)
-
-                    detector_pos = min(lane_length * 0.9, max(1, lane_length - 5))
-
-                    self.edge_detectors.append(
-                        {
-                            "edge_id": edge_id,
-                            "lane_id": lane_id,
-                            "lane_index": lane_idx,
-                            "position": detector_pos,
-                            "node_id": detector_node,
-                            "type": detector_type,
-                            "from_node": from_node,
-                            "to_node": to_node,
-                        }
-                    )
-        return inflow_count, outflow_count
-
-    """
-    def add_detectors_backbone_network(self) -> int:
-        segment_detector_count = 0
-        ramp_edges = set()
-
-        tree = ET.parse(self.sumo_network_path)
-        root = tree.getroot()
-
-        for edge in root.findall("edge"):
-            if edge.get("function") == "internal":
-                continue
-            from_node = edge.get("from")
-            to_node = edge.get("to")
-            edge_id = edge.get("id")
-
-            if (
-                edge_id in ramp_edges
-                or from_node not in self.backbone_nodes
-                or to_node not in self.backbone_nodes
-            ):
+            if detector_type is None:
                 continue
 
-            lanes = edge.findall("lane")
-            for lane_idx, lane in enumerate(lanes):
+            for lane_idx, lane in enumerate(edge.findall("lane")):
                 lane_id = lane.get("id")
+                if lane_id is None:
+                    continue
+
+                if not self._mark_lane_role(lane_id, detector_type):
+                    continue
+
                 length_str = lane.get("length")
                 if length_str is None:
                     continue
-                lane_length = float(length_str)
 
-                position = lane_length / 2.0
+                lane_length = float(length_str)
+                # Place detector near the downstream end of the lane but ensure
+                # it is at least 1 m from the start and at most 5 m from the end
+                # (or 90% of lane length for very short lanes).
+                # detector_pos = min(lane_length * 0.9, max(1.0, lane_length - 5.0))
+                if detector_type == "outflow":
+                    detector_pos = min(lane_length * 0.9, max(1.0, lane_length - 5.0))
+                else:  # inflow, mainline_origin_interface
+                    detector_pos = min(5.0, lane_length * 0.1)
 
                 self.edge_detectors.append(
                     {
                         "edge_id": edge_id,
                         "lane_id": lane_id,
                         "lane_index": lane_idx,
-                        "position": position,
-                        "segment_index": 0,
-                        "type": "backbone_segment",
+                        "position": detector_pos,
+                        "node_id": detector_node,
+                        "type": detector_type,
                         "from_node": from_node,
                         "to_node": to_node,
-                        "node_id": None,
+                        "detector_length": 5.0,
                     }
                 )
-                segment_detector_count += 1
 
-        return segment_detector_count
-    """
+        return inflow_count, outflow_count
 
     def add_detectors_backbone_network(self) -> int:
-        """Place E2 area detectors on every consolidated MotorwayLink.
+        """Place E2 area detectors along each consolidated motorway link as true cells.
 
-        Iterates the consolidated MotorwayLink objects directly so that
-        merged links (whose intermediate SUMO nodes no longer appear in
-        backbone_node_ids) are correctly instrumented. Each link's id is
-        the SUMO edge id and is used to look up the raw edge geometry.
+        For each MotorwayLink in self.motorway_links, divides the lane length into
+        evenly-spaced cells based on target_cell_length_km and appends one
+        laneAreaDetector entry per cell per lane to self.edge_detectors.
+
+        Returns:
+            Total number of backbone segment detector entries added.
+
+        Raises:
+            ValueError: If a MotorwayLink ID is not found in the SUMO network XML.
         """
         tree = ET.parse(self.sumo_network_path)
         root = tree.getroot()
 
-        # build a fast lookup: sumo edge_id -> XML element
         sumo_edges = {
             e.get("id"): e
             for e in root.findall("edge")
@@ -257,16 +259,23 @@ class LoopDetectorGenerator:
             from_node = edge.get("from")
             to_node = edge.get("to")
 
-            lanes = edge.findall("lane")
-            for lane_idx, lane in enumerate(lanes):
+            for lane_idx, lane in enumerate(edge.findall("lane")):
                 lane_id = lane.get("id")
+                if lane_id is None:
+                    continue
+
+                if not self._mark_lane_role(lane_id, "backbone_segment"):
+                    continue
+
                 length_str = lane.get("length")
                 if length_str is None:
                     continue
 
                 lane_length_m = float(length_str)
                 lane_length_km = lane_length_m / 1000.0
-
+                # Determine number of macroscopic cells by dividing the lane
+                # length by the target cell length (in km). Always keep at
+                # least one cell per lane.
                 num_cells = max(
                     1, math.floor(lane_length_km / self.target_cell_length_km)
                 )
@@ -275,6 +284,7 @@ class LoopDetectorGenerator:
                 for cell_idx in range(num_cells):
                     cell_start_m = cell_idx * cell_length_m
                     actual_length = min(cell_length_m, lane_length_m - cell_start_m)
+                    cell_key = f"{link.id}_cell{cell_idx}"
 
                     self.edge_detectors.append(
                         {
@@ -284,6 +294,7 @@ class LoopDetectorGenerator:
                             "position": cell_start_m,
                             "detector_length": actual_length,
                             "cell_index": cell_idx,
+                            "cell_key": cell_key,
                             "num_cells": num_cells,
                             "type": "backbone_segment",
                             "from_node": from_node,
@@ -296,15 +307,14 @@ class LoopDetectorGenerator:
         return segment_detector_count
 
     def find_turning_rate_edges(self) -> int:
-        """Find and place detectors at diverge nodes for turning rate measurement.
+        """Place detectors at diverge-node outgoing edges for turning-rate measurement.
 
-        Identifies edges at diverge nodes (nodes with multiple outgoing edges) and
-        places detectors at the start of each outgoing edge to measure the number
-        of vehicles choosing each path. This data is used to compute time-varying
-        turning rates that reflect actual traffic distribution.
+        Iterates over self.diverge_node_info and appends one inductionLoop entry per
+        lane per outgoing edge to self.edge_detectors. Each detector is positioned
+        near the start of the lane (at most 5 m or 10% of lane length).
 
         Returns:
-            Number of turning rate detectors created.
+            Total number of turning-rate detector entries added.
         """
         if not self.diverge_node_info:
             return 0
@@ -313,10 +323,8 @@ class LoopDetectorGenerator:
         root = tree.getroot()
         turning_rate_count = 0
 
-        # iterate through each diverge node and its outgoing edges
         for diverge_node_id, edge_ids in self.diverge_node_info.items():
             for edge_id in edge_ids:
-                # find the edge in the SUMO network
                 edge = None
                 for e in root.findall("edge"):
                     if e.get("id") == edge_id and e.get("function") != "internal":
@@ -329,16 +337,22 @@ class LoopDetectorGenerator:
                 from_node = edge.get("from")
                 to_node = edge.get("to")
 
-                # place detector on each lane of this edge
-                lanes = edge.findall("lane")
-                for lane_idx, lane in enumerate(lanes):
+                for lane_idx, lane in enumerate(edge.findall("lane")):
                     lane_id = lane.get("id")
+                    if lane_id is None:
+                        continue
+
+                    if not self._mark_lane_role(lane_id, "turning_rate"):
+                        continue
+
                     length_str = lane.get("length")
                     if length_str is None:
                         continue
-                    lane_length = float(length_str)
 
-                    # place detector near start of edge (5m from start)
+                    lane_length = float(length_str)
+                    # Place a small point detector near the diverge edge. Use
+                    # the lesser of 5 m and 10% of lane length to avoid placing
+                    # detectors outside short lanes.
                     detector_pos = min(5.0, lane_length * 0.1)
 
                     self.edge_detectors.append(
@@ -359,34 +373,80 @@ class LoopDetectorGenerator:
         return turning_rate_count
 
     def build_det_id(self, det: dict) -> str:
-        """Build a unique detector ID, appending segment_index for backbone detectors."""
-        det_type = det.get("type", "interface").replace("_", "")
-        base = f"detector_{det_type}_{det['edge_id']}_{det['lane_index']}"
-        if "cell_index" in det:
-            return f"{base}_cell{det['cell_index']}"
-        if "segment_index" in det:
-            return f"{base}_{det['segment_index']}"
-        return base
+        """Build a unique detector ID from a detector entry dictionary.
 
-    def write_detector_xml(self) -> str:
-        """Write SUMO loop detector configuration XML file.
+        ID format:
+        - backbone_segment: ``detector_backbonesegment_<edge_id>_<lane_index>_cell<cell_index>``
+        - all other types:  ``detector_<type>_<edge_id>_<lane_index>``
 
-        Generates the SUMO additional file containing induction loop elements
-        for all identified interface detectors. Each detector is configured
-        with its lane position, measurement frequency, and output file.
+        Args:
+            det: Detector entry dictionary as stored in self.edge_detectors.
 
         Returns:
-            Path to the generated detector XML file.
+            Unique string identifier for the detector.
+        """
+        det_type = det.get("type", "interface").replace("_", "")
+        base = f"detector_{det_type}_{det['edge_id']}_{det['lane_index']}"
+
+        if det.get("type") == "backbone_segment":
+            return f"{base}_cell{det['cell_index']}"
+
+        return base
+
+    # def write_detector_xml(self) -> str:
+    #     output_file = f"{self.output_dir}/{self.detector_filename}"
+    #     root = ET.Element("additional")
+
+    #     for det in self.edge_detectors:
+    #         det_id = self.build_det_id(det)
+
+    #         if det["type"] == "backbone_segment":
+    #             detector = ET.SubElement(root, "laneAreaDetector")
+    #             detector.set("id", det_id)
+    #             detector.set("lane", det["lane_id"])
+    #             detector.set("pos", f"{det['position']:.2f}")
+    #             detector.set("length", f"{det['detector_length']:.2f}")
+    #             detector.set("freq", str(self.detection_freq))
+    #             detector.set("file", self.output_xml_filename)
+    #         else:
+    #             detector = ET.SubElement(root, "inductionLoop")
+    #             detector.set("id", det_id)
+    #             detector.set("lane", det["lane_id"])
+    #             detector.set("pos", f"{det['position']:.2f}")
+    #             detector.set("freq", str(self.detection_freq))
+    #             detector.set("file", self.output_xml_filename)
+    #             if det["type"] in {"inflow", "outflow"}:
+    #                 detector.set("vTypes", "urban")
+
+    #     tree = ET.ElementTree(root)
+    #     ET.indent(tree, space="  ")
+    #     tree.write(output_file, encoding="utf-8", xml_declaration=True)
+
+    #     return output_file
+
+    def write_detector_xml(self) -> str:
+        """Write SUMO additional XML with detector definitions.
+
+        Detector element mapping:
+        - backbone_segment             → laneAreaDetector, no vTypes filter (counts all vehicles)
+        - mainline_origin_interface    → inductionLoop,    no vTypes filter (counts all vehicles)
+        - turning_rate                 → inductionLoop,    no vTypes filter (counts all vehicles)
+        - inflow / outflow             → inductionLoop,    no vTypes filter (counts all vehicles)
+
+        Returns:
+            Absolute path to the written detector XML file.
         """
         output_file = f"{self.output_dir}/{self.detector_filename}"
-
         root = ET.Element("additional")
+
+        # Types that use laneAreaDetectors instead of inductionLoops.
+        AREA_DETECTOR_TYPES = {"backbone_segment"}
 
         for det in self.edge_detectors:
             det_id = self.build_det_id(det)
+            det_type = det["type"]
 
-            if det["type"] == "backbone_segment":
-                # E2 lane area detector
+            if det_type in AREA_DETECTOR_TYPES:
                 detector = ET.SubElement(root, "laneAreaDetector")
                 detector.set("id", det_id)
                 detector.set("lane", det["lane_id"])
@@ -394,8 +454,9 @@ class LoopDetectorGenerator:
                 detector.set("length", f"{det['detector_length']:.2f}")
                 detector.set("freq", str(self.detection_freq))
                 detector.set("file", self.output_xml_filename)
+                # No vTypes — backbone detectors must see every vehicle.
+
             else:
-                # keep point detectors for inflow/outflow/turning_rate
                 detector = ET.SubElement(root, "inductionLoop")
                 detector.set("id", det_id)
                 detector.set("lane", det["lane_id"])
@@ -403,22 +464,25 @@ class LoopDetectorGenerator:
                 detector.set("freq", str(self.detection_freq))
                 detector.set("file", self.output_xml_filename)
 
+                # if det_type in URBAN_FILTERED_TYPES:
+                #     # Only count vehicles explicitly typed "urban" in the route file.
+                #     # mainline_origin_interface and turning_rate detectors intentionally
+                #     # have NO filter here — they must observe all vehicle types.
+                #     detector.set("vTypes", "urban")
+
         tree = ET.ElementTree(root)
         ET.indent(tree, space="  ")
         tree.write(output_file, encoding="utf-8", xml_declaration=True)
-
         return output_file
 
     def write_detector_spec_csv(self) -> str:
-        """Write detector specification CSV file.
+        """Write a CSV file mapping each detector to its edge, node, and cell metadata.
 
-        Creates a CSV file documenting each detector's metadata including
-        detector ID, type (inflow/outflow/ramp), edge topology (from/to nodes),
-        and associated backbone node. This specification is used by the
-        demand aggregator to map detector readings to network nodes.
+        Columns: detector_id, type, from, to, edge_id, backbone_node,
+        diverge_node_id, position, cell_index, cell_key, detector_length.
 
         Returns:
-            Path to the generated detector specification CSV file.
+            Absolute path to the written CSV file.
         """
         output_file = f"{self.output_dir}/{self.spec_filename}"
 
@@ -435,15 +499,13 @@ class LoopDetectorGenerator:
                     "diverge_node_id",
                     "position",
                     "cell_index",
+                    "cell_key",
                     "detector_length",
                 ],
             )
             writer.writeheader()
 
             for det in self.edge_detectors:
-                # include type in detector ID to avoid conflicts between interface and turning rate detectors
-                det_type = det.get("type", "interface").replace("_", "")
-                # det_id = f"detector_{det_type}_{det['edge_id']}_{det['lane_index']}"
                 det_id = self.build_det_id(det)
 
                 writer.writerow(
@@ -453,10 +515,11 @@ class LoopDetectorGenerator:
                         "from": det["from_node"],
                         "to": det["to_node"],
                         "edge_id": det["edge_id"],
-                        "backbone_node": det["node_id"],
+                        "backbone_node": det.get("node_id", ""),
                         "diverge_node_id": det.get("diverge_node_id", ""),
                         "position": det.get("position", ""),
                         "cell_index": det.get("cell_index", ""),
+                        "cell_key": det.get("cell_key", ""),
                         "detector_length": det.get("detector_length", ""),
                     }
                 )
@@ -464,23 +527,22 @@ class LoopDetectorGenerator:
         return output_file
 
     def generate(self) -> Tuple[str, str, str]:
-        """Execute the complete detector generation pipeline.
+        """Run the full detector generation pipeline and write all output files.
 
-        Orchestrates the full workflow: finding interface edges, finding turning
-        rate edges at diverge nodes, generating detector configurations, and writing
-        both the SUMO XML file and the specification CSV file.
+        Calls find_interface_edges(), find_turning_rate_edges(),
+        add_detectors_backbone_network(), write_detector_xml(), and
+        write_detector_spec_csv() in sequence, then prints a placement summary.
 
         Returns:
-            A tuple containing:
-                - detector_xml: Path to the generated detector definition XML file.
-                - output_xml: Path to the detector output XML file (where SUMO writes results).
-                - detector_csv: Path to the generated specification CSV file.
+            A tuple (detector_xml_path, detector_output_xml_path, detector_csv_path)
+            with the paths to the written SUMO additional XML, the detector output XML
+            reference path, and the detector specification CSV respectively.
         """
         inflow_count, outflow_count = self.find_interface_edges()
         turning_rate_count = self.find_turning_rate_edges()
         backbone_detector_count = self.add_detectors_backbone_network()
 
-        print(f"Detector placement summary:")
+        print("Detector placement summary:")
         print(f"  Inflow detectors: {inflow_count}")
         print(f"  Outflow detectors: {outflow_count}")
         print(f"  Turning rate detectors: {turning_rate_count}")

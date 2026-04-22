@@ -62,8 +62,7 @@ class NetworkArbitrator:
         roundabouts: List of roundabout node sequences.
         found_types: Set of road types discovered in the network.
         node_coordinates: Dictionary mapping node IDs to (x, y) coordinates.
-        selected_types: List of road types selected for the network.
-        hwy_filter: Hierarchical list of road type groups for filtering.
+        selected_types: Tuple of road type strings selected for the network, or None before parsing.
         road_params: Road parameters configuration loaded from JSON file.
     """
 
@@ -84,13 +83,11 @@ class NetworkArbitrator:
             road_params_config_path: Path to JSON configuration file containing
                 road parameters (lane_capacity, jam_density, free_flow_speed for each road type).
             target_cell_length: Target length for cells in the macroscopic network (km).
-            hwy_filter: Optional hierarchical list of road type groups for filtering.
-                If None, uses default hierarchy: motorway > trunk > primary > secondary > tertiary.
-                Format: [["motorway", "motorway_link"], ["trunk", "trunk_link"], ...]
             min_link_length: Minimum acceptable link length in kilometers for CFL stability.
-                If specified, links shorter than this threshold are either stretched (if > 50% of minimum)
-                or fused by contracting their nodes (if <= 50% of minimum). If None, no short link
-                handling is performed. Should be set based on max_free_flow_speed * dt + margin.
+                Links shorter than this threshold are either stretched (if > 50% of minimum)
+                or fused by contracting their nodes (if <= 50% of minimum). Must be provided
+                when calling run(); if None, run() will raise ValueError. Should be set based
+                on max_free_flow_speed * dt + margin.
         """
         self.path: str = net_xml_path
         self.target_cell_length: float = target_cell_length
@@ -226,14 +223,18 @@ class NetworkArbitrator:
                 - macroscopic_network: Network object representing the consolidated macroscopic network.
                 - origin_ids: List of origin node IDs in the network.
                 - onramp_ids: List of onramp node IDs in the network.
+                - offramp_ids: List of offramp node IDs in the network.
                 - destination_ids: List of destination node IDs in the network.
                 - road_params: Road parameters configuration used for the network.
                 - diverge_node_info: Dictionary mapping diverge node IDs to lists of SUMO edge IDs
                     for their outgoing motorway links. Use this to compute turning rates from
                     detector data via TurningRateAggregator.
+                - backbone_node_ids: Set of node IDs belonging to the mainline motorway backbone
+                    (excludes onramp source and offramp sink nodes).
 
         Raises:
-            ValueError: If no edges are found after parsing or if no matching road types exist.
+            ValueError: If no edges are found after parsing, if no matching road types exist,
+                or if min_link_length is None (required for short link handling).
         """
         # Step 1: Parse SUMO XML and build initial graph
         self.parse_sumo_xml()
@@ -248,6 +249,7 @@ class NetworkArbitrator:
         # Step 3: Filter the network to keep only the largest connected component and remove isolated nodes
         self.filter()
 
+        self.prune_orphan_ramps()
         # Step 4: Merge serial edges to simplify the network while preserving junctions
         self.merge_serial_edges()
 
@@ -281,9 +283,9 @@ class NetworkArbitrator:
         """Parse SUMO .net.xml file and extract network topology.
 
         Reads the SUMO network XML file and constructs a NetworkX MultiDiGraph
-        representation. Performs hierarchical road type filtering to select the
-        highest priority roads present in the network. Extracts node coordinates
-        and normalizes them to origin. Identifies roundabouts for later processing.
+        representation. Restricts edges to motorway and motorway_link types
+        (see MOTORWAY_TYPES). Extracts node coordinates and normalizes them
+        to origin. Identifies roundabouts for later processing.
 
         The method populates self.graph with edges containing attributes: id, length,
         speed, lanes, and type.
@@ -324,6 +326,9 @@ class NetworkArbitrator:
         #         f"Filter priorities: {self.hwy_filter}"
         #     )
 
+        # Restrict selection to motorway types for backbone extraction.
+        # This arbitrator currently focuses on motorway/motorway_link as the
+        # backbone; the hierarchical filter machinery is present but unused.
         self.selected_types = NetworkArbitrator.MOTORWAY_TYPES
 
         # extract junction coordinates
@@ -474,7 +479,7 @@ class NetworkArbitrator:
                 "No edges remain after filtering. Check the network file or highway filter."
             )
 
-    def merge_serial_edges(self, max_iterations: int = 1000) -> None:
+    def merge_serial_edges(self, max_iterations: int = 3000) -> None:
         """Merge serial edges, preserving junction structure.
 
         Identifies nodes with exactly one incoming and one outgoing edge (degree-2 nodes)
@@ -565,6 +570,9 @@ class NetworkArbitrator:
         The method processes the shortest link at a time and re-evaluates after each
         operation to prevent cascading contractions of adjacent short links. This
         greedy approach ensures links are only merged when truly necessary.
+
+        Raises:
+            ValueError: If min_link_length is None.
         """
         if self.min_link_length is None:
             raise ValueError(
@@ -695,6 +703,96 @@ class NetworkArbitrator:
                     print(f"    ... and {len(all_fused_links) - 5} more")
             print("-" * 60)
 
+    def _nodes_with_nonmotorway_outgoing(self) -> set[str]:
+        """Node IDs with at least one non-motorway outgoing edge in the full SUMO net."""
+        tree = ET.parse(self.path)
+        root = tree.getroot()
+        reachable: set[str] = set()
+        for edge in root.findall("edge"):
+            if edge.get("function") == "internal":
+                continue
+            if "motorway" in edge.get("type", ""):  # skip motorway + motorway_link
+                continue
+            from_node = edge.get("from")
+            if from_node:
+                reachable.add(from_node)
+        return reachable
+
+    def _nodes_with_nonmotorway_incoming(self) -> set[str]:
+        """Return the set of node IDs that have at least one non-motorway
+        incoming edge in the full SUMO network."""
+        tree = ET.parse(self.path)
+        root = tree.getroot()
+        reachable: set[str] = set()
+        for edge in root.findall("edge"):
+            if edge.get("function") == "internal":
+                continue
+            etype = edge.get("type", "")
+            if "motorway" in etype:  # skip motorway and motorway_link
+                continue
+            to_node = edge.get("to")
+            if to_node:
+                reachable.add(to_node)
+        return reachable
+
+    def prune_orphan_ramps(self, max_iterations: int = 100) -> None:
+        """Remove motorway_link edges whose open end has no urban continuation
+        in the original SUMO network.
+
+        When OSM clips a network, ramps can dangle: one end is still on the
+        motorway backbone, the other floats because its urban continuation was
+        outside the OSM extract. Topologically these look identical to a real
+        onramp source (or offramp sink), so downstream code would attach a
+        spurious Origin/Destination that receives no demand. In reality these
+        are artifacts of clipping and represent no entry/exit in the physical
+        road. Delete them. External demand on the clipped motorway should enter
+        at the cut *mainline* nodes, which are preserved and will receive their
+        own Origins/Destinations through the usual assignment path.
+        """
+        urban_in = self._nodes_with_nonmotorway_incoming()
+        urban_out = self._nodes_with_nonmotorway_outgoing()
+
+        # Fully synthetic networks have no urban context at all — skip pruning,
+        # otherwise every real ramp would be wrongly removed.
+        if not urban_in and not urban_out:
+            return
+
+        total_removed = 0
+        for _ in range(max_iterations):
+            to_remove: list[tuple] = []
+            for u, v, k, data in self.graph.edges(keys=True, data=True):
+                if "motorway_link" not in data.get("type", ""):
+                    continue
+                u_str, v_str = str(u), str(v)
+
+                # Looks like an onramp source but no urban feeder exists.
+                dangling_up = self.graph.in_degree(u) == 0 and u_str not in urban_in
+                # Looks like an offramp sink but no urban destination exists.
+                dangling_down = self.graph.out_degree(v) == 0 and v_str not in urban_out
+
+                if dangling_up or dangling_down:
+                    to_remove.append((u, v, k))
+
+            if not to_remove:
+                break
+
+            for u, v, k in to_remove:
+                if self.graph.has_edge(u, v, key=k):
+                    self.graph.remove_edge(u, v, k)
+            total_removed += len(to_remove)
+
+            # Nodes stranded by the removal need to go too, otherwise the next
+            # iteration's degree checks would be wrong.
+            self.graph.remove_nodes_from(list(nx.isolates(self.graph)))
+
+        if total_removed:
+            warnings.warn(
+                f"Pruned {total_removed} orphan motorway_link edge(s): clipped "
+                f"ramps with no urban continuation in the SUMO network. External "
+                f"demand will enter at the cut mainline Origins instead.",
+                stacklevel=2,
+            )
+
     def instantiate_network(
         self,
     ) -> Tuple[
@@ -730,9 +828,12 @@ class NetworkArbitrator:
                 - network: Network object containing all macroscopic nodes with their connections.
                 - origin_ids: List of origin node IDs in the network.
                 - onramp_ids: List of onramp node IDs in the network.
+                - offramp_ids: List of offramp node IDs in the network.
                 - destination_ids: List of destination node IDs in the network.
                 - diverge_node_info: Dictionary mapping diverge node IDs to lists of SUMO edge IDs
                     for their outgoing motorway links.
+                - backbone_node_ids: Set of node IDs belonging to the mainline motorway backbone
+                    (excludes onramp source and offramp sink nodes).
         """
 
         macro_nodes = {}
@@ -745,6 +846,45 @@ class NetworkArbitrator:
         # offramp sink:  out_degree=0, all incoming edges are motorway_link
         onramp_source_nodes: set[str] = set()
         offramp_sink_nodes: set[str] = set()
+
+        # for nid in self.graph.nodes():
+        #     if self.graph.in_degree(nid) == 0:
+        #         out_edges = list(self.graph.out_edges(nid, data=True))
+        #         if out_edges and all(
+        #             "motorway_link" in d.get("type", "") for _, _, d in out_edges
+        #         ):
+        #             onramp_source_nodes.add(str(nid))
+
+        urban_reachable = self._nodes_with_nonmotorway_incoming()
+        # Synthetic scenarios have no urban edges anywhere; in that case the
+        # urban-reachability filter is meaningless and would wrongly demote
+        # every onramp candidate to a mainline origin.
+        topology_only = not urban_reachable
+
+        # for nid in self.graph.nodes():
+        #     if self.graph.in_degree(nid) == 0:
+        #         out_edges = list(self.graph.out_edges(nid, data=True))
+        #         if out_edges and all(
+        #             "motorway_link" in d.get("type", "") for _, _, d in out_edges
+        #         ):
+        #             if str(nid) not in urban_reachable and not topology_only:
+        #                 warnings.warn(
+        #                     f"Onramp candidate node '{nid}' has no non-motorway incoming "
+        #                     f"edges in the SUMO network. It will be treated as a mainline "
+        #                     f"origin (no urban demand can reach it). Check OSM coverage.",
+        #                     stacklevel=2,
+        #                 )
+        #                 # Do NOT add to onramp_source_nodes — its Onramp link becomes a
+        #                 # MotorwayLink, and the origin receives mainline-type demand only.
+        #             else:
+        #                 onramp_source_nodes.add(str(nid))
+
+        #     if self.graph.out_degree(nid) == 0:
+        #         in_edges = list(self.graph.in_edges(nid, data=True))
+        #         if in_edges and all(
+        #             "motorway_link" in d.get("type", "") for _, _, d in in_edges
+        #         ):
+        #             offramp_sink_nodes.add(str(nid))
 
         for nid in self.graph.nodes():
             if self.graph.in_degree(nid) == 0:
@@ -838,9 +978,10 @@ class NetworkArbitrator:
 
             if not node_obj.incoming:
                 if any(isinstance(l, Onramp) for l in node_obj.outgoing):
-                    for l in node_obj.outgoing:
-                        onramp_ids.append(l.id)
-                    # onramp_ids.append(nid_str)
+                    # for l in node_obj.outgoing:
+                    onramp_ids.append(nid_str)
+                    # onramp_ids.append(l.id)
+                    # onramp_ids.append(f'onramp_{nid_str}')
 
                     orig = Origin(id=f"origin_{nid}", destination_node_id=nid_str)
                     origin_ids.append(orig.id)
@@ -851,8 +992,10 @@ class NetworkArbitrator:
 
             if not node_obj.outgoing:
                 if any(isinstance(l, Offramp) for l in node_obj.incoming):
-                    for l in node_obj.incoming:
-                        offramp_ids.append(l.id)
+                    # for l in node_obj.incoming:
+                    offramp_ids.append(nid_str)
+                    # offramp_ids.append(l.id)
+                    # offramp_ids.append(f'offramp_{nid_str}')
 
                     dest = Destination(id=f"dest_{nid}", origin_node_id=nid_str)
                     destination_ids.append(dest.id)

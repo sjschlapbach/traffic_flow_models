@@ -56,8 +56,10 @@ class SUMOPipeline:
         arbitrator: NetworkArbitrator instance used for network conversion.
         origin_ids: List of origin node IDs in the network.
         onramp_ids: List of onramp node IDs in the network.
+        offramp_ids: List of offramp node IDs in the network.
         destination_ids: List of destination node IDs in the network.
-        splits: Dictionary mapping node IDs to their outgoing link split ratios.
+        backbone_node_ids: Set of node IDs that form the motorway backbone.
+        diverge_node_info: Dictionary mapping diverge node IDs to lists of SUMO edge IDs.
     """
 
     def __init__(
@@ -75,6 +77,8 @@ class SUMOPipeline:
             location: Geographic location to fetch OSM data from.
             road_params_config_path: Path to JSON configuration file containing
                 road parameters (lane_capacity, jam_density, free_flow_speed for each road type).
+            output_dir: Directory where all intermediate and final output files are stored.
+            clean_output_dir: If True, deletes and recreates output_dir before starting.
         """
         self.name: str = name
         self.location: str = location
@@ -99,6 +103,7 @@ class SUMOPipeline:
         self.detector_output_path: str = os.path.join(
             self.output_dir, "detectors_output.xml"
         )
+        self.v_type_file: Optional[str] = None
         self.consolidated_network: Optional[Network] = None
         self.arbitrator: Optional[NetworkArbitrator] = None
         self.origin_ids: Optional[list[str]] = None
@@ -231,110 +236,6 @@ class SUMOPipeline:
                 return node_id[len(prefix) :]
         return node_id
 
-    def get_fringe_edges(
-        self,
-        node_ids: list[str],
-        direction: str,
-        *,
-        allow_reverse_fallback: bool = False,
-    ) -> list[str]:
-        """Collect edge IDs in the SUMO net adjacent to the given node IDs.
-
-        Handles three kinds of entries in *node_ids*:
-
-        1. **Prefixed node IDs** (e.g. ``'origin_177009495'``, ``'dest_260747056'``) —
-        the prefix is stripped and the raw ID is looked up as a SUMO junction.
-        2. **Raw junction IDs** (plain numerics like ``'298859194'``) — looked up
-        directly as junctions.
-        3. **Raw SUMO edge IDs** (contain ``'#'`` or match an edge in the net,
-        e.g. ``'210731931#0'``) — used as-is without any junction lookup.
-
-        For junction-based lookups the preferred *direction* is tried first; if
-        nothing is found and *allow_reverse_fallback* is ``True``, the opposite
-        direction is attempted and a warning is printed.
-
-        Internal junction edges (``function="internal"``) are always skipped.
-
-        Args:
-            node_ids: Mixed list of prefixed node IDs, raw junction IDs, or raw
-                edge IDs — as stored by NetworkArbitrator.
-            direction: Preferred search direction for junction-based lookups.
-                    ``'from'`` → outgoing edges; ``'to'`` → incoming edges.
-            allow_reverse_fallback: Retry with the opposite direction when the
-                preferred direction yields nothing for a junction.
-
-        Returns:
-            Deduplicated list of resolved edge IDs.
-        """
-        tree = ET.parse(self.net_file)
-        root = tree.getroot()
-
-        # Build junction→edges index and a set of all known edge IDs in one pass.
-        from_index: dict[str, list[str]] = {}
-        to_index: dict[str, list[str]] = {}
-        all_edge_ids: set[str] = set()
-        for edge in root.findall("edge"):
-            if edge.get("function") == "internal":
-                continue
-            eid = edge.get("id")
-            if not eid:
-                continue
-            all_edge_ids.add(eid)
-            f = edge.get("from")
-            t = edge.get("to")
-            if f:
-                from_index.setdefault(f, []).append(eid)
-            if t:
-                to_index.setdefault(t, []).append(eid)
-
-        primary_index = from_index if direction == "from" else to_index
-        fallback_index = to_index if direction == "from" else from_index
-        fallback_dir = "to" if direction == "from" else "from"
-
-        # Collect unique edge IDs while preserving insertion order.
-        edges: list[str] = []
-        seen: set[str] = set()
-        fallback_nodes: list[str] = []
-        direct_edge_nodes: list[str] = []
-
-        for node_id in node_ids:
-            raw = self.strip_node_prefix(node_id)
-
-            # Case 3: stripped ID is itself a valid SUMO edge — use it directly.
-            if raw in all_edge_ids:
-                # If this ID is already a direct SUMO edge ID, use it as-is instead
-                # of interpreting it as a junction reference.
-                direct_edge_nodes.append(raw)
-                if raw not in seen:
-                    seen.add(raw)
-                    edges.append(raw)
-                continue
-
-            # Cases 1 & 2: treat as junction ID and look up adjacent edges.
-            found = primary_index.get(raw, [])
-            if not found and allow_reverse_fallback:
-                found = fallback_index.get(raw, [])
-                if found:
-                    fallback_nodes.append(raw)
-            for eid in found:
-                if eid not in seen:
-                    seen.add(eid)
-                    edges.append(eid)
-
-        if direct_edge_nodes:
-            print(
-                f"[INFO] get_fringe_edges: {len(direct_edge_nodes)} ID(s) resolved "
-                f"as direct edge references (not junctions): {direct_edge_nodes}"
-            )
-        if fallback_nodes:
-            print(
-                f"[WARN] get_fringe_edges(direction='{direction}'): "
-                f"{len(fallback_nodes)} junction(s) had no '{direction}' edge — "
-                f"used '{fallback_dir}' fallback: {fallback_nodes}"
-            )
-
-        return edges
-
     def _build_highway_trips_xml(
         self,
         departures: list[float],
@@ -375,6 +276,8 @@ class SUMOPipeline:
             )
             trip.set("from", from_edge)
             trip.set("to", to_edge)
+            trip.set("departPos", "0")
+            trip.set("departLane", "random")
         return root
 
     def _validate_with_duarouter(
@@ -419,8 +322,8 @@ class SUMOPipeline:
 
         Extracts ``<vehicle>`` and ``<trip>`` elements from each source file
         (preserving nested ``<route>`` children produced by duarouter), prepends
-        a single ``<vType id="passenger_car">`` definition, and writes the merged
-        tree to *output_path*.
+        ``<vType>`` definitions for both ``passenger_car`` and ``urban`` vehicle
+        classes, and writes the merged tree to *output_path*.
 
         Args:
             paths:       Ordered list of source route/trip XML file paths.
@@ -430,9 +333,17 @@ class SUMOPipeline:
             Total number of vehicle/trip elements written.
         """
         merged_root = ET.Element("routes")
-        vtype = ET.SubElement(
-            merged_root, "vType", id="passenger_car", vClass="passenger"
+        # ET.SubElement(merged_root, "vType", id="urban", vClass="passenger")
+        ET.SubElement(merged_root, "vType", id="passenger_car", vClass="passenger")
+        urban_vtype = ET.SubElement(
+            merged_root, "vType", id="urban", vClass="passenger"
         )
+        urban_vtype.set("maxSpeed", "50")
+        urban_vtype.set("accel", "2.6")
+        urban_vtype.set("decel", "4.5")
+        urban_vtype.set("length", "5.0")
+        urban_vtype.set("minGap", "2.5")
+        urban_vtype.set("sigma", "0.5")
 
         all_vehicles: list[ET.Element] = []
         for path in paths:
@@ -442,7 +353,7 @@ class SUMOPipeline:
                     all_vehicles.append(el)
 
         all_vehicles.sort(key=lambda x: float(x.get("depart", "0")))
-        merged_root[:] = [vtype] + all_vehicles
+        merged_root.extend(all_vehicles)
 
         ET.ElementTree(merged_root).write(
             output_path, encoding="utf-8", xml_declaration=True
@@ -450,6 +361,7 @@ class SUMOPipeline:
         return len(all_vehicles)
 
     # @skip_if_exists("rou_file")
+
     def generate_demand(
         self,
         urban_count: int,
@@ -458,73 +370,24 @@ class SUMOPipeline:
         demand_profile: list[tuple[float, float]] | None = None,
         seed: int = 42,
     ) -> None:
-        """Generate two-stream SUMO demand and write a single merged route file.
-
-        **Urban stream** (always active)
-            Uses ``randomTrips.py`` to produce topologically valid random trips
-            across the full road network, biased toward motorway fringes.
-            Departure times are reshaped to match *demand_profile* if supplied.
-
-        **Highway stream** (enabled when ``highway_count > 0``)
-            Injects vehicles directly at motorway fringe *origin* nodes
-            (``self.origin_ids``) and routes them to any valid *destination* or
-            *offramp* node (``self.destination_ids ∪ self.offramp_ids``).  This
-            simulates through traffic entering the map from outside the modelled
-            area.  Trips are randomly paired per the seeded RNG and then validated
-            with ``duarouter``; unreachable pairings are silently dropped.
-
-        Both streams share the same *seed* and *demand_profile*, so their temporal
-        shapes are identical.  The two streams are merged into a single
-        ``self.rou_file``, sorted by departure time, with a single
-        ``<vType id="passenger_car">`` definition at the top.
-
-        Vehicle IDs are namespaced: ``urban_<n>`` and ``hw_<n>`` to avoid
-        collisions when SUMO reads the merged file.
-
-        Args:
-            urban_count:     Number of vehicles in the urban random-trip stream.
-            duration_seconds: Total simulation window in seconds.
-            highway_count:   Number of vehicles in the highway fringe stream.
-                            Pass ``0`` (default) to disable the highway stream.
-            demand_profile:  Piecewise-linear temporal profile as a list of
-                            ``(relative_time, fraction)`` pairs.  Times must be
-                            in ``[0.0, 1.0]``; fractions must sum to ``1.0``.
-                            Example: ``[(0.0, 0.3), (0.3, 0.5), (0.8, 0.2)]``.
-                            Pass ``None`` for a uniform distribution.
-            seed:            Integer seed for reproducibility.  Controls both
-                            ``randomTrips.py`` routing and the RNG used for
-                            highway origin→destination pairing.
-
-        Raises:
-            EnvironmentError: If the ``SUMO_HOME`` environment variable is not set.
-            ValueError: If ``highway_count > 0`` but ``origin_ids``,
-                        ``destination_ids``, or ``offramp_ids`` have not been
-                        populated (i.e. ``create_consolidated_network()`` has not
-                        been called).
-            ValueError: If no valid departure or arrival edges can be resolved
-                        from the given origin/destination node IDs.
-            subprocess.CalledProcessError: Propagated if ``randomTrips.py`` or
-                        ``duarouter`` exits with a non-zero status.
+        """
+        Generates urban and highway demand. Highway demand is strictly filtered
+         to only inject onto edges directly connected to motorway mainlines.
         """
         if "SUMO_HOME" not in os.environ:
             raise EnvironmentError("Please set the 'SUMO_HOME' environment variable.")
 
         rng = random.Random(seed)
-
         temp_urban_trips = os.path.join(self.output_dir, "_temp_urban_trips.xml")
         temp_urban_rou = os.path.join(self.output_dir, "_temp_urban.rou.xml")
         temp_hw_trips = os.path.join(self.output_dir, "_temp_hw_trips.xml")
         temp_hw_rou = os.path.join(self.output_dir, "_temp_hw.rou.xml")
 
         try:
-            # ── Stream 1: Urban random trips ─────────────────────────────────────
-            # randomTrips.py produces a full random route file across the entire
-            # network. This stream covers internal urban travel, not just highway
-            # fringe traffic.
+            # --- 1. URBAN DEMAND GENERATION ---
             random_trips_script = os.path.join(
                 os.environ["SUMO_HOME"], "tools", "randomTrips.py"
             )
-            # Generate the urban stream using SUMO's randomTrips.py helper.
             cmd = [
                 sys.executable,
                 random_trips_script,
@@ -537,9 +400,7 @@ class SUMOPipeline:
                 "--end",
                 str(duration_seconds),
                 "--period",
-                str(duration_seconds / urban_count),
-                "--fringe-factor",
-                "10",
+                str(duration_seconds / max(urban_count, 1)),
                 "--validate",
                 "--remove-loops",
                 "--seed",
@@ -547,142 +408,150 @@ class SUMOPipeline:
             ]
             subprocess.run(cmd, check=True, capture_output=True, text=True)
 
-            # Reshape urban departure times + apply vehicle type + namespace IDs.
+            # Reshape urban times based on profile
             urban_tree = ET.parse(temp_urban_rou)
             urban_root = urban_tree.getroot()
-            elements = [el for el in urban_root if el.tag in ("vehicle", "trip")]
+            urban_elements = [el for el in urban_root if el.tag in ("vehicle", "trip")]
 
             if demand_profile:
-                new_times = self._sample_from_profile(
-                    len(elements), duration_seconds, demand_profile
+                u_times = self._sample_from_profile(
+                    len(urban_elements), duration_seconds, demand_profile
                 )
             else:
-                # Uniform: re-space whatever randomTrips produced across the window.
-                # This ensures the generated urban departures fill the full horizon.
-                interval = duration_seconds / max(len(elements), 1)
-                new_times = [i * interval for i in range(len(elements))]
+                u_interval = duration_seconds / max(len(urban_elements), 1)
+                u_times = [i * u_interval for i in range(len(urban_elements))]
 
-            for idx, (el, t) in enumerate(zip(elements, new_times)):
+            for idx, (el, t) in enumerate(zip(urban_elements, u_times)):
                 el.set("depart", f"{t:.2f}")
-                el.set("type", "passenger_car")
+                el.set("type", "urban")
                 el.set("id", f"urban_{idx}")
+                el.set("departLane", "random")
 
-            elements.sort(key=lambda x: float(x.get("depart")))  # type: ignore - should fail in case of missing attribute
-            urban_root[:] = elements
+            urban_elements.sort(key=lambda x: float(x.get("depart")))  # type: ignore
+            urban_root[:] = urban_elements
             urban_tree.write(temp_urban_rou, encoding="utf-8", xml_declaration=True)
 
-            # ── Stream 2: Highway fringe demand ──────────────────────────────────
-            routed_count = 0
+            # --- 2. HIGHWAY DEMAND GENERATION (WITH MAINLINE FILTERING) ---
+            routed_hw_count = 0
             if highway_count > 0:
-                # Validate prerequisites
-                if not self.origin_ids:
-                    raise ValueError(
-                        "origin_ids is empty.  Call create_consolidated_network() "
-                        "before generating highway demand."
+                net_tree = ET.parse(self.net_file)
+                net_root = net_tree.getroot()
+
+                # Build topological index: node_id -> List[Edge Elements]
+                node_to_out_edges = {}
+                node_to_in_edges = {}
+
+                for edge in net_root.findall("edge"):
+                    if edge.get("function") == "internal":
+                        continue
+                    f, t = edge.get("from"), edge.get("to")
+                    if f:
+                        node_to_out_edges.setdefault(f, []).append(edge)
+                    if t:
+                        node_to_in_edges.setdefault(t, []).append(edge)
+
+                # --- Highway origins: mainline cuts only (edges of the map) ---
+                # Urban demand covers onramps; highway demand represents traffic
+                # entering from outside the map on the motorway itself. Exclude
+                # onramp nodes explicitly (using the arbitrator's own classification)
+                # and verify the connector edge is a pure motorway, not a ramp link.
+                onramp_id_set = {str(n) for n in (self.onramp_ids or [])}
+                offramp_id_set = {str(n) for n in (self.offramp_ids or [])}
+
+                verified_from_edges: list[str] = []
+                origin_nodes = [
+                    n for n in (self.origin_ids or []) if n.startswith("origin_")
+                ]
+
+                for node_name in origin_nodes:
+                    stripped_id = self.strip_node_prefix(node_name)
+
+                    # Onramp origins are served by urban demand. Never use them
+                    # as highway entries, regardless of what lies downstream.
+                    if stripped_id in onramp_id_set:
+                        continue
+
+                    for c_edge in node_to_out_edges.get(stripped_id, []):
+                        etype = c_edge.get("type", "")
+                        # Must sit on the motorway mainline itself, not a ramp stub.
+                        if "motorway" in etype and "link" not in etype:
+                            verified_from_edges.append(c_edge.get("id"))
+
+                if not verified_from_edges:
+                    print(
+                        "[WARN] No mainline-cut origins found; skipping highway demand."
                     )
-                dest_node_ids = (self.destination_ids or []) + (self.offramp_ids or [])
-                if not dest_node_ids:
+                    highway_count = 0
+
+                # --- Highway destinations: mainline cuts only, symmetric to origins ---
+                verified_to_edges: list[str] = []
+                dest_nodes = [
+                    n for n in (self.destination_ids or []) if n.startswith("dest")
+                ]
+
+                for node_name in dest_nodes:
+                    stripped_id = self.strip_node_prefix(node_name)
+
+                    # Offramp destinations feed urban streets. A highway through-trip
+                    # should exit at a mainline cut, not dive off into the city.
+                    if stripped_id in offramp_id_set:
+                        continue
+
+                    for e in node_to_in_edges.get(stripped_id, []):
+                        etype = e.get("type", "")
+                        if "motorway" in etype and "link" not in etype:
+                            verified_to_edges.append(e.get("id"))
+
+                if highway_count > 0 and (
+                    not verified_from_edges or not verified_to_edges
+                ):
                     raise ValueError(
-                        "Both destination_ids and offramp_ids are empty.  "
-                        "At least one destination or offramp node is required for "
-                        "the highway stream."
+                        "No valid mainline origin/destination pairs found after filtering. "
+                        "Highway demand requires at least one mainline-cut origin AND one "
+                        "mainline-cut destination on this network."
                     )
 
-                raw_origins = [self.strip_node_prefix(n) for n in self.origin_ids]
-                raw_dests = [self.strip_node_prefix(n) for n in dest_node_ids]
-                print(f"[DEBUG] Highway stream — searching net XML for:")
-                print(f"  origin  raw IDs  ({len(raw_origins)}): {raw_origins}")
-                print(f"  dest    raw IDs  ({len(raw_dests)}):   {raw_dests}")
-
-                from_edges = self.get_fringe_edges(self.origin_ids, "from")
-                to_edges = self.get_fringe_edges(dest_node_ids, "to")
-
-                if not from_edges:
-                    raise ValueError(
-                        f"No edges (in either direction) found for origin nodes "
-                        f"{raw_origins} in {self.net_file}.\n"
-                        "Possible causes:\n"
-                        "  * create_consolidated_network() was not called before generate_demand().\n"
-                        "  * The node IDs don't match any junction in the net XML."
-                    )
-                if not to_edges:
-                    # Collect the first 20 junction IDs from the net for comparison.
-                    _tree = ET.parse(self.net_file)
-                    _net_junctions = [
-                        j.get("id")
-                        for j in _tree.getroot().findall("junction")
-                        if j.get("type") != "internal"
-                    ][:20]
-                    raise ValueError(
-                        f"No edges (in either direction) found for "
-                        f"{len(dest_node_ids)} destination/offramp nodes after "
-                        f"prefix stripping.\n"
-                        f"  Searched raw IDs : {raw_dests}\n"
-                        f"  Net junctions (first 20): {_net_junctions}\n"
-                        "Check whether the stripped IDs appear in that list.  "
-                        "If not, the node IDs produced by NetworkArbitrator do not "
-                        "correspond 1-to-1 with SUMO junction IDs."
-                    )
-                print(
-                    f"[INFO] Highway stream edge pools — "
-                    f"departure: {len(from_edges)}, arrival: {len(to_edges)}"
-                )
-
-                # Departure times — same profile logic, independent count
+                # Generate Highway Departures
                 if demand_profile:
-                    hw_departures = self._sample_from_profile(
+                    hw_deps = self._sample_from_profile(
                         highway_count, duration_seconds, demand_profile
                     )
                 else:
                     hw_interval = duration_seconds / highway_count
-                    hw_departures = [i * hw_interval for i in range(highway_count)]
+                    hw_deps = [i * hw_interval for i in range(highway_count)]
 
-                # Build raw highway fringe trip definitions and validate them.
-                # duarouter will drop unreachable trips while producing complete routes.
+                # Build and Route Highway Trips
                 hw_trips_root = self._build_highway_trips_xml(
-                    hw_departures, from_edges, to_edges, rng
+                    hw_deps, verified_from_edges, verified_to_edges, rng
                 )
                 ET.ElementTree(hw_trips_root).write(
                     temp_hw_trips, encoding="utf-8", xml_declaration=True
                 )
+
                 self._validate_with_duarouter(temp_hw_trips, temp_hw_rou, seed)
 
-                # Report how many highway trips survived routing
+                # Count successfully routed vehicles
                 hw_tree = ET.parse(temp_hw_rou)
-                routed_count = sum(
+                routed_hw_count = sum(
                     1 for el in hw_tree.getroot() if el.tag in ("vehicle", "trip")
                 )
-                if routed_count < highway_count:
+
+                if routed_hw_count < highway_count:
                     print(
-                        f"[WARN] Highway stream: {highway_count - routed_count} of "
-                        f"{highway_count} trips were unroutable and dropped by "
-                        "duarouter."
+                        f"[WARN] Highway: {highway_count - routed_hw_count}/{highway_count} dropped (unroutable)."
                     )
 
-            # ── Merge both streams into the final route file ──────────────────────
+            # --- 3. MERGE AND CLEANUP ---
             files_to_merge = [temp_urban_rou]
             if highway_count > 0:
                 files_to_merge.append(temp_hw_rou)
 
             total = self._merge_route_files(files_to_merge, self.rou_file)
-
-            parts = [f"urban={urban_count}"]
-            if highway_count > 0:
-                parts.append(f"highway={routed_count}/{highway_count} routed")
-            print(
-                f"[OK] Generated {total} vehicles ({', '.join(parts)}) "
-                f"→ {self.rou_file}"
-            )
+            print(f"[OK] Generated {total} vehicles -> {self.rou_file}")
 
         except subprocess.CalledProcessError as e:
-            # Re-raise with full stderr visible to the caller rather than silencing.
-            stderr = e.stderr.strip() if e.stderr else "(no stderr)"
-            raise RuntimeError(
-                f"Subprocess failed (exit {e.returncode}): {' '.join(e.cmd)}\n{stderr}"
-            ) from e
-
+            raise RuntimeError(f"SUMO Subprocess failed: {e.stderr}") from e
         finally:
-            # Always clean up temp files, even on error
             for path in [temp_urban_trips, temp_urban_rou, temp_hw_trips, temp_hw_rou]:
                 if os.path.exists(path):
                     os.remove(path)
@@ -738,9 +607,11 @@ class SUMOPipeline:
                 - consolidated_network: Network object representing the macroscopic network.
                 - origin_ids: List of origin node IDs in the network.
                 - onramp_ids: List of onramp node IDs in the network.
+                - offramp_ids: List of offramp node IDs in the network.
                 - destination_ids: List of destination node IDs in the network.
                 - road_params: Road parameters configuration used for the network.
                 - diverge_node_info: Dictionary mapping diverge node IDs to lists of SUMO edge IDs.
+                - backbone_node_ids: Set of node IDs that form the motorway backbone.
         """
         self.arbitrator = NetworkArbitrator(
             net_xml_path=os.path.normpath(self.net_file),
@@ -968,10 +839,38 @@ class SUMOPipeline:
         self,
         edge_data_path: str,
     ) -> tuple[dict[str, Callable], dict[str, Callable]]:
+        """Build time-varying flow and density boundary conditions for each destination node.
+
+        Parses SUMO edge data output to extract per-interval density time series for the
+        edges immediately upstream of each destination. Density is aggregated across all
+        upstream edges weighted by lane count, then converted to a boundary flow via the
+        triangular fundamental diagram defined in road_params.
+
+        Args:
+            edge_data_path: Path to a SUMO ``<edgeData>`` output XML file containing
+                per-interval density measurements (``density`` attribute on ``<edge>`` elements).
+
+        Returns:
+            A tuple of two dictionaries, both keyed by destination node ID:
+                - destination_flow_bc: Maps each destination to a callable ``f(t) -> float``
+                  returning total flow in veh/h at time *t* (hours).
+                - destination_density_bc: Maps each destination to a callable ``f(t) -> float``
+                  returning per-lane density in veh/km at time *t* (hours).
+
+        Raises:
+            ValueError: If destination_ids or road_params have not been initialized.
+        """
+        if self.destination_ids is None:
+            raise ValueError(
+                "Destination boundary conditions cannot be computed in case of missing destinations."
+            )
+        if self.road_params is None:
+            raise ValueError("Road parameters are not initialized.")
+
+        # Parse SUMO edge data — collect density time series per edge
         tree = ET.parse(edge_data_path)
         root = tree.getroot()
-        edge_density_ts = {}
-
+        edge_density_ts: dict[str, list[tuple[float, float]]] = {}
         for interval in root.findall("interval"):
             t_mid = (
                 (float(interval.get("begin", 0)) + float(interval.get("end", 0))) / 2.0
@@ -982,30 +881,31 @@ class SUMOPipeline:
                 if eid and d is not None:
                     edge_density_ts.setdefault(eid, []).append((t_mid, float(d)))
 
-        lane_counts = self.get_edge_lane_counts()
+        # Build junction → incoming edges index directly from net XML
+        net_tree = ET.parse(self.net_file)
+        to_index: dict[str, list[str]] = {}
+        for edge in net_tree.getroot().findall("edge"):
+            if edge.get("function") == "internal":
+                continue
+            eid = edge.get("id")
+            t = edge.get("to")
+            if eid and t:
+                to_index.setdefault(t, []).append(eid)
 
-        # extract the road parameters for the motorway
-        if self.road_params is None:
-            raise ValueError("Road parameters are not initialized.")
+        lane_counts = self.get_edge_lane_counts()
         motorway_params = self.road_params.get("motorway") or next(
             iter(self.road_params.values())
         )
 
-        destination_flow_bc = {}
-        destination_density_bc = {}
-
-        # if no destinations are defined, raise an error -> network invalid
-        if self.destination_ids is None:
-            raise ValueError(
-                "Destination boundary conditions cannot be computed in case of missing destinations."
-            )
+        destination_flow_bc: dict[str, Callable] = {}
+        destination_density_bc: dict[str, Callable] = {}
 
         for dest_id in self.destination_ids:
-            upstream_edges = self.get_fringe_edges(
-                [dest_id], direction="to", allow_reverse_fallback=True
-            )
+            raw = self.strip_node_prefix(dest_id)
+            upstream_edges = to_index.get(raw, [])
 
-            ts_agg = {}
+            # Aggregate density time series across all upstream edges
+            ts_agg: dict[float, list[float]] = {}
             matched = []
             for eid in upstream_edges:
                 if eid in edge_density_ts:
@@ -1014,34 +914,33 @@ class SUMOPipeline:
                         ts_agg.setdefault(t, []).append(d)
 
             if not matched:
+                warnings.warn(
+                    f"No density data found for any upstream edges of destination '{dest_id}'. "
+                    "Using fallback constant BCs: density=10 veh/km, flow=capacity."
+                )
                 destination_density_bc[dest_id] = lambda t: 10.0
                 destination_flow_bc[dest_id] = (
                     lambda t: motorway_params["lane_capacity"]
                     * sum(lane_counts.values())
                     / len(lane_counts)
                 )
-                warnings.warn(
-                    f"No density data found for any upstream edges of destination '{dest_id}'. "
-                    "Using fallback constant BCs: density=10 veh/km, flow=capacity."
-                )
                 continue
 
             t_vals = sorted(ts_agg.keys())
             total_lanes = sum(lane_counts.get(eid, 1) for eid in matched)
-            d_vals_per_lane = [(sum(ts_agg[t]) / total_lanes) for t in t_vals]
+            d_vals_per_lane = [sum(ts_agg[t]) / total_lanes for t in t_vals]
 
-            # Define Density BC as PER LANE
-            def get_rho_lane(t, _t=t_vals, _d=d_vals_per_lane):
+            # Density BC — per lane, interpolated
+            def get_rho_lane(t, _t=t_vals, _d=d_vals_per_lane) -> float:
                 return float(np.interp(t, _t, _d))
 
             destination_density_bc[dest_id] = get_rho_lane
 
-            # Define Flow BC as PER LINK (total)
+            # Flow BC — per link total, derived from FD
             def get_q_total(
                 t, _rho_fn=get_rho_lane, lanes=total_lanes, _params=motorway_params
-            ):
-                rho_lane = _rho_fn(t)
-                return self.bc_flow_from_density(rho_lane, lanes, _params)
+            ) -> float:
+                return self.bc_flow_from_density(_rho_fn(t), lanes, _params)
 
             destination_flow_bc[dest_id] = get_q_total
 
@@ -1062,17 +961,19 @@ class SUMOPipeline:
         """Retrieve the consolidated macroscopic network and metadata.
 
         Provides access to the previously generated network and its
-        associated metadata. This method should be called after either
-        generate_detectors() or create_consolidated_network() has been executed.
+        associated metadata. This method should be called after
+        create_consolidated_network() has been executed.
 
         Returns:
             A tuple containing:
                 - consolidated_network: Network object representing the macroscopic network.
                 - origin_ids: List of origin node IDs in the network.
                 - onramp_ids: List of onramp node IDs in the network.
+                - offramp_ids: List of offramp node IDs in the network.
                 - destination_ids: List of destination node IDs in the network.
                 - road_params: Road parameters configuration used for the network.
                 - diverge_node_info: Dictionary mapping diverge node IDs to lists of SUMO edge IDs.
+                - backbone_node_ids: Set of node IDs that form the motorway backbone.
 
         Raises:
             ValueError: If consolidated network has not been created yet.

@@ -1,14 +1,12 @@
 <configuration>
-    <input>
-        <net-file value="scenario_d.net.xml"/>
-        <route-files value="scenario_d.rou.xml"/>
-    </input>
-    <time>
-        <begin value="0"/>
-        <end value="3600"/>
-        <step-length value="1.0"/> 
-    </time>
-    <processing>
-        <time-to-teleport value="-1"/> 
-    </processing>
+  <input>
+    <net-file value="scenario_d.net.xml"/>
+    <additional-files value="detector.xml,edge_data_config.add.xml"/>
+    <route-files value="scenario_d.rou.xml"/>
+  </input>
+  <time><end value="5000"/></time>
+  <output>
+    <statistic-output value="scenario_d_stats.xml"/>
+  </output>
+  <report><duration-log.statistics value="true"/></report>
 </configuration>

@@ -12,25 +12,17 @@ from traffic_flow_models.arbitrator.aggregation_helpers import (
 
 
 class DemandAggregator:
-    """Aggregate microscopic SUMO detector data into macroscopic demand functions.
+    """Aggregate SUMO detector output into time-varying demand functions for onramp origins.
 
-    This class processes loop detector outputs from SUMO simulations and aggregates
-    them spatially and temporally to produce demand functions suitable for macroscopic
-    entry points (origins; ramp inflows are mapped to additional origins). The aggregation
-    follows the network topology to capture all upstream demand feeding into each
-    macroscopic model interface point.
+    Parses SUMO detector output XML and a detector specification CSV, maps
+    lane-level inflow counts to macroscopic network nodes, and produces
+    rolling-window demand functions (veh/h) for each onramp origin in the
+    macroscopic model.
 
-    Uses a rolling window approach for temporal aggregation to smooth demand functions
-    while preserving time-varying behavior.
+    Typical usage::
 
-    Attributes:
-        detector_output_path: Path to SUMO detector output XML file.
-        detector_spec_path: Path to detector specification CSV file.
-        window_size_sec: Rolling window size in seconds for temporal aggregation.
-        detector_intervals: Raw detector readings indexed by detector ID.
-        detector_mapping: Maps detector IDs to node IDs and types.
-        node_intervals: Raw interval data per node (not binned).
-        max_time: Maximum simulation time observed in detector data.
+        agg = DemandAggregator(detector_output_path, detector_spec_path)
+        demand = agg.run(origin_ids, onramp_ids, sumo_network_path)
     """
 
     def __init__(
@@ -89,21 +81,36 @@ class DemandAggregator:
             self.max_time = max(self.max_time, begin)
 
     def classify_and_map(self) -> None:
-        """Map detector IDs to node IDs from CSV specification.
+        """Read the detector spec CSV and build self.detector_mapping.
 
-        Reads the detector specification CSV file and creates a mapping between
-        detector IDs and their corresponding network nodes. Classifies detectors
-        by type (onramp, offramp, origin, destination) and determines the
-        appropriate node ID based on the detector type and edge topology.
+        Filters detector entries to only `inflow` and `outflow` types —
+        `backbone_segment` and `turning_rate` detectors are excluded.
+        For each retained entry, resolves the associated network node ID from
+        the `backbone_node` column, falling back to the `to` column for inflow
+        and the `from` column for outflow when `backbone_node` is empty.
 
-        The method handles various detector ID formats by creating multiple
-        variants to ensure robust matching with the detector output data.
+        Populates self.detector_mapping with a dict per detector ID variant,
+        each containing ``{"node_id": ..., "type": ...}``.
         """
         with open(self.detector_spec_path, "r", encoding="utf-8-sig") as f:
             reader = csv.DictReader(f)
 
             for row in tqdm(reader, desc="Classifying detectors", unit="detector"):
                 det_id = row["detector_id"].strip().strip('"').strip("'")
+                det_type = row["type"].strip().lower()
+
+                # 1. EXCLUSION FILTER:
+                # We skip 'backbone_segment' because they measure density/speed on the highway mainline.
+                # We skip 'turning_rate' because they are used for split-ratios at diverges.
+                if det_type in {"backbone_segment", "turning_rate"}:
+                    continue
+
+                # 2. INCLUSION FILTER:
+                # We only want entries (inflow, mainline_origin_interface) and exits (outflow).
+                # Note: Including 'mainline_origin_interface' allows the aggregator to see highway demand.
+                valid_demand_types = {"inflow", "outflow"}
+                if det_type not in valid_demand_types:
+                    continue
 
                 det_id_variants = [
                     det_id,
@@ -111,34 +118,18 @@ class DemandAggregator:
                     f"detector_{det_id}",
                 ]
 
-                det_type = row["type"].strip().lower()
-                from_node = row["from"].strip().strip('"').strip("'")
-                to_node = row["to"].strip().strip('"').strip("'")
+                # 3. NODE MAPPING LOGIC:
+                # Use 'backbone_node' if present; otherwise fall back to edge-based nodes.
+                node_id = row.get("backbone_node", "").strip().strip('"').strip("'")
 
-                # match detector types based on spec CSV values:
-                # 'inflow', 'outflow', 'ramp_inflow', 'ramp_outflow'
-                if "inflow" in det_type:
-                    # traffic entering the backbone network
-                    node_id = to_node
-                elif "outflow" in det_type:
-                    # traffic leaving the backbone network
-                    node_id = from_node
-                elif "turning_rate" in det_type:
-                    # turning rate detectors should be ignored for demand aggregation
-                    continue
-                elif "backbone_segment" in det_type:
-                    continue
-                else:
-                    # fallback for any other types
-                    warnings.warn(
-                        f"Unrecognized detector type '{det_type}' for detector '{det_id}'. "
-                        "Defaulting to using 'to_node' as node_id.",
-                        stacklevel=2,
-                    )
-                    node_id = to_node
+                if not node_id:
+                    # 'to' for entries, 'from' for exits
+                    if det_type in {"inflow", "mainline_origin_interface"}:
+                        node_id = row["to"].strip().strip('"').strip("'")
+                    elif det_type == "outflow":
+                        node_id = row["from"].strip().strip('"').strip("'")
 
                 if node_id:
-                    # store all variants
                     for variant in det_id_variants:
                         self.detector_mapping[variant] = {
                             "node_id": node_id,
@@ -166,6 +157,10 @@ class DemandAggregator:
             if det_id not in self.detector_mapping:
                 continue
 
+            det_type = self.detector_mapping[det_id]["type"]
+            if det_type != "inflow":
+                continue
+
             node_id = self.detector_mapping[det_id]["node_id"]
 
             for begin, count in intervals:
@@ -178,38 +173,25 @@ class DemandAggregator:
     def aggregate_urban_inflows(
         self,
         origin_ids: list[str],
+        onramp_ids: list[str],
         sumo_network_path: str,
     ) -> dict[str, Callable[[float], float]]:
-        """Aggregate detector data feeding into macroscopic entry points.
-
-        Identifies all network nodes upstream of each macroscopic model origin
-        and onramp, aggregates their detector counts, and produces time-dependent
-        demand functions suitable for macroscopic simulation. This captures the
-        full demand from the microscopic network feeding into the macroscopic model.
-
-        Args:
-            origin_ids: List of origin node IDs in the network.
-            sumo_network_path: Path to the SUMO network XML file used for
-                topology analysis.
-
-        Returns:
-            origin_demands: Dictionary mapping origin IDs to demand functions. Onramp
-                inflows are converted into additional origins (prefixed with
-                "origin_onramp_").
-        """
 
         graph = self._build_network_graph(sumo_network_path)
         origin_demands: dict[str, Callable[[float], float]] = {}
 
+        onramp_id_set = {str(node_id) for node_id in onramp_ids}
+
+        # Only keep origin keys that correspond to actual on-ramp nodes
         all_entry_points: dict[str, str] = {
-            origin_id: origin_id.replace("origin_", "") for origin_id in origin_ids
+            origin_id: origin_id.replace("origin_", "")
+            for origin_id in origin_ids
+            if origin_id.startswith("origin_")
+            and origin_id.replace("origin_", "") in onramp_id_set
         }
 
-        # use only origin nodes as boundaries to prevent catchment area overlap
-        raw_origin_nodes = {oid.replace("origin_", "") for oid in origin_ids}
-        all_entry_points: dict[str, str] = {
-            origin_id: origin_id.replace("origin_", "") for origin_id in origin_ids
-        }
+        # Use only ramp-origin nodes as boundaries so ramp catchments do not overlap
+        raw_origin_nodes = set(all_entry_points.values())
 
         for demand_key, raw_node_id in tqdm(
             list(all_entry_points.items()),
@@ -217,10 +199,36 @@ class DemandAggregator:
             unit="entry",
         ):
             upstream_nodes = self._find_upstream_nodes(
-                graph, raw_node_id, raw_origin_nodes
+                graph,
+                raw_node_id,
+                raw_origin_nodes,
             )
             aggregated_bins = self._aggregate_demand(upstream_nodes)
-            origin_demands[demand_key] = self._make_demand_function(aggregated_bins)
+
+            if not aggregated_bins:
+                raise ValueError(
+                    f"No detector intervals found for origin '{demand_key}' "
+                    f"(node '{raw_node_id}'). Upstream catchment was "
+                    f"{sorted(upstream_nodes)}. This indicates a wiring problem: "
+                    f"either the detector spec CSV maps no 'inflow' detectors to "
+                    f"any node in this catchment, or SUMO emitted no interval rows "
+                    f"for those detectors. A legitimate zero-demand origin should "
+                    f"still produce interval rows with count=0 and reach this code "
+                    f"with a non-empty bins list."
+                )
+
+            demand_fn = self._make_demand_function(aggregated_bins)
+            if demand_fn is None:
+                raise ValueError(
+                    f"Failed to build demand function for origin '{demand_key}' "
+                    f"(node '{raw_node_id}') despite having {len(aggregated_bins)} "
+                    f"interval bins (total count "
+                    f"{sum(c for _, c in aggregated_bins)}). The rolling-window "
+                    f"aggregator returned None — inspect "
+                    f"make_single_stream_rolling_window_aggregator for edge cases."
+                )
+
+            origin_demands[demand_key] = demand_fn
 
         all_detector_vehicles = sum(
             sum(count for _, count in intervals)
@@ -230,72 +238,7 @@ class DemandAggregator:
         print("AGGREGATION SUMMARY:")
         print(f"  Total detector nodes: {len(self.node_intervals)}")
         print(f"  Total detector vehicles: {all_detector_vehicles}")
-        print(f"  Network entry points (origins incl. ramps): {len(origin_demands)}")
-
-        # print("\nDEMAND VERIFICATION:")
-        # print(
-        #     f"{'Entry Point':<40} {'t=0h':>10} {'t=0.25h':>10} {'t=0.5h':>10} {'t=0.75h':>10} {'t=1h':>10}"
-        # )
-        # print("-" * 90)
-        # for demand_key, fn in origin_demands.items():
-        #     vals = [fn(t) for t in [0, 0.25, 0.5, 0.75, 1.0]]
-        #     print(
-        #         f"{demand_key:<40} {vals[0]:>10.1f} {vals[1]:>10.1f} {vals[2]:>10.1f} {vals[3]:>10.1f} {vals[4]:>10.1f}"
-        #     )
-
-        # print(f"\nUpstream nodes per entry point:")
-        # for demand_key, raw_node_id in all_entry_points.items():
-        #     upstream = self._find_upstream_nodes(graph, raw_node_id, raw_origin_nodes)
-        #     total_veh = sum(
-        #         sum(count for _, count in self.node_intervals[n])
-        #         for n in upstream
-        #         if n in self.node_intervals
-        #     )
-        #     print(
-        #         f"  {demand_key:<40} upstream nodes: {len(upstream):>3}  raw vehicles: {total_veh:>6}"
-        #     )
-
-        # print("\nMissing entry point diagnosis:")
-        # for demand_key, raw_node_id in all_entry_points.items():
-        #     upstream = self._find_upstream_nodes(graph, raw_node_id, raw_origin_nodes)
-        #     total_veh = sum(
-        #         sum(count for _, count in self.node_intervals[n])
-        #         for n in upstream
-        #         if n in self.node_intervals
-        #     )
-        #     if total_veh == 0:
-        #         in_graph = graph.has_node(raw_node_id)
-        #         reachable_from = [
-        #             n
-        #             for n in self.node_intervals.keys()
-        #             if graph.has_node(n)
-        #             and in_graph
-        #             and nx.has_path(graph, n, raw_node_id)
-        #         ]
-        #         print(
-        #             f"  {demand_key}: in_graph={in_graph}, reachable from: {reachable_from}"
-        #         )
-
-        # print("\nSUMO graph nodes containing onramp-related strings:")
-        # for node in graph.nodes():
-        #     for onramp_id in ["9623489", "17051627", "24043220", "22944609"]:
-        #         if onramp_id in str(node):
-        #             print(f"  found: {node}")
-
-        # print("\nUpstream node overlap analysis:")
-        # upstream_per_origin = {}
-        # for demand_key, raw_node_id in all_entry_points.items():
-        #     upstream_per_origin[demand_key] = self._find_upstream_nodes(
-        #         graph, raw_node_id, raw_origin_nodes
-        #     )
-
-        # origin_keys = list(upstream_per_origin.keys())
-        # for i, key_a in enumerate(origin_keys):
-        #     for key_b in origin_keys[i + 1 :]:
-        #         shared = upstream_per_origin[key_a] & upstream_per_origin[key_b]
-        #         if shared:
-        #             print(f"  {key_a} ∩ {key_b}: {len(shared)} shared nodes")
-        #             print(f"    shared: {shared}")
+        print(f"  Ramp entry points: {len(origin_demands)}")
 
         return origin_demands
 
@@ -437,6 +380,7 @@ class DemandAggregator:
     def run(
         self,
         origin_ids: list[str],
+        onramp_ids: list[str],
         sumo_network_path: str,
     ) -> dict[str, Callable[[float], float]]:
         """Execute the complete demand aggregation pipeline.
@@ -465,4 +409,4 @@ class DemandAggregator:
         self.classify_and_map()
         self.aggregate_spatially()
 
-        return self.aggregate_urban_inflows(origin_ids, sumo_network_path)
+        return self.aggregate_urban_inflows(origin_ids, onramp_ids, sumo_network_path)

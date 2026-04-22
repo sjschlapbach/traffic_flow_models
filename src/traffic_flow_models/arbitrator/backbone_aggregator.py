@@ -36,6 +36,13 @@ class TrafficState(TypedDict):
 
 @dataclass
 class CellAggregate:
+    """Aggregated counters for a single cell/time bucket used during spatial aggregation.
+
+    Holds summed vehicle counts, exposure-weighted speed sums, the number of lane
+    observations (used for occupancy averaging), summed occupancy percentages,
+    and total exposure seconds (sampledSeconds) used as weights when available.
+    """
+
     count: float = 0.0
     weighted_speed_sum: float = 0.0
     lane_count: int = 0
@@ -153,12 +160,11 @@ class BackboneStateAggregator:
         self.max_time = 0.0
 
     def classify_and_map(self) -> None:
-        """Map backbone detector IDs to their edge IDs from the specification CSV.
+        """Map only backbone cell detectors from the specification CSV.
 
-        Only rows whose ``type`` field contains ``backbone_segment`` are processed;
-        all other detector types (inflow, outflow, turning_rate …) are ignored so
-        that only the regularly-spaced backbone detectors contribute to state
-        estimation.
+        This class is intentionally backbone-only:
+        - backbone_segment detectors are used for state aggregation
+        - mainline_origin_interface / inflow / outflow / turning_rate are ignored here
         """
         with open(self.detector_spec_path, "r", encoding="utf-8-sig") as f:
             reader = csv.DictReader(f)
@@ -167,32 +173,50 @@ class BackboneStateAggregator:
                 det_id = row["detector_id"].strip().strip('"').strip("'")
                 det_type = row.get("type", "").strip().lower()
 
-                if "backbone_segment" not in det_type:
+                if det_type != "backbone_segment":
                     continue
 
-                edge_id = row["edge_id"].strip().strip('"').strip("'")
+                edge_id = row.get("edge_id", "").strip().strip('"').strip("'")
                 if not edge_id:
                     continue
 
                 position_str = row.get("position", "").strip()
                 position = float(position_str) if position_str else None
 
-                cell_index = row.get("cell_index", "0").strip()
-                cell_key = f"{edge_id}_cell{cell_index}"
+                cell_key = row.get("cell_key", "").strip()
+                if not cell_key:
+                    cell_index_str = row.get("cell_index", "").strip()
+                    if cell_index_str == "":
+                        warnings.warn(
+                            f"Backbone detector '{det_id}' missing both cell_key and cell_index. Skipping.",
+                            stacklevel=2,
+                        )
+                        continue
+                    cell_index = int(cell_index_str)
+                    cell_key = f"{edge_id}_cell{cell_index}"
+                else:
+                    cell_index_str = row.get("cell_index", "").strip()
+                    cell_index = int(cell_index_str) if cell_index_str != "" else None
 
-                # support the same ID variants used in other aggregators
+                if cell_index is None:
+                    raise ValueError(
+                        f"Backbone detector '{det_id}' has cell_key '{cell_key}' but missing or invalid cell_index."
+                    )
+
                 for variant in [
                     det_id,
                     det_id.replace("detector_", ""),
                     f"detector_{det_id}",
                 ]:
-                    self.detector_mapping[variant] = {
-                        "edge_id": edge_id,
-                        "cell_key": cell_key,
-                        "cell_index": int(cell_index) if cell_index else 0,
-                        "type": det_type,
-                        "position": position,
-                    }
+                    self.detector_mapping[variant] = DetectorMetadata(
+                        {
+                            "edge_id": edge_id,
+                            "cell_key": cell_key,
+                            "cell_index": cell_index,
+                            "type": det_type,
+                            "position": position,
+                        }
+                    )
 
     def aggregate_spatially(self) -> None:
         cell_time_data: defaultdict[str, defaultdict[float, CellAggregate]] = (
@@ -248,6 +272,124 @@ class BackboneStateAggregator:
                         float(aggregate.exposure_sum),
                     )
                 )
+
+    def compute_origin_demand_functions(
+        self,
+        origin_ids: list[str],
+        sumo_network_path: str,
+    ) -> dict[str, Callable[[float], float]]:
+        """Derive demand functions for mainline origins directly connected to backbone.
+
+        This keeps direct motorway origins as backbone demand, but excludes on-ramp
+        inflows by requiring a verified motorway-mainline connection and using only
+        detectors of type 'mainline_origin_interface'.
+        """
+
+        net_tree = ET.parse(sumo_network_path)
+        net_root = net_tree.getroot()
+
+        node_to_out_edges: dict[str, list[ET.Element]] = {}
+        for edge in net_root.findall("edge"):
+            if edge.get("function") == "internal":
+                continue
+            f_node = edge.get("from")
+            if f_node:
+                node_to_out_edges.setdefault(f_node, []).append(edge)
+
+        mainline_interface_by_edge: dict[str, list[str]] = defaultdict(list)
+
+        with open(self.detector_spec_path, "r", encoding="utf-8-sig") as f:
+            reader = csv.DictReader(f)
+
+            for row in reader:
+                det_id = row["detector_id"].strip().strip('"').strip("'")
+                det_type = row.get("type", "").strip().lower()
+                edge_id = row.get("edge_id", "").strip().strip('"').strip("'")
+
+                if det_type != "mainline_origin_interface":
+                    continue
+                if not edge_id:
+                    continue
+
+                for variant in [
+                    det_id,
+                    det_id.replace("detector_", ""),
+                    f"detector_{det_id}",
+                ]:
+                    mainline_interface_by_edge[edge_id].append(variant)
+
+        origin_demands: dict[str, Callable[[float], float]] = {}
+
+        for origin_id in origin_ids:
+            if not origin_id.startswith("origin_"):
+                continue
+
+            raw_node = origin_id.replace("origin_", "")
+            connector_edges = node_to_out_edges.get(raw_node, [])
+
+            # Collect ALL outgoing pure-mainline motorway edges. A mainline origin
+            # that splits into multiple motorway carriageways at the boundary has
+            # its demand distributed across them; we must aggregate all to get the
+            # true total inflow.
+            target_edge_ids: list[str] = []
+            for c_edge in connector_edges:
+                etype = c_edge.get("type", "").lower()
+                eid = c_edge.get("id", "")
+                if "motorway" in etype and "link" not in etype:
+                    target_edge_ids.append(eid)
+
+            if not target_edge_ids:
+                continue
+
+            # Aggregate detectors from every target edge by summing counts per
+            # timestamp across all lanes of all edges.
+            det_ids_all: list[str] = []
+            for edge_id in target_edge_ids:
+                det_ids_all.extend(mainline_interface_by_edge.get(edge_id, []))
+
+            if not det_ids_all:
+                print(
+                    f"[X] Skipping {origin_id}: no mainline_origin_interface detectors "
+                    f"found for edges {target_edge_ids}."
+                )
+                continue
+
+            time_count_agg: defaultdict[float, float] = defaultdict(float)
+            found_any_data = False
+
+            for det_id in det_ids_all:
+                det_intervals = self.detector_intervals.get(det_id)
+                if det_intervals is None:
+                    continue
+                found_any_data = True
+                for begin, count, _, _, _ in det_intervals:
+                    time_count_agg[begin] += float(count)
+
+            if not found_any_data or not time_count_agg:
+                print(
+                    f"[!] Warning: No detector data for verified highway origin "
+                    f"{origin_id} on edges {target_edge_ids}"
+                )
+                continue
+
+            flow_intervals: list[tuple[float, float]] = sorted(time_count_agg.items())
+
+            demand_fn = make_rolling_window_aggregator(
+                intervals={"flow": flow_intervals},
+                window_size_sec=self.window_size_sec,
+                max_time=self.max_time,
+                aggregation_type="demand",
+            )
+
+            if demand_fn:
+                origin_demands[origin_id] = lambda t, fn=demand_fn: fn(t).get(
+                    "flow", 0.0
+                )
+                print(
+                    f"[OK] Highway mainline origin secured: {origin_id} "
+                    f"(Edges: {target_edge_ids}, interface detectors: {len(det_ids_all)})"
+                )
+        return origin_demands
 
     def compute_traffic_state(
         self, free_flow_speed: float, jam_density: float
@@ -364,7 +506,13 @@ class BackboneStateAggregator:
         def mean_in_window(
             t_hours: float, data_stream: Sequence[tuple[float, float]]
         ) -> float:
-            """Compute mean directly — simple average of intervals in window."""
+            """Compute a simple average of values in a centred rolling window.
+
+            The window is centred at the query time ``t_hours`` and clamped to
+            the available data range [0, max_time]. For queries near the start
+            or end of the recording the window is shifted so it remains within
+            the observed interval.
+            """
             query_sec = t_hours * 3600.0
 
             w_start = query_sec - window_size_sec / 2
@@ -380,8 +528,10 @@ class BackboneStateAggregator:
             return sum(values) / len(values) if values else 0.0
 
         def state_fn(t_hours: float) -> TrafficState:
-            # Average vehicle length + gap or detector length (in kilometers)
-            # Example: 7.5 meters total effective length -> 0.0075 km
+            # Effective vehicle length (km) used to convert occupancy fraction
+            # to vehicle density. If a jam density is provided use the
+            # reciprocal (km per vehicle). Otherwise fall back to a
+            # conservative default (~7.5 m => 0.0075 km).
             L_EFF_KM = 1 / jam_density if jam_density > 0 else 0.0075
 
             flow_dict = flow_fn(t_hours)
@@ -425,6 +575,7 @@ class BackboneStateAggregator:
         self,
         state_functions: Mapping[str, Callable[[float], TrafficState]],
         output_path: str,
+        origin_demands: dict[str, Callable[[float], float]] | None = None,
         query_times_hours: list[float] | None = None,
         time_step_minutes: float = 1.0,
         dt: float | None = None,
@@ -528,6 +679,11 @@ class BackboneStateAggregator:
             else:
                 edge_cells[edge_id] = {}
 
+        origin_demands_series: dict[str, list[float]] = {}
+        if origin_demands:
+            for oid in origin_demands.keys():
+                origin_demands_series[oid] = []
+
         # Prepare output containers matching Simulation.save_results layout
         flows_time: dict[str, list] = {}
         densities_time: dict[str, list] = {}
@@ -564,6 +720,11 @@ class BackboneStateAggregator:
                 densities_time[edge_id].append(densities_row)
                 speeds_time[edge_id].append(speeds_row)
 
+            if origin_demands:
+                for oid, fn in origin_demands.items():
+                    val = fn(t_h)
+                    origin_demands_series[oid].append(float(round(val, 2)))
+
         # Construct minimal link_properties using available information
         link_properties: dict[str, dict] = {}
         for edge_id, cells in edge_cells.items():
@@ -581,8 +742,14 @@ class BackboneStateAggregator:
                     except Exception:
                         n_lanes_vals.append(0)
 
+            # avg_lanes = (
+            #     float(sum(n_lanes_vals) / len(n_lanes_vals)) if n_lanes_vals else 0.0
+            # )
+            valid_lane_vals = [v for v in n_lanes_vals if v > 0]
             avg_lanes = (
-                float(sum(n_lanes_vals) / len(n_lanes_vals)) if n_lanes_vals else 0.0
+                float(sum(valid_lane_vals) / len(valid_lane_vals))
+                if valid_lane_vals
+                else 0.0
             )
 
             link_properties[edge_id] = {
@@ -640,14 +807,13 @@ class BackboneStateAggregator:
                 "flows": flows_time,
                 "densities": densities_time,
                 "speeds": speeds_time,
-                # backbone aggregator does not produce queue data; keep placeholders
                 "origin_queues": {},
                 "onramp_queues": {},
                 "offramp_queues": {},
             },
             # no disturbance inputs available from backbone data
             "disturbance_time_series": {
-                "origin_demands": {},
+                "origin_demands": origin_demands_series,
                 "turning_rates": {},
                 "flow_boundary_conditions": {},
                 "density_boundary_conditions": {},
@@ -670,12 +836,15 @@ class BackboneStateAggregator:
     def run(
         self,
         output_path: str,
+        urban_demands: dict[str, Callable[[float], float]],
         free_flow_speed: float,
         jam_density: float,
+        sumo_network_path: str,
+        origin_ids: list[str],
         query_times_hours: list[float] | None = None,
         time_step_minutes: float = 1.0,
         preferred_cell_size: float | None = None,
-    ) -> str:
+    ) -> tuple[str, dict[str, Callable[[float], float]]]:
         """Execute the full backbone state estimation pipeline.
 
         Parses detector output, maps detectors to backbone edges, aggregates
@@ -693,7 +862,7 @@ class BackboneStateAggregator:
                 discretization in metadata (units as per network configuration).
 
         Returns:
-            Path to the written JSON file.
+            Path to the written JSON file and a dictionary of origin demand functions.
         """
         self.reset_state()
         self.parse_detector_output()
@@ -709,6 +878,10 @@ class BackboneStateAggregator:
             for ivs in self.edge_intervals.values()
         )
 
+        highway_demands = self.compute_origin_demand_functions(
+            origin_ids=origin_ids, sumo_network_path=sumo_network_path
+        )
+
         print("BACKBONE STATE AGGREGATION SUMMARY:")
         print(f"  Backbone edges instrumented: {len(self.edge_intervals)}")
         print(f"  Total vehicles observed:     {total_vehicles}")
@@ -718,9 +891,10 @@ class BackboneStateAggregator:
             f"{len(self.edge_intervals) - len(state_functions)}"
         )
 
-        return self.write_state_json(
+        path = self.write_state_json(
             state_functions,
             output_path,
+            origin_demands={**urban_demands, **highway_demands},
             query_times_hours=query_times_hours,
             time_step_minutes=time_step_minutes,
             dt=(time_step_minutes / 60.0) if time_step_minutes is not None else None,
@@ -729,3 +903,5 @@ class BackboneStateAggregator:
             free_flow_speed=free_flow_speed,
             jam_density=jam_density,
         )
+
+        return path, highway_demands

@@ -10,6 +10,7 @@ python src/demo/run_pipeline.py --sumo-cfg-dir "src/demo/scenarios/example" --no
 import argparse
 import os
 from datetime import datetime
+import warnings
 
 from traffic_flow_models import (
     CTM,
@@ -225,6 +226,7 @@ if __name__ == "__main__":
         simulation_end_time=int(duration * 3600),
         net_file=pipeline.net_file,
         detector_file=pipeline.detector_file,
+        v_type_file=pipeline.v_type_file,
         rou_file=pipeline.rou_file,
         cfg_file=(
             os.path.join(pipeline.output_dir, f"{name}.sumocfg")
@@ -240,12 +242,11 @@ if __name__ == "__main__":
     demand_generator = DemandAggregator(
         detector_output_path=detector_output_file, detector_spec_path=spec_file
     )
-    origin_demands = demand_generator.run(
+    urban_demands = demand_generator.run(
         origin_ids=origin_ids,
+        onramp_ids=onramp_ids,
         sumo_network_path=pipeline.net_file,
     )
-    print("Demand keys:", sorted(origin_demands.keys()))
-    print("Missing:", [k for k in origin_ids if k not in origin_demands])
 
     # compute boundary conditions from microscopic simulation results
     edge_data_path = os.path.join(pipeline.output_dir, "edge_data_output.xml")
@@ -271,13 +272,24 @@ if __name__ == "__main__":
         detector_spec_path=spec_file,
         window_size_minutes=10.0,
     )
-    backbone_aggregator.run(
+    _, highway_demands = backbone_aggregator.run(
         output_path=micro_results_path,
+        urban_demands=urban_demands,
         time_step_minutes=1.0,
         free_flow_speed=road_params["motorway"]["free_flow_speed"],
         jam_density=road_params["motorway"]["jam_density"],
         preferred_cell_size=preferred_cell_size,
+        sumo_network_path=pipeline.net_file,
+        origin_ids=origin_ids,
     )
+
+    # combine the highway demands and urban demands into one origin demands dictionary
+    # urban_demands technically contains demands for highway origins, these should be overwritten
+    origin_demands = {**urban_demands, **highway_demands}
+
+    # log the generated demands for use in the macroscopic simulation
+    print("Demand keys:", sorted(origin_demands.keys()))
+    print("Missing:", [k for k in origin_ids if k not in origin_demands])
 
     # run a simulation of the network using the selected model
     if parsed_args.model.upper() == "CTM":
