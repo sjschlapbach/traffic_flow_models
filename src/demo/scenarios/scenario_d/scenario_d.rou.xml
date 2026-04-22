@@ -1,5 +1,5 @@
 <routes>
-    <vType id="urban" length="5.0" maxSpeed="27.78" lccoperative="1.0"/>
+    <vType id="urban" length="5.0" maxSpeed="27.78" lcCooperative="1.0"/>
     <route id="main_thru" edges="m1 m2 m3"/>
     <route id="main_exit" edges="m1 m2 offramp"/>
     <route id="ramp_thru" edges="onramp m2 m3"/>

@@ -1,5 +1,5 @@
 <routes>
-    <vType id="urban" length="5.0" maxSpeed="27.78" lccooperative="1.0"/>
+    <vType id="urban" length="5.0" maxSpeed="27.78" lcCooperative="1.0"/>
     <route id="main_route" edges="m1 m2 m3 m4"/>
     <route id="ramp_route" edges="onramp m2 m3 m4"/>
     <flow id="main_0" route="main_route" type="urban" begin="0" end="300" vehsPerHour="500.0" departLane="random"/>

@@ -461,9 +461,6 @@ class LoopDetectorGenerator:
         output_file = f"{self.output_dir}/{self.detector_filename}"
         root = ET.Element("additional")
 
-        # Types that should only observe urban (ramp-entering) vehicles.
-        URBAN_FILTERED_TYPES = {"inflow", "outflow"}
-
         # Types that use laneAreaDetectors instead of inductionLoops.
         AREA_DETECTOR_TYPES = {"backbone_segment"}
 
@@ -499,7 +496,6 @@ class LoopDetectorGenerator:
         ET.indent(tree, space="  ")
         tree.write(output_file, encoding="utf-8", xml_declaration=True)
         return output_file
-
 
     def write_detector_spec_csv(self) -> str:
         """Write a CSV file mapping each detector to its edge, node, and cell metadata.
