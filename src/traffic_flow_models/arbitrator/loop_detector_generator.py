@@ -173,17 +173,6 @@ class LoopDetectorGenerator:
             detector_type = None
             detector_node = None
 
-            # if to_is_boundary and is_motorway_mainline:
-            #     detector_type = "mainline_origin_interface"
-            #     detector_node = to_node
-            #     inflow_count += 1
-
-            # Recognise the mainline-origin side even when the downstream node
-            # was absorbed by merge_serial_edges. In that case to_is_boundary
-            # fails for this first constituent SUMO edge (its "to" node is no
-            # longer in the macro graph), but the edge is still the first
-            # segment of a mainline origin's outgoing macro link, so the
-            # aggregator expects a mainline_origin_interface detector here.
             if is_motorway_mainline and from_node in self._mainline_origin_nodes:
                 detector_type = "mainline_origin_interface"
                 detector_node = from_node
@@ -194,18 +183,15 @@ class LoopDetectorGenerator:
                 detector_node = from_node
                 inflow_count += 1
 
-            # elif to_is_boundary and (not is_backbone_road):
             elif (
                 to_is_boundary
                 and not is_backbone_road
                 and (from_node not in boundary_nodes)
             ):
-                # elif (to_is_boundary and not is_backbone_road and from_node not in boundary_nodes and from_node not in offramp_downstream):
                 detector_type = "inflow"
                 detector_node = to_node
                 inflow_count += 1
 
-            # elif from_is_boundary and not is_backbone_road:
             elif (
                 from_is_boundary
                 and not is_backbone_road
