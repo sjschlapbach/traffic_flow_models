@@ -531,7 +531,6 @@ class CTM:
                 ``destination`` link (required for the downstream density).
         """
         # update the offramp flow and queue based on the store-and-forward model
-        offramp_demand = node_outflow + offramp_queues[offramp.id] / dt
         next_outflow, next_queue = store_and_forward_update(
             capacity=offramp.Qc,
             jam_density=offramp.rho_jam,
@@ -542,7 +541,7 @@ class CTM:
                 free_flow_speed=offramp.vf,
             ),
             density=density_boundary_condition,
-            demand=offramp_demand,
+            demand=node_outflow,
             queue=offramp_queues[offramp.id],
             dt=dt,
         )
