@@ -185,6 +185,7 @@ class LoopDetectorGenerator:
 
             elif (
                 to_is_boundary
+                and to_node not in onramp_node_set
                 and not is_backbone_road
                 and (from_node not in boundary_nodes)
             ):
