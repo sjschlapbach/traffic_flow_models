@@ -35,20 +35,14 @@ jobs:
         run: |
           sumo --version
           netconvert --version
-      - name: Run demo scenario (default location) with SUMO pipeline
+      - name: Run demo scenario (default location) with SUMO pipeline (default model)
         run: python -m src.demo.run_pipeline --vehicle-demand 1000 --no-plot
-      - name: Run demo scenario (provided SUMO files) with SUMO pipeline
+      - name: Run demo scenario (provided SUMO files) with SUMO pipeline (default model)
         run: python -m src.demo.run_pipeline --sumo-cfg-dir "src/demo/scenarios/example"
           --no-plot
-      - name: Run demo scenario A with SUMO pipeline
-        run: python -m src.demo.run_pipeline --sumo-cfg-dir
-          "src/demo/scenarios/scenario_a" --no-plot
-      - name: Run demo scenario B with SUMO pipeline
-        run: python -m src.demo.run_pipeline --sumo-cfg-dir
-          "src/demo/scenarios/scenario_b" --no-plot
-      - name: Run demo scenario C with SUMO pipeline
-        run: python -m src.demo.run_pipeline --sumo-cfg-dir
-          "src/demo/scenarios/scenario_c" --no-plot
-      - name: Run demo scenario D with SUMO pipeline
-        run: python -m src.demo.run_pipeline --sumo-cfg-dir
-          "src/demo/scenarios/scenario_d" --no-plot
+      - name: Run demo scenario (default location) with SUMO pipeline (METANET)
+        run: python -m src.demo.run_pipeline --vehicle-demand 1000 --model METANET
+          --no-plot
+      - name: Run demo scenario (provided SUMO files) with SUMO pipeline (METANET)
+        run: python -m src.demo.run_pipeline --sumo-cfg-dir "src/demo/scenarios/example"
+          --model METANET --no-plot
