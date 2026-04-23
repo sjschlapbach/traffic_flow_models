@@ -326,6 +326,8 @@ if __name__ == "__main__":
             regularization_weight=0.01,
             verbose=True,
             use_parameter_search=False,
+            correlation_title="METANET Calibration - Parameter Correlation Analysis",
+            plot_correlation="metanet_calibration_parameter_correlation.png",
             save_dir=results_dir,
             use_disturbance_from_file=False,  # we will provide disturbance callables instead of using the file-based disturbances
             origin_demands_fn=origin_demands,
@@ -369,6 +371,22 @@ if __name__ == "__main__":
 
     # generate video visualization if requested
     if generate_video:
+        # generate a microsimulation video when available
+        micro_video_path = os.path.join(results_dir, "micro_simulation.avi")
+        try:
+            print("\nGenerating microsimulation video...")
+
+            sim.visualize(
+                results_filepath=micro_results_path,
+                output_filepath=micro_video_path,
+                fps=30,
+                subsampling=1,
+            )
+            print(f"Microsimulation video saved to: {micro_video_path}")
+        except Exception as e:
+            print(f"Could not generate microsimulation video: {e}")
+
+        # generate visualization of macroscopic simulation results
         video_path = os.path.join(results_dir, "simulation.avi")
         print("\nGenerating video visualization...")
         sim.visualize(
@@ -378,21 +396,6 @@ if __name__ == "__main__":
             subsampling=1,
         )
         print(f"Video saved to: {video_path}")
-
-        # also generate a backbone (microsimulation) video when available
-        backbone_video_path = os.path.join(results_dir, "backbone_simulation.avi")
-        try:
-            print("\nGenerating backbone (microsimulation) video...")
-
-            sim.visualize(
-                results_filepath=micro_results_path,
-                output_filepath=backbone_video_path,
-                fps=30,
-                subsampling=1,
-            )
-            print(f"Backbone video saved to: {backbone_video_path}")
-        except Exception as e:
-            print(f"Could not generate backbone video: {e}")
 
         # generate side-by-side comparison video (micro vs macro)
         comparison_video_path = os.path.join(results_dir, "simulation_comparison.avi")
