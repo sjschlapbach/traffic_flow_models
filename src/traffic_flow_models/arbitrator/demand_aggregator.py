@@ -83,11 +83,16 @@ class DemandAggregator:
     def classify_and_map(self) -> None:
         """Read the detector spec CSV and build self.detector_mapping.
 
-        Filters detector entries to only `inflow` and `outflow` types —
-        `backbone_segment` and `turning_rate` detectors are excluded.
-        For each retained entry, resolves the associated network node ID from
-        the `backbone_node` column, falling back to the `to` column for inflow
-        and the `from` column for outflow when `backbone_node` is empty.
+        Retains only ``inflow`` detectors — the urban and ramp inflows entering
+        backbone boundary nodes. All other types are excluded:
+
+        - ``backbone_segment``: mainline state measurement, handled by BackboneStateAggregator.
+        - ``mainline_origin_interface``: mainline origin demand, handled by BackboneStateAggregator.
+        - ``turning_rate``: diverge split ratios, handled by TurningRateAggregator.
+        - ``outflow``: exits from the backbone, not required for demand aggregation.
+
+        For each retained detector, resolves the associated network node ID from
+        the ``backbone_node`` column, falling back to the ``to`` column when empty.
 
         Populates self.detector_mapping with a dict per detector ID variant,
         each containing ``{"node_id": ..., "type": ...}``.
@@ -99,42 +104,25 @@ class DemandAggregator:
                 det_id = row["detector_id"].strip().strip('"').strip("'")
                 det_type = row["type"].strip().lower()
 
-                # 1. EXCLUSION FILTER:
-                # We skip 'backbone_segment' because they measure density/speed on the highway mainline.
-                # We skip 'turning_rate' because they are used for split-ratios at diverges.
-                if det_type in {"backbone_segment", "turning_rate"}:
+                if det_type != "inflow":
                     continue
 
-                # 2. INCLUSION FILTER:
-                # We only want entries (inflow, mainline_origin_interface) and exits (outflow).
-                # Note: Including 'mainline_origin_interface' allows the aggregator to see highway demand.
-                valid_demand_types = {"inflow", "outflow"}
-                if det_type not in valid_demand_types:
+                node_id = row.get("backbone_node", "").strip().strip('"').strip("'")
+                if not node_id:
+                    node_id = row["to"].strip().strip('"').strip("'")
+
+                if not node_id:
                     continue
 
-                det_id_variants = [
+                for variant in [
                     det_id,
                     det_id.replace("detector_", ""),
                     f"detector_{det_id}",
-                ]
-
-                # 3. NODE MAPPING LOGIC:
-                # Use 'backbone_node' if present; otherwise fall back to edge-based nodes.
-                node_id = row.get("backbone_node", "").strip().strip('"').strip("'")
-
-                if not node_id:
-                    # 'to' for entries, 'from' for exits
-                    if det_type in {"inflow", "mainline_origin_interface"}:
-                        node_id = row["to"].strip().strip('"').strip("'")
-                    elif det_type == "outflow":
-                        node_id = row["from"].strip().strip('"').strip("'")
-
-                if node_id:
-                    for variant in det_id_variants:
-                        self.detector_mapping[variant] = {
-                            "node_id": node_id,
-                            "type": det_type,
-                        }
+                ]:
+                    self.detector_mapping[variant] = {
+                        "node_id": node_id,
+                        "type": det_type,
+                    }
 
     def aggregate_spatially(self) -> None:
         """Aggregate lane-level detector counts into node-level intervals.

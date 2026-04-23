@@ -106,6 +106,12 @@ class SUMOPipeline:
         self.v_type_file: Optional[str] = None
         self.consolidated_network: Optional[Network] = None
         self.arbitrator: Optional[NetworkArbitrator] = None
+        # Maps each macroscopic link ID (including synthetic "merged_*" IDs produced
+        # by NetworkArbitrator.merge_serial_edges) to the ordered list of real SUMO
+        # edge IDs it was composed from. Populated by create_consolidated_network
+        # and consumed by LoopDetectorGenerator to resolve merged IDs back to the
+        # real edges that actually exist in the SUMO .net.xml file.
+        self.sumo_edge_id_map: Optional[dict[str, list[str]]] = None
         self.origin_ids: Optional[list[str]] = None
         self.onramp_ids: Optional[list[str]] = None
         self.offramp_ids: Optional[list[str]] = None
@@ -628,6 +634,7 @@ class SUMOPipeline:
             self.road_params,
             self.diverge_node_info,
             self.backbone_node_ids,
+            self.sumo_edge_id_map,
         ) = self.arbitrator.run()
 
         return (
@@ -696,6 +703,9 @@ class SUMOPipeline:
             output_dir=self.output_dir,
             diverge_node_info=(
                 self.diverge_node_info if self.diverge_node_info is not None else {}
+            ),
+            sumo_edge_id_map=(
+                self.sumo_edge_id_map if self.sumo_edge_id_map is not None else {}
             ),
             target_cell_length_km=cell_size,
             motorway_links=motorway_links,

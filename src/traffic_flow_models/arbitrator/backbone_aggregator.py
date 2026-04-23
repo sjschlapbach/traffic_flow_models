@@ -713,7 +713,7 @@ class BackboneStateAggregator:
                     flows_row[idx] = float(round(state.get("flow", 0.0), 2))
                     speeds_row[idx] = float(round(state.get("speed", 0.0), 2))
                     densities_row[idx] = float(
-                        round(state.get("density_derived", 0.0), 4)
+                        round(state.get("density_occupancy", 0.0), 4)
                     )
 
                 flows_time[edge_id].append(flows_row)
