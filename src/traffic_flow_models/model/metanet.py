@@ -1303,9 +1303,17 @@ class METANET:
         next_onramp_queues: dict[str, casadi.SX] = {}
         next_offramp_queues: dict[str, casadi.SX] = {}
 
+        # order the nodes such that nodes connected to a destination are processed last
+        # -> this is required to ensure that all incoming flows for this node have been computed
+        # (otherwise the node inflow computation breaks)
+        network_nodes = list(network.list_nodes())
+        network_nodes.sort(
+            key=lambda n: any(isinstance(out, Destination) for out in n.outgoing)
+        )
+
         # formulate the individual update equations for each node and update the overall system equation and the next step state
         # iterate through all nodes and update the corrresponding quantities of incoming and outgoing links
-        for node in network.list_nodes():
+        for node in network_nodes:
             # ! 1) update the flows and queues for origins and onramps connected to this node
             for inc in node.incoming:
                 # compute the virtual downstream density for the current node
