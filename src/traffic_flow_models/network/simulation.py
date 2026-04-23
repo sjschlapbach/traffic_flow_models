@@ -3391,8 +3391,6 @@ class Simulation:
                         zorder=2,
                     )
 
-        # set axis limits and styling
-        ax.set_xlim(x_min, x_max)
         # keep subplot size stable while preserving equal unit scaling
         ax.set_aspect("equal", adjustable="datalim")
         ax.set_title(title, fontsize=14, fontweight="bold")
