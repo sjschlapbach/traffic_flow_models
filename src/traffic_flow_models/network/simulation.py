@@ -18,6 +18,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.axes import Axes
 from matplotlib.figure import Figure
+from matplotlib.transforms import IdentityTransform
 from tqdm import tqdm
 from numpy.typing import NDArray
 from datetime import datetime
@@ -3390,23 +3391,32 @@ class Simulation:
                         zorder=2,
                     )
 
-        # add time annotation
-        ax.text(
-            0.02,
-            0.98,
-            f"Time: {time_value:.2f} h",
-            transform=ax.transAxes,
-            fontsize=12,
-            verticalalignment="top",
-            bbox=dict(boxstyle="round", facecolor="white", alpha=0.8),
-        )
-
         # set axis limits and styling
         ax.set_xlim(x_min, x_max)
-        ax.set_ylim(y_min, y_max)
-        ax.set_aspect("equal")
+        # keep subplot size stable while preserving equal unit scaling
+        ax.set_aspect("equal", adjustable="datalim")
         ax.set_title(title, fontsize=14, fontweight="bold")
         ax.grid(True, alpha=0.2, linestyle=":", linewidth=0.5)
+
+        # add time annotation in absolute display coordinates (pixels), above axes
+        # and independent of data/axis scaling or relative figure coordinates.
+        axes_bbox = ax.get_window_extent()
+        fig = ax.figure
+        fig_h = float(fig.bbox.height)
+        text_x_px = float(axes_bbox.x0 + 8.0)
+        text_y_px = min(float(axes_bbox.y1 + 8.0), fig_h - 4.0)
+
+        fig.text(
+            text_x_px,
+            text_y_px,
+            f"Time: {time_value:.2f} h",
+            transform=IdentityTransform(),
+            fontsize=12,
+            horizontalalignment="left",
+            verticalalignment="bottom",
+            in_layout=False,
+            bbox=dict(boxstyle="round", facecolor="white", alpha=0.8),
+        )
 
     @staticmethod
     def _fig_to_frame(fig: Figure, target_width: int, target_height: int) -> Any:
