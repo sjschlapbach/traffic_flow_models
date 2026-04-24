@@ -1842,6 +1842,7 @@ class Simulation:
         states: NDArray[np.float64],
         dt: float,
         timesteps: int,
+        ignore_queues: bool = False,
     ) -> Tuple[float, float, float]:
         """Compute a set of performance metrics based on the provided simulation results
 
@@ -1849,6 +1850,8 @@ class Simulation:
             states: 2-D array shape (state_size, timesteps) containing state vectors over time.
             dt: Time step used in the simulation (hours).
             timesteps: Number of timesteps in the simulation.
+            ignore_queues: If True, time spent in origin/onramp/offramp queues is
+                not included in the VHT calculation (default: False).
 
         Returns:
             (VKT, VHT, overall_avg_speed) floats: vehicle-kilometres travelled,
@@ -1884,9 +1887,10 @@ class Simulation:
             offramp_queues = {k: float(v) for k, v in offramp_queues.items()}
 
             # add the time vehicles spent in the origin, onramp, and offramp queues (veh * hours)
-            VHT += dt * sum(origin_queues.values())
-            VHT += dt * sum(onramp_queues.values())
-            VHT += dt * sum(offramp_queues.values())
+            if not ignore_queues:
+                VHT += dt * sum(origin_queues.values())
+                VHT += dt * sum(onramp_queues.values())
+                VHT += dt * sum(offramp_queues.values())
 
             # iterate over all outgoing motorway links and accumulate VKT and VHT
             for node in self.network.list_nodes():

@@ -85,6 +85,12 @@ if __name__ == "__main__":
         default="CTM",
         help="Traffic flow model to use for the simulation (default: CTM)",
     )
+
+    args.add_argument(
+        "--output-dir",
+        type=str,
+        help="Directory to save simulation results (default: results/{scenario_name})",
+    )
     parsed_args = args.parse_args()
 
     # check if the location string or the prepared SUMO files should be used
@@ -260,8 +266,8 @@ if __name__ == "__main__":
     splits = pipeline.compute_splits(window_size_minutes=2.0)
 
     # initialize the results directory
-    timestamp = datetime.now().strftime("simulation_results_%Y-%m-%d_%H%M%S")
-    results_dir = f"results/{timestamp}"
+    timestamp_str = datetime.now().strftime("simulation_results_%Y-%m-%d_%H%M%S")
+    results_dir = f"results/{timestamp_str if parsed_args.output_dir is None else parsed_args.output_dir}"
     os.makedirs(results_dir, exist_ok=True)
 
     # ── Backbone state estimation ──────────────────────────────────────────────
@@ -359,15 +365,82 @@ if __name__ == "__main__":
             f"Unknown MODEL: {parsed_args.model}. Choose 'CTM' or 'METANET'."
         )
 
-    # compute performance metrics and illustrate them
-    VKT, VHT, avg_speed = sim.compute_metrics(
+    # compute performance metrics for microscopic network (mainline only)
+    # microsimulation results are loaded from the corresponding file with mainline only flag
+    micro_time, micro_states, _, _ = Simulation.load_results(
+        filepath=micro_results_path, network=network, load_mainline_only=True
+    )
+    micro_dt = micro_time[1] - micro_time[0]
+    micro_mainline_VKT, micro_mainline_VHT, micro_mainline_avg_speed = (
+        sim.compute_metrics(
+            states=micro_states,
+            dt=micro_dt,
+            timesteps=len(micro_time),
+            ignore_queues=True,  # for mainline performance, we want to ignore time spent in queues
+        )
+    )
+    print(
+        f"Total Mainline VKT (Microscopic Simulation): {micro_mainline_VKT:.2f} veh-km"
+    )
+    print(
+        f"Total Mainline VHT (Microscopic Simulation): {micro_mainline_VHT:.2f} veh-h"
+    )
+    print(f"Overall Average Speed (Mainline): {micro_mainline_avg_speed:.2f} km/h")
+
+    # compute performance metrics for macroscopic simluation (mainline only)
+    macro_mainline_VKT, macro_mainline_VHT, macro_mainline_avg_speed = (
+        sim.compute_metrics(
+            states=states,
+            dt=dt,
+            timesteps=len(time),
+            ignore_queues=True,  # for mainline performance, we want to ignore time spent in queues
+        )
+    )
+    print(
+        f"Total Mainline VKT (Macroscopic Simulation): {macro_mainline_VKT:.2f} veh-km"
+    )
+    print(
+        f"Total Mainline VHT (Macroscopic Simulation): {macro_mainline_VHT:.2f} veh-h"
+    )
+    print(f"Overall Average Speed (Mainline): {macro_mainline_avg_speed:.2f} km/h")
+
+    # compute performance metrics
+    macro_VKT, macro_VHT, avg_speed = sim.compute_metrics(
         states=states,
         dt=dt,
         timesteps=len(time),
     )
-    print(f"Total VKT: {VKT:.2f} veh-km")
-    print(f"Total VHT: {VHT:.2f} veh-h")
+    print(f"Total VKT (Macroscopic Simulation): {macro_VKT:.2f} veh-km")
+    print(f"Total VHT (Macroscopic Simulation): {macro_VHT:.2f} veh-h")
     print(f"Overall Average Speed: {avg_speed:.2f} km/h")
+
+    # log the performance metrics to a text file in the results directory
+    with open(os.path.join(results_dir, "performance_metrics.txt"), "w") as f:
+        f.write("Performance Metrics\n")
+        f.write("===================\n")
+        f.write(
+            f"Total Mainline VKT (Microscopic Simulation): {micro_mainline_VKT:.2f} veh-km\n"
+        )
+        f.write(
+            f"Total Mainline VHT (Microscopic Simulation): {micro_mainline_VHT:.2f} veh-h\n"
+        )
+        f.write(
+            f"Overall Average Speed (Mainline): {micro_mainline_avg_speed:.2f} km/h\n"
+        )
+        f.write("\n")
+        f.write(
+            f"Total Mainline VKT (Macroscopic Simulation): {macro_mainline_VKT:.2f} veh-km\n"
+        )
+        f.write(
+            f"Total Mainline VHT (Macroscopic Simulation): {macro_mainline_VHT:.2f} veh-h\n"
+        )
+        f.write(
+            f"Overall Average Speed (Mainline): {macro_mainline_avg_speed:.2f} km/h\n"
+        )
+        f.write("\n")
+        f.write(f"Total VKT (Macroscopic Simulation): {macro_VKT:.2f} veh-km\n")
+        f.write(f"Total VHT (Macroscopic Simulation): {macro_VHT:.2f} veh-h\n")
+        f.write(f"Overall Average Speed: {avg_speed:.2f} km/h\n")
 
     # generate video visualization if requested
     if generate_video:
