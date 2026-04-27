@@ -12,8 +12,8 @@ A Python library for simulating and analyzing macroscopic traffic flow on highwa
 
 - **Traffic Flow Models**: CTM (first-order) and METANET (second-order) macroscopic models
 - **Network Components**: Flexible highway network structure with motorway links, nodes, onramps, offramps, origins, and destinations
-- **Control Strategies**: ALINEA ramp metering controller
-- **Performance Metrics**: Compute Vehicle-Kilometers Traveled (VKT), Vehicle-Hours Traveled (VHT), and average speed
+- **Control Strategies**: Generic control interfaces for local and coordinated ramp metering strategies, including implementations for ALINEA, METALINE, and fixed-rate metering
+- **Performance Metrics**: Extensive set of network performance metrics (VKT, VHT, average speed, density, flow, etc.) computed from simulation results
 - **Visualization**: Network topology plotting, simulation result visualization, and video export
 - **SUMO Integration**: Pipeline components for importing and benchmarking real-world highway networks
 - **Calibration & Parameter Estimation**: Tools for calibrating macroscopic model parameters from aggregated observation data. Includes regularized least-squares calibration, multi-start parameter search, parameter-correlation analysis, and plotting utilities.
