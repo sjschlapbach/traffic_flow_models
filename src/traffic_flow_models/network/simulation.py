@@ -1941,6 +1941,10 @@ class Simulation:
         """
         # create results directory if it doesn't exist
         os.makedirs(save_dir, exist_ok=True)
+        link_dir = os.path.join(save_dir, "link_plots")
+        node_dir = os.path.join(save_dir, "node_plots")
+        os.makedirs(link_dir, exist_ok=True)
+        os.makedirs(node_dir, exist_ok=True)
 
         # convert time to seconds for plotting
         time_seconds = time_array * 3600.0
@@ -2075,7 +2079,7 @@ class Simulation:
                         densities=densities_over_time[link.id],
                         flows=flows_over_time[link.id],
                         speeds=speeds_over_time[link.id],
-                        save_dir=save_dir,
+                        save_dir=link_dir,
                     )
 
         # ===== PART 2: Per-Node Inflow Plots (Origins) =====
@@ -2103,7 +2107,7 @@ class Simulation:
                     onramp_queues_over_time=onramp_queues_over_time,
                     origin_demands_over_time=origin_demands_over_time,
                     onramp_demands_over_time=onramp_demands_over_time,
-                    save_dir=save_dir,
+                    save_dir=node_dir,
                 )
 
         # ===== PART 3: Per-Node Outflow Plots (Offramps & Destinations) =====
@@ -2121,7 +2125,7 @@ class Simulation:
                     time_seconds=time_seconds,
                     flows_over_time=flows_over_time,
                     offramp_queues_over_time=offramp_queues_over_time,
-                    save_dir=save_dir,
+                    save_dir=node_dir,
                 )
 
         # ===== PART 4: 3D Surface Plots for each MotorwayLink =====
@@ -2136,7 +2140,7 @@ class Simulation:
                         densities=densities_over_time[link.id],
                         flows=flows_over_time[link.id],
                         speeds=speeds_over_time[link.id],
-                        save_dir=save_dir,
+                        save_dir=link_dir,
                     )
 
         # ===== PART 5: Per-Node Summary Plots (All Inflows & Outflows) =====
@@ -2155,10 +2159,12 @@ class Simulation:
                 node=node,
                 time_seconds=time_seconds,
                 flows_over_time=flows_over_time,
-                save_dir=save_dir,
+                save_dir=node_dir,
             )
 
-        print(f"All plots saved to {save_dir}")
+        print(
+            f"All plots saved to {save_dir} (link plots: {link_dir}, node plots: {node_dir})"
+        )
 
     def _plot_motorway_link_results(
         self,
