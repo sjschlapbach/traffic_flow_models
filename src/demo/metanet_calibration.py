@@ -450,6 +450,7 @@ def run_calibration_experiment(
                 else False
             ),
             plot_correlation="exact_data_parameter_correlation.png",
+            plot_param_history="exact_param_history.png",
             save_dir=scenario_dir,
             convergence_title="Multi-Start Parameter Search Convergence - Exact Data",
             correlation_title="Parameter Correlation Analysis - Exact Data",
@@ -586,6 +587,7 @@ def run_calibration_experiment(
                 else False
             ),
             plot_correlation="noisy_noreg_parameter_correlation.png",
+            plot_param_history="noisy_noreg_param_history.png",
             save_dir=scenario_dir,
             convergence_title="Multi-Start Parameter Search Convergence - Noisy Data (No Regularization)",
             correlation_title="Parameter Correlation Analysis - Noisy Data (No Regularization)",
@@ -634,6 +636,7 @@ def run_calibration_experiment(
             model_options={"link_specific_alpha": False},
             regularization_weight=0.01,
             plot_correlation="noisy_reg_parameter_correlation.png",
+            plot_param_history="noisy_reg_param_history.png",
             save_dir=scenario_dir,
             correlation_title="Parameter Correlation Analysis - Noisy Data (With Regularization)",
         )
@@ -681,6 +684,7 @@ def run_calibration_experiment(
             model_options={"link_specific_alpha": True},
             regularization_weight=0.01,
             plot_correlation="link_specific_alpha_parameter_correlation.png",
+            plot_param_history="link_specific_alpha_param_history.png",
             save_dir=scenario_dir,
             correlation_title="Parameter Correlation Analysis - Link-Specific Alpha",
         )

@@ -98,6 +98,55 @@ class METANET:
 
         return model_options
 
+    def get_calibration_param_names(
+        self,
+        network: "Network",
+        model_options: dict | None = None,
+    ) -> list[str]:
+        """Return ordered calibration parameter names corresponding to the
+        calibration vector.
+
+        The returned list matches the packing order used by
+        :meth:`model_params_to_vec` and :meth:`model_params_vec_to_dict`.
+
+        Args:
+            network: Network instance used to determine the ordering of
+                per-link alpha entries when `model_options['link_specific_alpha']` is True.
+            model_options: Model options (supports the boolean key
+                ``'link_specific_alpha'``). If False, a single global ``alpha``
+                parameter name is returned; if True, one ``alpha_<linkid>``
+                name is returned per link in the network ordering.
+
+        Returns:
+            Ordered list of parameter names. The first five entries are always
+            the scalar parameters ``['tau', 'nu', 'kappa', 'delta', 'phi']``
+            followed by either a single ``'alpha'`` (global) or per-link
+            ``'alpha_<linkid>'`` names (link-specific).
+        """
+        model_options = self._validate_model_options(model_options)
+        link_specific_alpha = model_options.get("link_specific_alpha", False)
+
+        base = ["tau", "nu", "kappa", "delta", "phi"]
+
+        # single global alpha
+        if not link_specific_alpha:
+            return base + ["alpha"]
+
+        # determine per-link alpha entries from the network topology. Alpha is
+        # defined for motorway links, onramps and offramps; the ordering here
+        # matches `model_params_to_vec` / `model_params_vec_to_dict`.
+        link_ids: list[str] = []
+        for node in network.list_nodes():
+            for link in node.incoming:
+                if isinstance(link, Onramp):
+                    link_ids.append(link.id)
+            for link in node.outgoing:
+                if isinstance(link, MotorwayLink) or isinstance(link, Offramp):
+                    link_ids.append(link.id)
+
+        alpha_names = [f"alpha_{lid}" for lid in link_ids]
+        return base + alpha_names
+
     def get_calibration_bounds(
         self,
         network: "Network",

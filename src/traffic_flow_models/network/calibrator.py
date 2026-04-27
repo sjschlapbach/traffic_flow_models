@@ -51,6 +51,30 @@ class Calibrator:
         """
         self.network = network
 
+    def _infer_param_names(self, model, model_options: dict | None = None) -> list[str]:
+        """Return ordered calibration parameter names by delegating to the model.
+
+        This method calls `model.get_calibration_param_names(network, model_options)`
+        and returns the result.
+
+        Args:
+            model: Model instance implementing `get_calibration_param_names`.
+            model_options: Optional model-specific options forwarded to the model.
+
+        Raises:
+            NotImplementedError: If the model does not implement
+                `get_calibration_param_names`.
+        """
+        if not hasattr(model, "get_calibration_param_names"):
+            raise NotImplementedError(
+                f"Model {type(model).__name__} must implement get_calibration_param_names"
+            )
+
+        names = model.get_calibration_param_names(
+            network=self.network, model_options=model_options
+        )
+        return names
+
     def analyze_parameter_correlation(
         self,
         result: OptimizeResult,
@@ -306,6 +330,105 @@ class Calibrator:
 
         print(f"    Saved to: {plot_path}")
 
+    def plot_parameter_history(
+        self,
+        param_history: NDArray[np.float64],
+        lower_bounds: NDArray[np.float64],
+        upper_bounds: NDArray[np.float64],
+        param_names: list[str],
+        save_dir: str,
+        filename: str = "parameter_convergence.png",
+        title: str | None = None,
+    ) -> None:
+        """Plot parameter values across function evaluations with bounds.
+
+        Creates a single figure overlaying all parameter value series (one line per
+        parameter) and draws horizontal lines for the parameter bounds. Saves the
+        figure to `save_dir/filename`.
+
+        Args:
+            param_history: 2-D array (n_evals x n_params) of parameter vectors.
+            lower_bounds: 1-D array of lower bounds for each parameter.
+            upper_bounds: 1-D array of upper bounds for each parameter.
+            param_names: List of parameter names (length >= n_params or will be
+                         generated as needed).
+            save_dir: Directory to save the plot.
+            filename: Output filename.
+            title: Optional plot title.
+        """
+        ph = np.asarray(param_history)
+        if ph.ndim != 2:
+            raise ValueError("param_history must be a 2-D array (n_evals x n_params)")
+
+        n_evals, n_params = ph.shape
+
+        _, ax = plt.subplots(figsize=(12, 6))
+
+        cmap = plt.get_cmap("tab20")
+        for i in range(n_params):
+            color = cmap(i % 20)
+        if ph.ndim != 2:
+            raise ValueError("param_history must be a 2-D array (n_evals x n_params)")
+
+        n_evals, n_params = ph.shape
+
+        # layout: use 2 columns by default for a compact overview
+        ncols = 2
+        nrows = math.ceil(n_params / ncols)
+
+        fig, axes = plt.subplots(nrows, ncols, figsize=(14, 3.2 * nrows), squeeze=False)
+        axes_list = axes.flatten()
+
+        cmap = plt.get_cmap("tab20")
+        x = np.arange(n_evals)
+
+        for i in range(n_params):
+            ax = axes_list[i]
+            color = cmap(i % 20)
+            name = param_names[i] if i < len(param_names) else f"p{i}"
+
+            ax.plot(x, ph[:, i], color=color, linewidth=1.6)
+
+            # bounds (drawn as thin gray lines for clarity)
+            try:
+                lb = float(lower_bounds[i])
+            except Exception:
+                lb = None
+            try:
+                ub = float(upper_bounds[i])
+            except Exception:
+                ub = None
+
+            if lb is not None:
+                ax.axhline(lb, color="gray", linestyle=":", linewidth=1.0, alpha=0.7)
+            if ub is not None:
+                ax.axhline(ub, color="gray", linestyle="--", linewidth=1.0, alpha=0.7)
+
+            ax.set_title(name, fontsize=11, fontweight="bold")
+            ax.grid(True, alpha=0.25)
+
+            # only show x-tick labels on bottom row
+            row_idx = i // ncols
+            if row_idx != nrows - 1:
+                ax.set_xticklabels([])
+            else:
+                ax.set_xlabel("Function Evaluation", fontsize=10)
+
+        # hide any unused subplots
+        for j in range(n_params, len(axes_list)):
+            axes_list[j].set_visible(False)
+
+        if title:
+            plt.suptitle(title, fontsize=13, fontweight="bold")
+
+        plt.tight_layout()
+        os.makedirs(save_dir, exist_ok=True)
+        plot_path = os.path.join(save_dir, filename)
+        plt.savefig(plot_path, dpi=150, bbox_inches="tight")
+        plt.close()
+
+        print(f"    Saved parameter-history plot to: {plot_path}")
+
     def extract_measurable_states(
         self,
         state_history: NDArray[np.float64],
@@ -490,6 +613,7 @@ class Calibrator:
         n_samples: int | None = None,
         plot_convergence: bool | str = False,
         plot_correlation: bool | str = False,
+        plot_param_history: bool | str = False,
         save_dir: str | None = None,
         convergence_title: str | None = None,
         correlation_title: str | None = None,
@@ -582,6 +706,10 @@ class Calibrator:
                 Default: None.
             correlation_title: Optional custom title for parameter correlation plot.
                 Default: None.
+            plot_param_history: If True and `save_dir` is provided, save a single
+                parameter-history plot that shows the value of each optimization
+                parameter across function evaluations and the parameter bounds.
+                Can also be a string specifying the output filename. Default: False.
 
         Returns:
             Tuple containing:
@@ -647,10 +775,10 @@ class Calibrator:
                 print(f"  Max iterations per run: {max_nfev}")
                 print()
 
-            # generate parameter names for reporting
-            param_names = ["tau", "nu", "kappa", "delta", "phi"]
-            if n_params > 5:
-                param_names.extend([f"alpha_{i}" for i in range(n_params - 5)])
+            # generate parameter names using the model's authoritative method
+            param_names = self._infer_param_names(
+                model=model, model_options=model_options
+            )
 
             # generate Latin Hypercube samples in [0, 1]^n_params
             rng = np.random.default_rng(seed=42)
@@ -813,6 +941,28 @@ class Calibrator:
                     title=correlation_title,
                 )
 
+            # plot parameter history for the best run if requested
+            if (
+                plot_param_history
+                and save_dir is not None
+                and best_param_history is not None
+            ):
+                os.makedirs(save_dir, exist_ok=True)
+                history_filename = (
+                    plot_param_history
+                    if isinstance(plot_param_history, str)
+                    else "parameter_convergence_search_best.png"
+                )
+                self.plot_parameter_history(
+                    param_history=best_param_history,
+                    lower_bounds=lower_bounds,
+                    upper_bounds=upper_bounds,
+                    param_names=param_names,
+                    save_dir=save_dir,
+                    filename=history_filename,
+                    title=convergence_title,
+                )
+
             return best_params, best_result, best_param_history
 
         # ! Standard Single-Run Calibration Mode
@@ -963,15 +1113,14 @@ class Calibrator:
                     print(f"    {key}: {value}")
 
             # display bounds if available
-            if len(lower_bounds) >= 6:
-                print(
-                    f"  Bounds: tau=[{lower_bounds[0]:.0e}, {upper_bounds[0]:.1f}], "
-                    f"nu=[{lower_bounds[1]:.1f}, {upper_bounds[1]:.1f}], "
-                    f"kappa=[{lower_bounds[2]:.0e}, {upper_bounds[2]:.1f}], "
-                    f"delta=[{lower_bounds[3]:.1f}, {upper_bounds[3]:.1f}], "
-                    f"phi=[{lower_bounds[4]:.1f}, {upper_bounds[4]:.1f}], "
-                    f"alpha=[{lower_bounds[5]:.0e}, {upper_bounds[5]:.1f}]"
+            if len(lower_bounds) > 0:
+                param_nanes = self._infer_param_names(
+                    model=model, model_options=model_options
                 )
+                print("  Parameter bounds:")
+                for i, (lower, upper) in enumerate(zip(lower_bounds, upper_bounds)):
+                    name = param_nanes[i] if i < len(lower_bounds) else f"param_{i}"
+                    print(f"    {name}: [{lower:.2e}, {upper:.2f}]")
 
             if regularization_weight > 0:
                 print(f"  Regularization: λ={regularization_weight}")
@@ -1137,11 +1286,10 @@ class Calibrator:
 
         if plot_correlation and save_dir is not None:
             os.makedirs(save_dir, exist_ok=True)
-            # generate parameter names for reporting
-            n_params = len(calibrated_param_vec)
-            param_names = ["tau", "nu", "kappa", "delta", "phi"]
-            if n_params > 5:
-                param_names.extend([f"alpha_{i}" for i in range(n_params - 5)])
+            # generate parameter names using the model's authoritative method
+            param_names = self._infer_param_names(
+                model=model, model_options=model_options
+            )
 
             # extract filename from plot_correlation if it's a string, otherwise use default
             correlation_filename = (
@@ -1161,6 +1309,28 @@ class Calibrator:
                 print("  ℹ  Correlation plot not requested (plot_correlation=False)")
             if save_dir is None:
                 print("  ℹ  No save directory provided (save_dir=None)")
+
+        # optionally plot parameter history for this single-run calibration
+        if plot_param_history and save_dir is not None:
+            param_names = self._infer_param_names(
+                model=model, model_options=model_options
+            )
+
+            history_filename = (
+                plot_param_history
+                if isinstance(plot_param_history, str)
+                else "parameter_convergence.png"
+            )
+            os.makedirs(save_dir, exist_ok=True)
+            self.plot_parameter_history(
+                param_history=param_history_array,
+                lower_bounds=lower_bounds,
+                upper_bounds=upper_bounds,
+                param_names=param_names,
+                save_dir=save_dir,
+                filename=history_filename,
+                title=convergence_title,
+            )
 
         return calibrated_params, result, param_history_array
 
