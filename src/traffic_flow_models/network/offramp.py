@@ -22,7 +22,7 @@ class Offramp:
 
         Args:
             lanes: Number of lanes on the offramp.
-            id: Optional identifier for the offramp link. If not provided, 
+            id: Optional identifier for the offramp link. If not provided,
                 a unique ID is generated automatically.
             origin_node_id: Optional identifier for the origin node
                 to which this offramp is connected.

@@ -60,7 +60,16 @@ def calculate_parameter_errors(
     errors = {}
 
     # calculate errors for all parameters
-    for param_name in ["vf", "qc_lane", "rho_jam", "tau", "nu", "kappa", "delta", "phi"]:
+    for param_name in [
+        "vf",
+        "qc_lane",
+        "rho_jam",
+        "tau",
+        "nu",
+        "kappa",
+        "delta",
+        "phi",
+    ]:
         true_val = true_params[param_name]
         calib_val = calibrated_params[param_name]
         rel_error = abs(calib_val - true_val) / (true_val + 1e-10) * 100
@@ -462,7 +471,16 @@ def run_calibration_experiment(
     print(f"{'Parameter':<10} {'True':<15} {'Calibrated':<15} {'Rel. Error':<15}")
     print("-" * 80)
 
-    for param_name in ["vf", "qc_lane", "rho_jam", "tau", "nu", "kappa", "delta", "phi"]:
+    for param_name in [
+        "vf",
+        "qc_lane",
+        "rho_jam",
+        "tau",
+        "nu",
+        "kappa",
+        "delta",
+        "phi",
+    ]:
         true_val = true_params[param_name]
         calib_val = calibrated_params_exact[param_name]
         rel_error = abs(calib_val - true_val) / (true_val + 1e-10) * 100
@@ -599,7 +617,16 @@ def run_calibration_experiment(
     print(f"{'Parameter':<10} {'True':<15} {'Calibrated':<15} {'Rel. Error':<15}")
     print("-" * 80)
 
-    for param_name in ["vf", "qc_lane", "rho_jam", "tau", "nu", "kappa", "delta", "phi"]:
+    for param_name in [
+        "vf",
+        "qc_lane",
+        "rho_jam",
+        "tau",
+        "nu",
+        "kappa",
+        "delta",
+        "phi",
+    ]:
         true_val = true_params[param_name]
         calib_val = calibrated_params_noisy_noreg[param_name]
         rel_error = abs(calib_val - true_val) / (true_val + 1e-10) * 100
@@ -647,7 +674,16 @@ def run_calibration_experiment(
     print(f"{'Parameter':<10} {'True':<15} {'Calibrated':<15} {'Rel. Error':<15}")
     print("-" * 80)
 
-    for param_name in ["vf", "qc_lane", "rho_jam", "tau", "nu", "kappa", "delta", "phi"]:
+    for param_name in [
+        "vf",
+        "qc_lane",
+        "rho_jam",
+        "tau",
+        "nu",
+        "kappa",
+        "delta",
+        "phi",
+    ]:
         true_val = true_params[param_name]
         calib_val = calibrated_params_noisy_reg[param_name]
         rel_error = abs(calib_val - true_val) / (true_val + 1e-10) * 100
@@ -695,7 +731,16 @@ def run_calibration_experiment(
     print(f"{'Parameter':<10} {'True':<15} {'Calibrated':<15} {'Rel. Error':<15}")
     print("-" * 80)
 
-    for param_name in ["vf", "qc_lane", "rho_jam", "tau", "nu", "kappa", "delta", "phi"]:
+    for param_name in [
+        "vf",
+        "qc_lane",
+        "rho_jam",
+        "tau",
+        "nu",
+        "kappa",
+        "delta",
+        "phi",
+    ]:
         true_val = true_params[param_name]
         calib_val = calibrated_params_noisy_link_alpha[param_name]
         rel_error = abs(calib_val - true_val) / (true_val + 1e-10) * 100
@@ -755,7 +800,17 @@ def run_calibration_experiment(
     print("-" * 80)
 
     # parameter names for METANET (in order)
-    param_names = ["vf", "qc_lane", "rho_jam", "tau", "nu", "kappa", "delta", "phi", "alpha"]
+    param_names = [
+        "vf",
+        "qc_lane",
+        "rho_jam",
+        "tau",
+        "nu",
+        "kappa",
+        "delta",
+        "phi",
+        "alpha",
+    ]
 
     calibrator.plot_parameter_convergence(
         param_history_exact=param_history_exact,

@@ -55,8 +55,6 @@ class MotorwayLink:
         if lanes <= 0:
             raise ValueError("Number of lanes must be positive.")
 
- 
-
         # set link parameters
         self.length: float = length  # in kilometers
         self.lanes: int = lanes  # number of lanes
@@ -119,7 +117,11 @@ class MotorwayLink:
         return new_cell
 
     def partition_link(
-        self, max_vf: float, preferred_cell_size: float, dt: float, upcoming_lane_drop: int = 0
+        self,
+        max_vf: float,
+        preferred_cell_size: float,
+        dt: float,
+        upcoming_lane_drop: int = 0,
     ) -> None:
         """Partition the motorway link into a sequence of `Cell` objects.
 
@@ -145,7 +147,7 @@ class MotorwayLink:
         self._tail = None
         self._cell_count = 0
 
-        # determine maximum allowable cell size from CFL condition based on the 
+        # determine maximum allowable cell size from CFL condition based on the
         # maximum possible free-flow speed obtained from calibration of model
         min_cell_length = max_vf * dt
         valid_cell_size = max(preferred_cell_size, min_cell_length + 0.001)
