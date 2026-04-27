@@ -334,6 +334,7 @@ if __name__ == "__main__":
             use_parameter_search=False,
             correlation_title="METANET Calibration - Parameter Correlation Analysis",
             plot_correlation="metanet_calibration_parameter_correlation.png",
+            plot_param_history="metanet_calibration_param_history.png",
             save_dir=results_dir,
             use_disturbance_from_file=False,  # we will provide disturbance callables instead of using the file-based disturbances
             origin_demands_fn=origin_demands,

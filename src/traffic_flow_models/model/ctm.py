@@ -88,6 +88,18 @@ class CTM:
         """
         raise NotImplementedError("CTM model does not have calibratable parameters.")
 
+    def get_calibration_param_names(
+        self, network: "Network", model_options: dict | None = None
+    ) -> list[str]:
+        """CTM has no calibratable parameters.
+
+        Raises:
+            NotImplementedError: CTM does not support parameter calibration.
+        """
+        raise NotImplementedError(
+            "CTM model does not have calibratable parameters or parameter names."
+        )
+
     # endregion
 
     # ! Fundamental diagram helper functions
