@@ -16,6 +16,7 @@ A Python library for simulating and analyzing macroscopic traffic flow on highwa
 - **Performance Metrics**: Compute Vehicle-Kilometers Traveled (VKT), Vehicle-Hours Traveled (VHT), and average speed
 - **Visualization**: Network topology plotting, simulation result visualization, and video export
 - **SUMO Integration**: Pipeline components for importing and benchmarking real-world highway networks
+- **Calibration & Parameter Estimation**: Tools for calibrating macroscopic model parameters from aggregated observation data. Includes regularized least-squares calibration, multi-start parameter search, parameter-correlation analysis, and plotting utilities.
 
 ## Installation
 
@@ -167,6 +168,34 @@ time, states, disturbances = sim.run(
     destination_density_bc=destination_density_bc,
     plot_results=True,
     results_dir="results/metanet_run",
+)
+```
+
+### Model Calibration
+
+```python
+from traffic_flow_models import Calibrator, METANET, Simulation
+
+# Calibrate METANET using aggregated microscopic simulation results
+calibrator = Calibrator(network)
+metanet = METANET()
+calibrated_params, opt_result, _ = calibrator.calibrate_model_params(
+    ground_truth_filepath="results/micro_results.json",
+    model=metanet,
+    window_size=30,
+    stride=15,
+    regularization_weight=0.01,
+    use_disturbance_from_file=False,
+    origin_demands_fn=origin_demands,
+    turning_rates_fn=turning_rates,
+)
+
+# Run macroscopic simulation with calibrated parameters
+sim = Simulation(network=network, model=metanet, model_params=calibrated_params)
+time, states, disturbances = sim.run(
+    duration=1.0, dt=10.0/3600, preferred_cell_size=0.5,
+    origin_demands=origin_demands, turning_rates=turning_rates,
+    destination_flow_bc=destination_flow_bc, destination_density_bc=destination_density_bc,
 )
 ```
 
