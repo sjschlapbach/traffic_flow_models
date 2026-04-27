@@ -816,6 +816,11 @@ class Calibrator:
                             max_nfev=max_nfev,
                             verbose=False,  # suppress per-run output
                             use_parameter_search=False,  # disable recursive parameter search
+                            use_disturbance_from_file=use_disturbance_from_file,
+                            origin_demands_fn=origin_demands_fn,
+                            turning_rates_fn=turning_rates_fn,
+                            flow_boundary_conditions_fn=flow_boundary_conditions_fn,
+                            density_boundary_conditions_fn=density_boundary_conditions_fn,
                         )
                     )
 

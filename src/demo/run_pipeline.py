@@ -79,6 +79,18 @@ if __name__ == "__main__":
         help="Generate video visualization of simulation results",
     )
     args.add_argument(
+        "--parameter-search",
+        action="store_true",
+        help="Whether to perform a parameter search for the calibration of the macroscopic model",
+        default=False,
+    )
+    args.add_argument(
+        "--regularization-weight",
+        type=float,
+        default=0.01,
+        help="Regularization weight for the calibration loss function (default: 0.01)",
+    )
+    args.add_argument(
         "--model",
         type=str,
         choices=["CTM", "METANET"],
@@ -329,9 +341,9 @@ if __name__ == "__main__":
             window_size=30,
             stride=15,
             model_options={"link_specific_alpha": False},
-            regularization_weight=0.01,
+            regularization_weight=parsed_args.regularization_weight,
             verbose=True,
-            use_parameter_search=False,
+            use_parameter_search=parsed_args.parameter_search,
             correlation_title="METANET Calibration - Parameter Correlation Analysis",
             plot_correlation="metanet_calibration_parameter_correlation.png",
             plot_param_history="metanet_calibration_param_history.png",
