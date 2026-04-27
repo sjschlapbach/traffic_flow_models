@@ -2699,6 +2699,7 @@ class Simulation:
         self,
         results_filepath: str,
         output_filepath: str,
+        model_params: CTMParams | METANETParams,
         fps: int = 25,
         subsampling: int = 1,
         figsize: tuple[float, float] = (10, 8),
@@ -2754,9 +2755,9 @@ class Simulation:
         # ensure numeric critical densities and jam densities for visualization
         critical_densities = metadata.get("critical_densities", {})
         link_properties = metadata.get("link_properties", {})
+        jam_density = model_params["rho_jam"]
         for lk_id, val in list(critical_densities.items()):
             if not isinstance(val, (int, float)) or not np.isfinite(val):
-                jam_density = link_properties.get(lk_id, {}).get("jam_density", None)
                 try:
                     jam_density = float(jam_density)
                 except Exception:
@@ -2775,9 +2776,6 @@ class Simulation:
         # ensure every link in link_properties has a critical density entry
         for lk_id in metadata.get("link_properties", {}).keys():
             if lk_id not in metadata.get("critical_densities", {}):
-                jam_density = metadata["link_properties"][lk_id].get(
-                    "jam_density", None
-                )
                 try:
                     jam_density = float(jam_density)
                 except Exception:
@@ -2846,6 +2844,7 @@ class Simulation:
                 # draw network state on axes using helper
                 self._draw_network_state_on_axes(
                     ax=ax,
+                    model_params=model_params,
                     flows=flows,
                     densities=densities,
                     onramp_queues=onramp_queues,
@@ -2871,6 +2870,7 @@ class Simulation:
 
     def visualize_comparison(
         self,
+        model_params: CTMParams | METANETParams,
         result_filepaths: list[str],
         labels: list[str],
         output_filepath: str,
@@ -2887,6 +2887,7 @@ class Simulation:
         results or different scenarios.
 
         Args:
+            model_params: Model parameters
             result_filepaths: List of paths to simulation results JSON files
             labels: List of labels for each simulation (same length as result_filepaths)
             output_filepath: Path for output video file (.avi)
@@ -2942,11 +2943,10 @@ class Simulation:
 
             # normalize metadata: ensure critical densities and jam densities are numeric
             krit = metadata.get("critical_densities", {})
-            link_props = metadata.get("link_properties", {})
+            jam = model_params["rho_jam"]
             for lk_id in list(krit.keys()):
                 val = krit.get(lk_id)
                 if not isinstance(val, (int, float)) or not np.isfinite(val):
-                    jam = link_props.get(lk_id, {}).get("jam_density", None)
                     try:
                         jam = float(jam)
                     except Exception:
@@ -3091,6 +3091,7 @@ class Simulation:
                     # draw network state on axes using helper
                     self._draw_network_state_on_axes(
                         ax=ax,
+                        model_params=model_params,
                         flows=flows,
                         densities=densities,
                         onramp_queues=onramp_queues,
@@ -3234,6 +3235,7 @@ class Simulation:
     def _draw_network_state_on_axes(
         self,
         ax: Axes,
+        model_params: CTMParams | METANETParams,
         flows: dict,
         densities: dict,
         onramp_queues: dict,
@@ -3297,7 +3299,7 @@ class Simulation:
                     # compute maximum density for this link
                     max_rho = float(np.max(densities[link.id]))
                     rho_crit = critical_densities[link.id]
-                    rho_jam = link_properties[link.id]["jam_density"]
+                    rho_jam = model_params["rho_jam"]
 
                     # get color
                     r, g, b = self._density_to_color(max_rho, rho_crit, rho_jam)
