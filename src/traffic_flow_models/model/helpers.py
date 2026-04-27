@@ -1,13 +1,18 @@
 import casadi
-from typing import Tuple, Union, Optional
+from typing import Tuple, Union, Optional, TYPE_CHECKING
 
 from traffic_flow_models.network import Node, Origin, Onramp, Offramp, MotorwayLink
 
+if TYPE_CHECKING:
+    from traffic_flow_models.model.ctm import CTMSymbolicParams
+    from traffic_flow_models.model.metanet import METANETSymbolicParams
+
 
 def store_and_forward_update(
-    capacity: float,
-    jam_density: float,
-    backward_wave_speed: float,
+    params: Union["CTMSymbolicParams", "METANETSymbolicParams"],
+    lanes: int,
+    jam_density: float | casadi.SX,
+    backward_wave_speed: float | casadi.SX,
     density: casadi.SX,
     demand: casadi.SX,
     queue: casadi.SX,
@@ -23,7 +28,8 @@ def store_and_forward_update(
     and jam density.
 
     Args:
-        capacity: Maximum flow capacity of the segment (vehicles / time).
+        params: Model parameters.
+        lanes: Number of lanes on the segment.
         jam_density: Jam density of the segment (vehicles / length).
         backward_wave_speed: Backward wave speed (length / time).
         density: Current density in the segment (CasADi SX, vehicles / length).
@@ -45,7 +51,10 @@ def store_and_forward_update(
     qin_demand: casadi.SX = demand + queue / dt
     qin_supply: casadi.SX = backward_wave_speed * (jam_density - density)
     inflow: casadi.SX = casadi.fmin(
-        casadi.fmin(casadi.fmin(capacity, safe_metering_rate), qin_demand), qin_supply
+        casadi.fmin(
+            casadi.fmin(lanes * params["qc_lane"], safe_metering_rate), qin_demand
+        ),
+        qin_supply,
     )
     updated_queue: casadi.SX = update_queue(
         queue_length=queue, demand=demand, flow=inflow, dt=dt

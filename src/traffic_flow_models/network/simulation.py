@@ -32,7 +32,7 @@ from traffic_flow_models.network import (
     Offramp,
     Destination,
 )
-from traffic_flow_models.model import CTM, METANET, METANETParams
+from traffic_flow_models.model import CTM, CTMParams, METANET, METANETParams
 
 if TYPE_CHECKING:
     from traffic_flow_models.network import Network
@@ -66,14 +66,14 @@ class Simulation:
         self,
         network: "Network",  # type: ignore  # Forward reference
         model: Union[CTM, METANET],
-        model_params: Union[METANETParams, None] = None,
+        model_params: Union[CTMParams, METANETParams],
     ):
         """Initialize the Simulation instance.
 
         Args:
             network: Network instance containing the traffic network topology.
             model: Traffic flow model to use (CTM or METANET).
-            model_params: Model parameters for METANET (required for METANET, must be None for CTM).
+            model_params: Model parameters required for the chosen traffic flow model.
 
         Raises:
             ValueError: If model_params is provided for CTM or missing for METANET.
@@ -86,14 +86,13 @@ class Simulation:
         if not isinstance(model, (CTM, METANET)):
             raise TypeError("model must be a CTM or METANET instance")
 
+        if model_params is None:
+            raise ValueError("Model parameters must be provided for simulation")
+
         if isinstance(model, CTM) and model_params is not None:
-            raise ValueError("CTM model does not accept model_params")
-
-        if isinstance(model, METANET) and model_params is None:
-            raise ValueError("METANET model requires model_params to be provided")
-
-        if isinstance(model, METANET) and model_params is not None:
-            model.validate_model_params(model_params=model_params)
+            model.validate_model_params(model_params=cast(CTMParams, model_params))
+        elif isinstance(model, METANET) and model_params is not None:
+            model.validate_model_params(model_params=cast(METANETParams, model_params))
 
         self.network = network
         self.model = model
@@ -500,7 +499,9 @@ class Simulation:
                         else:
                             link_speeds_dict[link.id] = np.full(num_cells, init_speed)
                     else:
-                        link_speeds_dict[link.id] = np.full(num_cells, link.vf)
+                        link_speeds_dict[link.id] = np.full(
+                            num_cells, self.model_params["vf"]
+                        )
 
                 # for offramps initialize offramp flows and queues
                 if isinstance(link, Offramp):
@@ -690,17 +691,22 @@ class Simulation:
             )
 
             # obtain the model parameters in vector form for the model update
-            if self.model_params is not None and isinstance(self.model, METANET):
+            if self.model_params is not None and isinstance(self.model, CTM):
                 params = self.model.model_params_to_vec(
-                    network=self.network, model_params=self.model_params
+                    model_params=cast(CTMParams, self.model_params)
+                )
+            elif self.model_params is None and isinstance(self.model, CTM):
+                raise ValueError(
+                    "CTM model requires model_params to be provided for simulation."
+                )
+            elif self.model_params is not None and isinstance(self.model, METANET):
+                params = self.model.model_params_to_vec(
+                    network=self.network,
+                    model_params=cast(METANETParams, self.model_params),
                 )
             elif self.model_params is None and isinstance(self.model, METANET):
                 raise ValueError(
                     "METANET model requires model_params to be provided for simulation."
-                )
-            elif self.model_params is not None and isinstance(self.model, CTM):
-                raise ValueError(
-                    "CTM model does not support model_params to be provided for simulation."
                 )
             else:
                 params = np.array(
@@ -791,6 +797,7 @@ class Simulation:
                 if isinstance(link, MotorwayLink):
                     upcoming_lane_drop = self.network._compute_upcoming_lane_drop(link)
                     link.partition_link(
+                        max_vf=self.model_params["vf"],
                         preferred_cell_size=preferred_cell_size,
                         dt=dt,
                         upcoming_lane_drop=upcoming_lane_drop,
@@ -888,14 +895,14 @@ class Simulation:
             # save simulation results as JSON file
             results_path = os.path.join(results_dir, "simulation_results.json")
             self.save_results(
+                filepath=results_path,
+                model_params=self.model_params,
                 time_array=time_array,
                 state_history=state_history,
                 disturbance_history=disturbance_history,
-                filepath=results_path,
                 dt=dt,
                 duration=duration,
                 preferred_cell_size=preferred_cell_size,
-                model_params=self.model_params,
             )
             print(f"  Simulation results saved to {results_path}")
 
@@ -931,13 +938,13 @@ class Simulation:
     def save_results(
         self,
         filepath: str,
+        model_params: Union["CTMParams", "METANETParams"],
         time_array: NDArray[np.float64] | None = None,
         state_history: NDArray[np.float64] | None = None,
         disturbance_history: NDArray[np.float64] | None = None,
         dt: float | None = None,
         duration: float | None = None,
         preferred_cell_size: float | None = None,
-        model_params: Union["METANETParams", None] = None,
     ) -> None:
         """Save simulation results to a JSON file with comprehensive metadata.
 
@@ -953,13 +960,14 @@ class Simulation:
 
         Args:
             filepath: Path where the JSON file should be saved.
+            model_params: Model parameters for FD and other settings.
             time_array: 1-D array of time points (uses stored results when None).
             state_history: 2-D array of state vectors over time (uses stored results when None).
             disturbance_history: 2-D array of disturbances over time (uses stored results when None).
             dt: Simulation time step (uses value from last run() when None).
             duration: Total simulation duration (uses value from last run() when None).
             preferred_cell_size: Preferred cell size (uses value from last run() when None).
-            model_params: Model parameters for METANET (None for CTM).
+
         """
         # Fall back to stored instance results when arguments are not supplied
         if time_array is None:
@@ -1091,7 +1099,7 @@ class Simulation:
                         float(np.asarray(v).tolist())
                     )
 
-        critical_densities: dict[str, float] = {}
+        critical_densities: dict[str, float | casadi.SX] = {}
         link_properties: dict[str, dict] = {}
 
         for node in self.network.list_nodes():
@@ -1099,8 +1107,8 @@ class Simulation:
                 if isinstance(link, MotorwayLink):
                     if isinstance(self.model, CTM):
                         rho_crit = self.model.critical_density(
-                            lane_capacity=link.Qc_lane,
-                            free_flow_speed=link.vf,
+                            params=model_params,
+                            link_id=link.id,
                         )
                     elif isinstance(self.model, METANET):
                         if model_params is None:
@@ -1108,10 +1116,8 @@ class Simulation:
                                 "model_params required for METANET critical density calculation"
                             )
                         rho_crit = self.model.critical_density(
-                            params=model_params,
+                            params=cast(METANETParams, model_params),
                             link_id=link.id,
-                            lane_capacity=link.Qc_lane,
-                            free_flow_speed=link.vf,
                         )
                     else:
                         raise ValueError(
@@ -1126,9 +1132,6 @@ class Simulation:
                     link_properties[link.id] = {
                         "length": link.length,
                         "lanes": link.lanes,
-                        "lane_capacity": link.Qc_lane,
-                        "free_flow_speed": link.vf,
-                        "jam_density": link.rho_jam,
                         "num_cells": len(link),
                         "cell_lengths": cell_lengths,
                     }
@@ -1146,22 +1149,33 @@ class Simulation:
         }
 
         # add model parameters if METANET
-        if isinstance(self.model, METANET) and model_params is not None:
+        if isinstance(self.model, CTM) and model_params is not None:
+            casted_params = cast(CTMParams, model_params)
+            metadata["model_parameters"] = {
+                "vf": casted_params["vf"],
+                "qc_lane": casted_params["qc_lane"],
+                "rho_jam": casted_params["rho_jam"],
+            }
+        elif isinstance(self.model, METANET) and model_params is not None:
             # convert model_params to serializable format
             # handle alpha separately as it can be float or dict[str, float]
+            casted_params = cast(METANETParams, model_params)
             metadata["model_parameters"] = {
-                "tau": model_params["tau"],
-                "nu": model_params["nu"],
-                "kappa": model_params["kappa"],
-                "delta": model_params["delta"],
-                "phi": model_params["phi"],
+                "vf": casted_params["vf"],
+                "qc_lane": casted_params["qc_lane"],
+                "rho_jam": casted_params["rho_jam"],
+                "tau": casted_params["tau"],
+                "nu": casted_params["nu"],
+                "kappa": casted_params["kappa"],
+                "delta": casted_params["delta"],
+                "phi": casted_params["phi"],
                 "alpha": (
                     {
                         link_id: alpha_val
-                        for link_id, alpha_val in model_params["alpha"].items()
+                        for link_id, alpha_val in casted_params["alpha"].items()
                     }
-                    if isinstance(model_params["alpha"], dict)
-                    else float(model_params["alpha"])
+                    if isinstance(casted_params["alpha"], dict)
+                    else float(casted_params["alpha"])
                 ),
             }
 
@@ -2191,9 +2205,11 @@ class Simulation:
         actual_duration = time_seconds[-1]
 
         # calculate max values for y-axis scaling
-        max_density = max(np.max(densities) * 1.1, link.rho_jam * 1.1)
-        max_flow = max(np.max(flows[:, :-1]) * 1.1, link.Qc * 1.1)
-        max_speed = max(np.max(speeds[:, :-1]) * 1.1, link.vf * 1.1)
+        max_density = max(np.max(densities) * 1.1, self.model_params["rho_jam"] * 1.1)
+        max_flow = max(
+            np.max(flows[:, :-1]) * 1.1, link.lanes * self.model_params["qc_lane"] * 1.1
+        )
+        max_speed = max(np.max(speeds[:, :-1]) * 1.1, self.model_params["vf"] * 1.1)
 
         # figure 1: Density
         fig1, axes1 = plt.subplots(nrows, ncols, figsize=(4 * ncols, 3 * nrows))
@@ -2211,8 +2227,10 @@ class Simulation:
 
         for i, _ in link.enumerate_cells():
             axes1[i].plot(time_seconds, densities[i, :], linewidth=1.5)
-            axes1[i].axhline(link.rho_jam, color="red", linestyle="--", linewidth=1)
-            axes1[i].set_ylim([0, max(link.rho_jam * 1.1, max_density)])
+            axes1[i].axhline(
+                self.model_params["rho_jam"], color="red", linestyle="--", linewidth=1
+            )
+            axes1[i].set_ylim([0, max(self.model_params["rho_jam"] * 1.1, max_density)])
             axes1[i].set_xlim([0, actual_duration])
             axes1[i].set_xlabel("time (s)")
             axes1[i].set_ylabel("density (veh/km/lane)")
@@ -2246,8 +2264,15 @@ class Simulation:
             axes2[i].plot(
                 time_seconds[:-1], flows[i, :-1], linewidth=1.5, label="Cell outflow"
             )
-            axes2[i].axhline(link.Qc, color="red", linestyle="--", linewidth=1)
-            axes2[i].set_ylim([0, max(link.Qc * 1.1, max_flow)])
+            axes2[i].axhline(
+                link.lanes * self.model_params["qc_lane"],
+                color="red",
+                linestyle="--",
+                linewidth=1,
+            )
+            axes2[i].set_ylim(
+                [0, max(link.lanes * self.model_params["qc_lane"] * 1.1, max_flow)]
+            )
             axes2[i].set_xlim([0, actual_duration])
             axes2[i].set_xlabel("time (s)")
             axes2[i].set_ylabel("flow (veh/h)")
@@ -2276,7 +2301,7 @@ class Simulation:
             axes3 = axes3.flatten()
 
         for i, _ in link.enumerate_cells():
-            vf_cell = link.vf
+            vf_cell = self.model_params["vf"]
             axes3[i].plot(time_seconds[:-1], speeds[i, :-1], linewidth=1.5)
             axes3[i].axhline(vf_cell, color="red", linestyle="--", linewidth=1)
             axes3[i].set_ylim([0, max(vf_cell * 1.1, max_speed)])
@@ -2490,9 +2515,9 @@ class Simulation:
         )
 
         # calculate max values
-        max_rho_jam = link.rho_jam
-        max_capacity = link.Qc
-        max_vf = link.vf
+        max_rho_jam = self.model_params["rho_jam"]
+        max_capacity = link.lanes * self.model_params["qc_lane"]
+        max_vf = self.model_params["vf"]
 
         fig = plt.figure(figsize=(18, 6))
         fig.suptitle(
@@ -3333,7 +3358,7 @@ class Simulation:
                         color = Simulation.COLOR_CONGESTION_RED
                     else:
                         flow = float(flows.get(link.id, [0.0])[0])
-                        capacity = link.Qc
+                        capacity = link.lanes * self.model_params["qc_lane"]
                         ratio = min(flow / capacity if capacity > 0 else 0.0, 1.0)
                         r = 0.6 * (1 - ratio)
                         g = 1.0 - 0.5 * ratio
@@ -3384,7 +3409,7 @@ class Simulation:
                         color = Simulation.COLOR_CONGESTION_RED
                     else:
                         flow = float(flows.get(link.id, [0.0])[0])
-                        capacity = link.Qc
+                        capacity = link.lanes * self.model_params["qc_lane"]
                         ratio = min(flow / capacity if capacity > 0 else 0.0, 1.0)
                         r = 0.6 * (1 - ratio)
                         g = 1.0 - 0.5 * ratio

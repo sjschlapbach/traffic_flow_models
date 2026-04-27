@@ -25,9 +25,6 @@ class Onramp:
         self,
         length: float,
         lanes: int,
-        lane_capacity: float,
-        free_flow_speed: float,
-        jam_density: float,
         id: str | None = None,
         controller: (
             Union[
@@ -43,9 +40,8 @@ class Onramp:
         Args:
             id: Identifier for the origin link (for demand assignment; optional).
             lanes: Number of lanes on the onramp.
-            lane_capacity: Vehicles per hour per lane capacity.
-            free_flow_speed: Free-flow speed in km/h.
-            jam_density: Jam density in vehicles per km per lane.
+            id: Optional identifier for the onramp link. If not provided,
+                a unique ID is generated automatically.
             controller: Optional ramp metering controller.
             origin_node_id: Optional ID of the upstream node.
             destination_node_id: Optional ID of the downstream node.
@@ -57,15 +53,6 @@ class Onramp:
         if length <= 0:
             raise ValueError("Onramp length must be positive.")
 
-        if lane_capacity <= 0:
-            raise ValueError("Lane capacity must be positive.")
-
-        if free_flow_speed <= 0:
-            raise ValueError("Free-flow speed must be positive.")
-
-        if jam_density <= 0:
-            raise ValueError("Jam density must be positive.")
-
         self.id: str = (
             id if id is not None else str(uuid.uuid4())
         )  # identifier for the origin link
@@ -73,10 +60,6 @@ class Onramp:
             length  # length of the onramp link (same units as motorway links)
         )
         self.lanes: int = lanes  # number of lanes
-        self.Qc_lane: float = lane_capacity  # in vehicles per hour per lane
-        self.Qc: float = lane_capacity * lanes  # total capacity in vehicles per hour
-        self.vf: float = free_flow_speed  # in kilometers per hour
-        self.rho_jam: float = jam_density  # in vehicles per kilometer per lane
 
         self.controller = controller  # optional ramp metering controller
         self.control_status: Literal["unset", "hero_master", "hero_slave"] = (

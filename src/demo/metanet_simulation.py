@@ -26,6 +26,9 @@ if __name__ == "__main__":
     duration = 5000.0 / 3600
 
     # ! METANET model parameters
+    vf = 100.0
+    qc_lane = 2000.0
+    rho_jam = 180.0
     tau = 22 / 3600
     nu = 15
     kappa = 10
@@ -107,6 +110,9 @@ if __name__ == "__main__":
 
     # initialize the METANET model parameters
     model_params: METANETParams = {
+        "vf": vf,
+        "qc_lane": qc_lane,
+        "rho_jam": rho_jam,
         "tau": tau,
         "nu": nu,
         "kappa": kappa,

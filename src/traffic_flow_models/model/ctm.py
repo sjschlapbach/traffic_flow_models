@@ -1,5 +1,7 @@
 import casadi
-from typing import TYPE_CHECKING, Tuple, Union
+import numpy as np
+from numpy.typing import NDArray
+from typing import cast, TYPE_CHECKING, Tuple, Union, TypedDict
 
 from .helpers import store_and_forward_update, update_queue, compute_node_outflows
 from traffic_flow_models.network import (
@@ -12,6 +14,18 @@ from traffic_flow_models.network import (
 
 if TYPE_CHECKING:
     from traffic_flow_models.network import Network, Node
+
+
+class CTMParams(TypedDict):
+    vf: float
+    qc_lane: float
+    rho_jam: float
+
+
+class CTMSymbolicParams(TypedDict):
+    vf: float | casadi.SX
+    qc_lane: float | casadi.SX
+    rho_jam: float | casadi.SX
 
 
 class CTM:
@@ -45,60 +59,129 @@ class CTM:
     # ! Model parameter calibration support (not applicable for CTM)
     # region
     def get_default_calibration_params(self):
-        """CTM has no calibratable parameters.
+        """Return default initial parameters for calibration.
 
-        Raises:
-            NotImplementedError: CTM does not support parameter calibration.
+        These defaults provide reasonable starting values for the optimization
+        procedure when no initial guess is provided.
+
+        Returns:
+            Dictionary of default CTM parameters.
         """
-        raise NotImplementedError(
-            "CTM model does not have calibratable parameters. "
-            "All model characteristics are determined by link properties "
-            "(capacity, jam density, free-flow speed)."
+        return CTMParams(
+            vf=100.0,
+            qc_lane=2000.0,
+            rho_jam=180.0,
         )
-
-    def get_calibration_bounds(self, network, **kwargs):
-        """CTM has no calibratable parameters.
-
-        Raises:
-            NotImplementedError: CTM does not support parameter calibration.
-        """
-        raise NotImplementedError("CTM model does not have calibratable parameters.")
-
-    def prepare_calibration_params(self, params, network, **kwargs):
-        """CTM has no calibratable parameters.
-
-        Raises:
-            NotImplementedError: CTM does not support parameter calibration.
-        """
-        raise NotImplementedError("CTM model does not have calibratable parameters.")
-
-    def parse_calibration_params(self, param_vec, network, **kwargs):
-        """CTM has no calibratable parameters.
-
-        Raises:
-            NotImplementedError: CTM does not support parameter calibration.
-        """
-        raise NotImplementedError("CTM model does not have calibratable parameters.")
-
-    def prepare_system_params(self, param_vec, network, **kwargs):
-        """CTM has no calibratable parameters.
-
-        Raises:
-            NotImplementedError: CTM does not support parameter calibration.
-        """
-        raise NotImplementedError("CTM model does not have calibratable parameters.")
 
     def get_calibration_param_names(
         self, network: "Network", model_options: dict | None = None
     ) -> list[str]:
-        """CTM has no calibratable parameters.
+        """Return ordered calibration parameter names corresponding to the
+        calibration vector.
+
+        The returned list matches the packing order used by
+        :meth:`model_params_to_vec` and :meth:`model_params_vec_to_dict`.
+
+        Args:
+            network: Network instance for inteface compatibility
+            model_options: Model options for interface compatibility
+
+        Returns:
+            Ordered list of parameter names.
+        """
+        return ["vf", "qc_lane", "rho_jam"]
+
+    def get_calibration_bounds(self, network, **kwargs):
+        """Return default parameter bounds for calibration.
+
+        Provides conservative bounds that ensure physical validity of parameters
+        while allowing sufficient freedom for optimization.
+
+        Args:
+            network: Network instance for interface compatibility
+
+        Returns:
+            Tuple of (lower_bounds, upper_bounds) as numpy arrays.
+        """
+
+        lower_bounds = np.array(
+            [
+                30.0,  # vf > 30 m/s
+                500.0,  # qc_lane > 500 veh/h/lane
+                50.0,  # rho_jam > 50 veh/km/lane
+            ],
+            dtype=np.float64,
+        )
+        upper_bounds = np.array(
+            [
+                150.0,  # vf < 150 m/s
+                2500.0,  # qc_lane < 2500 veh/h/lane
+                250.0,  # rho_jam < 250 veh/km/lane
+            ],
+            dtype=np.float64,
+        )
+
+        return lower_bounds, upper_bounds
+
+    def prepare_calibration_params(self, params, network, **kwargs):
+        """Convert CTM parameters to a calibration vector.
+
+        This method extends model_params_to_vec with support for choosing between
+        link-specific and global alpha parameters, which is useful for reducing
+        degrees of freedom and improving calibration robustness.
+
+        Args:
+            params: CTM parameter dictionary.
+            network: Network instance for interface compatibility.
+
+        Returns:
+            1-D numpy array of calibration parameters.
 
         Raises:
-            NotImplementedError: CTM does not support parameter calibration.
+            ValueError: If params are invalid or inconsistent.
         """
-        raise NotImplementedError(
-            "CTM model does not have calibratable parameters or parameter names."
+        # validate parameters
+        self.validate_model_params(params)
+
+        # extract FD parameters
+        scalar_params = np.array(
+            [params["vf"], params["qc_lane"], params["rho_jam"]],
+            dtype=np.float64,
         )
+
+        return scalar_params
+
+    def parse_calibration_params(self, param_vec, network, **kwargs):
+        """Convert a calibration vector back to CTM parameters.
+
+        Inverse of prepare_calibration_params. Handles both link-specific and
+        global alpha configurations.
+
+        Args:
+            param_vec: 1-D calibration parameter vector.
+            network: Network instance for interface compatibility.
+
+
+        Returns:
+            CTM parameter dictionary.
+        """
+        return CTMParams(vf=param_vec[0], qc_lane=param_vec[1], rho_jam=param_vec[2])
+
+    def prepare_system_params(self, param_vec, network, **kwargs):
+        """Convert calibration parameter vector to system parameter vector.
+
+        The CasADi system function always expects a full parameter vector, which
+        is already fulfilled for CTM (since there are no link-specific parameters).
+
+        Args:
+            param_vec: 1-D calibration parameter vector.
+            network: Network instance (used to count links for alpha expansion).
+
+        Returns:
+            System parameter vector ready to be passed to the CasADi system function.
+            Always has format: [vf, qc_lane, rho_jam]
+        """
+        return param_vec
 
     # endregion
 
@@ -106,9 +189,9 @@ class CTM:
     # region
     def critical_density(
         self,
-        lane_capacity: float,
-        free_flow_speed: float,
-    ) -> float:
+        params: CTMParams | CTMSymbolicParams,
+        link_id: str,
+    ) -> float | casadi.SX:
         """
         Compute the critical density for a CTM cell.
 
@@ -120,21 +203,21 @@ class CTM:
         conditions in the fundamental diagram.
 
         Args:
-            lane_capacity: Lane capacity (vehicles per time per lane).
-            free_flow_speed: Free-flow speed (length per time).
+            params: CTM model parameters (must include 'qc_lane' and 'vf').
+            link_id: ID of the link for which to compute the critical density
+                (not used in CTM since there are no link-specific parameters,
+                but included for interface compatibility).
 
         Returns:
             Critical density (vehicles per length per lane).
         """
-        return lane_capacity / free_flow_speed
+        return params["qc_lane"] / params["vf"]
 
     def backward_wave_speed(
         self,
-        capacity: float,
-        lane_capacity: float,
-        jam_density: float,
-        free_flow_speed: float,
-    ) -> float:
+        params: CTMParams | CTMSymbolicParams,
+        lanes: int,
+    ) -> float | casadi.SX:
         """
         Compute the backward (congestion) wave speed for a CTM cell.
 
@@ -146,19 +229,127 @@ class CTM:
         congestion branch in the fundamental diagram.
 
         Args:
-            capacity: Cell capacity (vehicles per time).
-            lane_capacity: Capacity per lane (vehicles per time per lane).
-            jam_density: Jam density (vehicles per length per lane).
-            free_flow_speed: Free-flow speed (length per time).
+            params: CTM model parameters (must include 'qc_lane', 'vf', 'rho_jam').
+            lanes: Number of lanes in the cell.
 
         Returns:
             Backward wave speed (length per time).
         """
 
-        rho_cr = self.critical_density(
-            lane_capacity=lane_capacity, free_flow_speed=free_flow_speed
+        rho_cr = self.critical_density(params=params, link_id="")
+        return params["qc_lane"] / (params["rho_jam"] - rho_cr)
+
+    # ! Symbolic model parameter handling (validation, packing, unpacking)
+    # region
+    def validate_model_params(self, model_params: CTMParams) -> None:
+        """Validate a METANET model parameter dictionary.
+
+        Ensures required keys are present and their types are correct. The
+        first three parameters (`vf`, `qc_lane`, `rho_jam`) are fundamental
+        fundamental diagram parameters and must be numeric (int or float).
+
+        Args:
+            model_params: Dictionary containing CTM model parameters.
+
+        Raises:
+            ValueError: If a required parameter is missing or has an invalid type.
+        """
+
+        required_params = [
+            "vf",
+            "qc_lane",
+            "rho_jam",
+        ]
+        for param in required_params:
+            if param not in model_params:
+                raise ValueError(f"Missing required CTM model parameter: {param}")
+
+        # make sure that the parameters have the correct type
+        # all parameters should be scalars, while the alpha parameter may be a scalar or link-specific
+        for param in required_params:
+            if not isinstance(model_params[param], (int, float)):
+                raise ValueError(
+                    f"CTM model parameter {param} must be a scalar (int or float)."
+                )
+
+    def model_params_to_vec(
+        self,
+        model_params: CTMParams,
+    ) -> NDArray[np.float64]:
+        """Convert a CTM parameter dictionary to a numerical vector.
+
+        The returned vector layout is identical to that used by the
+        symbolic parameter vector: the five scalar parameters in the order
+        `vf, qc_lane, rho_jam`
+
+        Args:
+            network: Network instance used to determine the ordering of link
+                specific `alpha` entries.
+            model_params: Parameter dictionary containing scalar parameters
+
+        Returns:
+            1-D numpy array of dtype `np.float64` containing the packed
+            model parameters suitable for use with the symbolic routines.
+        """
+
+        return np.array(
+            [model_params["vf"], model_params["qc_lane"], model_params["rho_jam"]],
+            dtype=np.float64,
         )
-        return capacity / (jam_density - rho_cr)
+
+    def model_params_vec_to_dict(
+        self,
+        model_params_vec: NDArray[np.float64] | casadi.SX,
+    ) -> CTMParams | CTMSymbolicParams:
+        """Convert a packed parameter vector into a CTM parameter dict.
+
+        This is the inverse of `model_params_to_vec`. The input vector is
+        expected to contain the three scalar parameters followed by the per
+        link `alpha` values in the ordering implied by `network.list_nodes()`
+        and the per-node link ordering used elsewhere in the model.
+
+        Args:
+            network: Network instance used to determine link ordering for
+                unpacking the `alpha` entries.
+            model_params_vec: 1-D numpy array or CasADi SX vector containing
+                the packed model parameters.
+
+        Returns:
+            A dictionary mapping scalar parameter names to their values and
+            `alpha` to a dict of per-link values. When `model_params_vec` is
+            symbolic (`casadi.SX`) the returned values will be symbolic as
+            well (see `METANETSymbolicParams`).
+        """
+
+        # extract the scalar parameters
+        vf: float | casadi.SX = model_params_vec[0]
+        qc_lane: float | casadi.SX = model_params_vec[1]
+        rho_jam: float | casadi.SX = model_params_vec[2]
+
+        return {"vf": vf, "qc_lane": qc_lane, "rho_jam": rho_jam}
+
+    def set_up_symbolic_model_params(
+        self,
+        network: "Network",
+    ) -> casadi.SX:
+        """Create a CasADi symbolic vector for CTM model parameters.
+
+        The created `casadi.SX` vector contains one entry for each scalar
+        parameter (`vf, qc_lane, rho_jam`) The ordering matches the
+        unpacking performed in `model_params_vec_to_dict`.
+
+        Args:
+            network: Network instance used to count links and determine the
+                length of the symbolic parameter vector.
+
+        Returns:
+            A `casadi.SX` symbolic column vector of shape `(3, 1)`.
+        """
+        # create symbolic variables for the model parameters (vf, qc_lane, rho_jam)
+        model_params_sym = casadi.SX.sym("ctm_params", 3, 1)  # type: ignore
+        return model_params_sym
+
+    # endregion
 
     # ! Network update helper functions
     # region
@@ -257,6 +448,7 @@ class CTM:
 
     def _update_motorway_link(
         self,
+        params: CTMSymbolicParams,
         link: MotorwayLink,
         flows: dict[str, casadi.SX],
         densities: dict[str, casadi.SX],
@@ -274,6 +466,7 @@ class CTM:
         handled at the node level.
 
         Args:
+            params (CTMSymbolicParams): Model parameters (symbolic or numeric).
             link (MotorwayLink): The motorway link to update.
             flows (dict[str, casadi.SX]): Current-step flows for all links
                 (mapping link id -> flow vector, CasADi SX).
@@ -319,21 +512,19 @@ class CTM:
 
         for j, cell in link.enumerate_cells():
             # compute the new flows based on the updated density (first-order model)
-            q_demand = link.vf * next_densities_list[j] * link.lanes
+            q_demand = params["vf"] * next_densities_list[j] * link.lanes
             q_supply = (
                 self.backward_wave_speed(
-                    capacity=link.Qc,
-                    lane_capacity=link.Qc_lane,
-                    jam_density=link.rho_jam,
-                    free_flow_speed=link.vf,
+                    params=params,
+                    lanes=link.lanes,
                 )
-                * (link.rho_jam - next_densities_list[j + 1])
+                * (params["rho_jam"] - next_densities_list[j + 1])
                 if j < len(link) - 1
                 else casadi.inf  # no supply restriction for last cell at this point -> will be introduced in terms of proportional flow reduction
             )
 
             next_flows_list[j] = casadi.fmin(
-                casadi.fmin(casadi.SX(link.Qc), q_demand),
+                casadi.fmin(casadi.SX(link.lanes * params["qc_lane"]), q_demand),
                 q_supply,
             )
 
@@ -341,7 +532,7 @@ class CTM:
             next_speeds_list[j] = casadi.if_else(
                 next_densities_list[j] > 0,
                 next_flows_list[j] / (link.lanes * next_densities_list[j]),
-                link.vf,
+                params["vf"],
             )
 
         return next_densities_list, next_speeds_list, next_flows_list
@@ -390,6 +581,7 @@ class CTM:
 
     def _compute_node_maximum_outflows(
         self,
+        params: CTMSymbolicParams,
         network: "Network",
         node: "Node",
         splits: dict[str, dict[str, casadi.SX]],
@@ -411,6 +603,7 @@ class CTM:
         expression based on jam density and backward wave speed.
 
         Args:
+            params (CTMSymbolicParams): Model parameters (symbolic or numeric).
             network (Network): The network containing the node and links.
             node (Node): Node for which the maximum supported outflow is
                 computed.
@@ -461,7 +654,7 @@ class CTM:
                 # (consistent with the definition for diverging flows in Daganzo, 1993)
                 maximum_supported_node_outflow = casadi.fmin(
                     maximum_supported_node_outflow,
-                    out.Qc / node_splits[out.id],
+                    (out.lanes * params["qc_lane"]) / node_splits[out.id],
                 )
 
             elif isinstance(out, MotorwayLink):
@@ -491,12 +684,10 @@ class CTM:
                     maximum_supported_node_outflow,
                     (
                         self.backward_wave_speed(
-                            capacity=out.Qc,
-                            lane_capacity=out.Qc_lane,
-                            jam_density=out.rho_jam,
-                            free_flow_speed=out.vf,
+                            params=params,
+                            lanes=out.lanes,
                         )
-                        * (out.rho_jam - first_cell_next_density)
+                        * (params["rho_jam"] - first_cell_next_density)
                     )
                     / node_splits[out.id],
                 )
@@ -505,6 +696,7 @@ class CTM:
 
     def _compute_offramp_outflows(
         self,
+        params: CTMSymbolicParams,
         offramp: Offramp,
         node_outflow: casadi.SX,
         offramp_queues: dict[str, casadi.SX],
@@ -522,6 +714,7 @@ class CTM:
         speed, and the downstream (destination) boundary density.
 
         Args:
+            params (CTMSymbolicParams): Model parameters (symbolic or numeric).
             offramp (Offramp): The offramp link to update.
             node_outflow (casadi.SX): Desired flow from the upstream node into
                 the offramp (vehicles / time) as a CasADi expression.
@@ -544,13 +737,11 @@ class CTM:
         """
         # update the offramp flow and queue based on the store-and-forward model
         next_outflow, next_queue = store_and_forward_update(
-            capacity=offramp.Qc,
-            jam_density=offramp.rho_jam,
+            params=params,
+            lanes=offramp.lanes,
+            jam_density=params["rho_jam"],
             backward_wave_speed=self.backward_wave_speed(
-                capacity=offramp.Qc,
-                lane_capacity=offramp.Qc_lane,
-                jam_density=offramp.rho_jam,
-                free_flow_speed=offramp.vf,
+                params=params, lanes=offramp.lanes
             ),
             density=density_boundary_condition,
             demand=node_outflow,
@@ -609,6 +800,14 @@ class CTM:
             argument to the function is the symbolic model parameter vector
             produced by `set_up_symbolic_model_params`.
         """
+        # ! Store the model parameters in a dedicated vector to be used for evaluation
+        sym_params = self.set_up_symbolic_model_params(network=network)
+
+        # load the model parameters in dictionary form for easy access during function formulation
+        params: CTMSymbolicParams = cast(
+            CTMSymbolicParams,
+            self.model_params_vec_to_dict(model_params_vec=sym_params),
+        )
 
         # ! Set up variables for state update and cast types to be correct
         # set up state and disturbance vectors
@@ -687,6 +886,7 @@ class CTM:
                     # -> will be handled separately after the loop once potential flow limits have been identified
                     next_densities_list, next_speeds_list, next_flows_list = (
                         self._update_motorway_link(
+                            params=params,
                             link=inc,
                             flows=flows,
                             densities=densities,
@@ -738,7 +938,7 @@ class CTM:
                     # -> since onramps are indirectly connected to their demand through a node & origin, the
                     #    inflow from the upstream node (unconstrained) represents the demand
                     next_flows[inc.id] = casadi.fmin(
-                        casadi.fmin(inc.Qc, r_k),
+                        casadi.fmin(inc.lanes * params["qc_lane"], r_k),
                         upstream_node_outflow_link + (onramp_queues[inc.id] / dt),
                     )
                     total_node_inflow += next_flows[inc.id]
@@ -756,7 +956,7 @@ class CTM:
                     # have a finite capacity, which needs to be taken into account when computing the
                     # desired flow / flow on the offramp without considering downstream supply of space restrictions
                     next_flows[inc.id] = casadi.fmin(
-                        inc.Qc,
+                        inc.lanes * params["qc_lane"],
                         upstream_node_outflow_link + (offramp_queues[inc.id] / dt),
                     )
                     total_node_inflow += next_flows[inc.id]
@@ -773,6 +973,7 @@ class CTM:
                 node=node, node_splits=splits[node.id]
             )
             maximum_supported_node_outflow = self._compute_node_maximum_outflows(
+                params=params,
                 network=network,
                 node=node,
                 splits=splits,
@@ -861,7 +1062,7 @@ class CTM:
                         next_densities[inc.id][-1] > 1e-6,
                         next_flows[inc.id][-1]
                         / (inc.lanes * next_densities[inc.id][-1]),
-                        inc.vf,
+                        params["vf"],
                     )
 
                 else:
@@ -911,6 +1112,7 @@ class CTM:
                     # offramp outflows are updated with the current step flows, since the offramp
                     # keeps track of its own queue and flow and has a physical length
                     next_outflow, next_queue = self._compute_offramp_outflows(
+                        params=params,
                         offramp=out,
                         node_outflow=node_outflows[out.id],
                         offramp_queues=offramp_queues,
@@ -944,6 +1146,5 @@ class CTM:
             offramp_queue_dict=next_offramp_queues,
         )
 
-        # wrap the state update in a nonlinear casadi function (with dummy parameters for CTM)
-        sym_params = casadi.SX.sym("ctm_params", 0)  # type: ignore
+        # wrap the state update in a nonlinear casadi function (with FD parameters for CTM)
         return casadi.Function("ctm_network_step", [sym_params, x, d], [x_next])

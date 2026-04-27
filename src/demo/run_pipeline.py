@@ -10,7 +10,6 @@ python src/demo/run_pipeline.py --sumo-cfg-dir "src/demo/scenarios/example" --no
 import argparse
 import os
 from datetime import datetime
-import warnings
 
 from traffic_flow_models import (
     CTM,
@@ -21,8 +20,12 @@ from traffic_flow_models import (
     Simulation,
     Calibrator,
     BackboneStateAggregator,
-    NetworkArbitrator,
 )
+
+# TODO: REPLACE FIXED DUMMY VALUES WITH PROPER SOLUTION
+VF = 100.0
+QC_LANE = 2000.0
+JAM_DENSITY = 180.0
 
 if __name__ == "__main__":
     args = argparse.ArgumentParser(
@@ -150,16 +153,10 @@ if __name__ == "__main__":
         # set the name of the scenario for pipeline initialization
         name = parsed_args.location.split(",")[0].strip().lower().replace(" ", "_")
 
-    # path to road parameters configuration
-    road_params_config_path = os.path.join(
-        os.path.dirname(__file__), "road_params_config.json"
-    )
-
     # run the pipeline to generate files for the SUMO simulation
     pipeline = SUMOPipeline(
         name=name,
         location=parsed_args.location,
-        road_params_config_path=road_params_config_path,
         output_dir=(
             os.path.join("results", name) if location_mode else parsed_args.sumo_cfg_dir
         ),
@@ -229,7 +226,6 @@ if __name__ == "__main__":
         onramp_ids,
         offramp_ids,
         destination_ids,
-        road_params,
         diverge_node_info,
         backbone_node_ids,
     ) = pipeline.get_consolidated_network()
@@ -283,7 +279,6 @@ if __name__ == "__main__":
     os.makedirs(results_dir, exist_ok=True)
 
     # ── Backbone state estimation ──────────────────────────────────────────────
-    road_params = NetworkArbitrator._load_road_params_from_json(road_params_config_path)
     micro_results_path = os.path.join(results_dir, "micro_results.json")
     backbone_aggregator = BackboneStateAggregator(
         detector_output_path=detector_output_file,
@@ -294,8 +289,8 @@ if __name__ == "__main__":
         output_path=micro_results_path,
         urban_demands=urban_demands,
         time_step_minutes=1.0,
-        free_flow_speed=road_params["motorway"]["free_flow_speed"],
-        jam_density=road_params["motorway"]["jam_density"],
+        free_flow_speed=VF,
+        jam_density=JAM_DENSITY,
         preferred_cell_size=preferred_cell_size,
         sumo_network_path=pipeline.net_file,
         origin_ids=origin_ids,
@@ -309,74 +304,62 @@ if __name__ == "__main__":
     print("Demand keys:", sorted(origin_demands.keys()))
     print("Missing:", [k for k in origin_ids if k not in origin_demands])
 
-    # run a simulation of the network using the selected model
+    # set up the model according to the user's selection
     if parsed_args.model.upper() == "CTM":
-        ctm = CTM()
-        sim = Simulation(network=network, model=ctm)
-        time, states, disturbances = sim.run(
-            duration=duration,
-            dt=dt,
-            preferred_cell_size=preferred_cell_size,
-            origin_demands=origin_demands,
-            turning_rates=splits,
-            destination_density_bc=destination_density_bc,
-            destination_flow_bc=destination_flow_bc,
-            plot_results=True,
-            show_plots=plot_enabled,
-            results_dir=results_dir,
-        )
-
+        model = CTM()
     elif parsed_args.model.upper() == "METANET":
-        # Use the backbone state file for ground-truth states and forward the
-        # callable disturbance functions (origin_demands, splits) to the
-        # calibrator. The calibrator will build the disturbance history by
-        # sampling these callables on the simulation time grid.
-        print("Running METANET calibration using backbone aggregated states...")
-        calibrator = Calibrator(network=network)
-        metanet_model = METANET()
-        calibrated_params, result, _ = calibrator.calibrate_model_params(
-            ground_truth_filepath=micro_results_path,
-            model=metanet_model,
-            initial_params=None,
-            window_size=30,
-            stride=15,
-            model_options={"link_specific_alpha": False},
-            regularization_weight=parsed_args.regularization_weight,
-            verbose=True,
-            use_parameter_search=parsed_args.parameter_search,
-            correlation_title="METANET Calibration - Parameter Correlation Analysis",
-            plot_correlation="metanet_calibration_parameter_correlation.png",
-            plot_param_history="metanet_calibration_param_history.png",
-            save_dir=results_dir,
-            use_disturbance_from_file=False,  # we will provide disturbance callables instead of using the file-based disturbances
-            origin_demands_fn=origin_demands,
-            turning_rates_fn=splits,
-            flow_boundary_conditions_fn=destination_flow_bc,
-            density_boundary_conditions_fn=destination_density_bc,
-        )
-
-        print(
-            "Calibration complete — running METANET simulation with calibrated parameters"
-        )
-        metanet = METANET()
-        sim = Simulation(network=network, model=metanet, model_params=calibrated_params)
-        time, states, disturbances = sim.run(
-            duration=duration,
-            dt=dt,
-            preferred_cell_size=preferred_cell_size,
-            origin_demands=origin_demands,
-            turning_rates=splits,
-            destination_density_bc=destination_density_bc,
-            destination_flow_bc=destination_flow_bc,
-            plot_results=True,
-            show_plots=plot_enabled,
-            results_dir=results_dir,
-        )
-
+        model = METANET()
     else:
         raise ValueError(
             f"Unknown MODEL: {parsed_args.model}. Choose 'CTM' or 'METANET'."
         )
+
+    # initialize the calibrator and run the calibration based on
+    # the microscopic simulation results, which will be treated
+    # as ground truth values for the optimization / fitting
+    # procedure of the FD and other model parameters.
+    calibrator = Calibrator(network=network)
+    calibrated_params, result, _ = calibrator.calibrate_model_params(
+        ground_truth_filepath=micro_results_path,
+        model=model,
+        initial_params=None,
+        window_size=30,
+        stride=15,
+        model_options=(
+            {"link_specific_alpha": False} if isinstance(model, METANET) else None
+        ),
+        regularization_weight=parsed_args.regularization_weight,
+        verbose=True,
+        use_parameter_search=parsed_args.parameter_search,
+        correlation_title="Model Calibration - Parameter Correlation Analysis",
+        plot_correlation="calibration_parameter_correlation.png",
+        plot_param_history="calibration_param_history.png",
+        save_dir=results_dir,
+        use_disturbance_from_file=False,  # we will provide disturbance callables instead of using the file-based disturbances
+        origin_demands_fn=origin_demands,
+        turning_rates_fn=splits,
+        flow_boundary_conditions_fn=destination_flow_bc,
+        density_boundary_conditions_fn=destination_density_bc,
+    )
+    print(
+        "Calibration complete. Calibrated parameters, running macroscopic simulation with",
+        parsed_args.model.upper(),
+    )
+
+    # run the simulation with the selected model and the calibrated parameters
+    sim = Simulation(network=network, model=model, model_params=calibrated_params)
+    time, states, disturbances = sim.run(
+        duration=duration,
+        dt=dt,
+        preferred_cell_size=preferred_cell_size,
+        origin_demands=origin_demands,
+        turning_rates=splits,
+        destination_density_bc=destination_density_bc,
+        destination_flow_bc=destination_flow_bc,
+        plot_results=True,
+        show_plots=plot_enabled,
+        results_dir=results_dir,
+    )
 
     # compute performance metrics for microscopic network (mainline only)
     # microsimulation results are loaded from the corresponding file with mainline only flag
