@@ -356,30 +356,17 @@ class Calibrator:
             filename: Output filename.
             title: Optional plot title.
         """
-        ph = np.asarray(param_history)
-        if ph.ndim != 2:
+        if param_history.ndim != 2:
             raise ValueError("param_history must be a 2-D array (n_evals x n_params)")
-
-        n_evals, n_params = ph.shape
-
-        _, ax = plt.subplots(figsize=(12, 6))
-
-        cmap = plt.get_cmap("tab20")
-        for i in range(n_params):
-            color = cmap(i % 20)
-        if ph.ndim != 2:
-            raise ValueError("param_history must be a 2-D array (n_evals x n_params)")
-
-        n_evals, n_params = ph.shape
 
         # layout: use 2 columns by default for a compact overview
         ncols = 2
+        n_evals, n_params = param_history.shape
         nrows = math.ceil(n_params / ncols)
 
-        fig, axes = plt.subplots(nrows, ncols, figsize=(14, 3.2 * nrows), squeeze=False)
-        axes_list = axes.flatten()
-
         cmap = plt.get_cmap("tab20")
+        _, axes = plt.subplots(nrows, ncols, figsize=(14, 3.2 * nrows), squeeze=False)
+        axes_list = axes.flatten()
         x = np.arange(n_evals)
 
         for i in range(n_params):
@@ -387,7 +374,7 @@ class Calibrator:
             color = cmap(i % 20)
             name = param_names[i] if i < len(param_names) else f"p{i}"
 
-            ax.plot(x, ph[:, i], color=color, linewidth=1.6)
+            ax.plot(x, param_history[:, i], color=color, linewidth=1.6)
 
             # bounds (drawn as thin gray lines for clarity)
             try:
@@ -400,9 +387,9 @@ class Calibrator:
                 ub = None
 
             if lb is not None:
-                ax.axhline(lb, color="gray", linestyle=":", linewidth=1.0, alpha=0.7)
+                ax.axhline(lb, color="gray", linestyle="--", linewidth=1.0, alpha=0.8)
             if ub is not None:
-                ax.axhline(ub, color="gray", linestyle="--", linewidth=1.0, alpha=0.7)
+                ax.axhline(ub, color="gray", linestyle="--", linewidth=1.0, alpha=0.8)
 
             ax.set_title(name, fontsize=11, fontweight="bold")
             ax.grid(True, alpha=0.25)
@@ -426,7 +413,6 @@ class Calibrator:
         plot_path = os.path.join(save_dir, filename)
         plt.savefig(plot_path, dpi=150, bbox_inches="tight")
         plt.close()
-
         print(f"    Saved parameter-history plot to: {plot_path}")
 
     def extract_measurable_states(
