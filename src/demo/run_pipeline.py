@@ -448,6 +448,7 @@ if __name__ == "__main__":
             sim.visualize(
                 results_filepath=micro_results_path,
                 output_filepath=micro_video_path,
+                model_params=calibrated_params,
                 fps=30,
                 subsampling=1,
             )
@@ -461,6 +462,7 @@ if __name__ == "__main__":
         sim.visualize(
             results_filepath=os.path.join(results_dir, "simulation_results.json"),
             output_filepath=video_path,
+            model_params=calibrated_params,
             fps=30,
             subsampling=1,
         )
@@ -495,6 +497,7 @@ if __name__ == "__main__":
                 ],
                 labels=["Backbone (MICRO)", f"Macro {parsed_args.model.upper()}"],
                 output_filepath=comparison_video_path,
+                model_params=calibrated_params,
                 fps=30,
                 subsampling=1,
             )
