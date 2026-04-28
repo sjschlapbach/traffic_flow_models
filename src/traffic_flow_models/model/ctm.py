@@ -91,7 +91,12 @@ class CTM:
         """
         return ["vf", "qc_lane", "rho_jam"]
 
-    def get_calibration_bounds(self, network, **kwargs):
+    def get_calibration_bounds(
+        self,
+        network: Union["Network", None] = None,
+        fixed_speed: float | None = None,
+        **kwargs,
+    ):
         """Return default parameter bounds for calibration.
 
         Provides conservative bounds that ensure physical validity of parameters
@@ -99,14 +104,19 @@ class CTM:
 
         Args:
             network: Network instance for interface compatibility
+            fixed_speed: If provided, overrides the default bounds for free-flow speed
+                to be exactly this value (both lower and upper bounds set to fixed_speed).
+                -> avoid correlation issues after corresponding computation in SUMO data aggregation
 
         Returns:
             Tuple of (lower_bounds, upper_bounds) as numpy arrays.
         """
-
+        eps = np.finfo(np.float64).eps
         lower_bounds = np.array(
             [
-                30.0,  # vf > 30 m/s
+                (
+                    fixed_speed - 1e-6 if fixed_speed is not None else 30.0
+                ),  # vf > 30 m/s
                 500.0,  # qc_lane > 500 veh/h/lane
                 50.0,  # rho_jam > 50 veh/km/lane
             ],
@@ -114,7 +124,9 @@ class CTM:
         )
         upper_bounds = np.array(
             [
-                150.0,  # vf < 150 m/s
+                (
+                    fixed_speed + 1e-6 if fixed_speed is not None else 150.0
+                ),  # vf < 150 m/s
                 2500.0,  # qc_lane < 2500 veh/h/lane
                 250.0,  # rho_jam < 250 veh/km/lane
             ],

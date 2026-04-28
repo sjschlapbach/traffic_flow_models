@@ -159,6 +159,7 @@ class METANET:
     def get_calibration_bounds(
         self,
         network: "Network",
+        fixed_speed: float | None = None,
         model_options: dict | None = None,
     ) -> Tuple[NDArray[np.float64], NDArray[np.float64]]:
         """Return default parameter bounds for calibration.
@@ -168,6 +169,9 @@ class METANET:
 
         Args:
             network: Network instance (used to count links for alpha bounds).
+            fixed_speed: If provided, overrides the default bounds for free-flow speed
+                to be exactly this value (both lower and upper bounds set to fixed_speed).
+                -> avoid correlation issues after corresponding computation in SUMO data aggregation
             model_options: Dictionary of METANET-specific calibration options:
                 - 'link_specific_alpha' (bool): If True, returns bounds for per-link
                   alpha values. If False, returns bounds for a single global alpha
@@ -194,7 +198,7 @@ class METANET:
 
         lower_bounds = np.array(
             [
-                30.0,  # vf > 30 m/s
+                fixed_speed - 1e-6 if fixed_speed is not None else 30.0,  # vf > 30 m/s
                 500.0,  # qc_lane > 500 veh/h/lane
                 50.0,  # rho_jam > 50 veh/km/lane
                 5 / 3600,  # tau > 5 seconds (typically around 18 s)
@@ -208,7 +212,9 @@ class METANET:
         )
         upper_bounds = np.array(
             [
-                150.0,  # vf < 150 m/s
+                (
+                    fixed_speed + 1e-6 if fixed_speed is not None else 150.0
+                ),  # vf < 150 m/s
                 2500.0,  # qc_lane < 2500 veh/h/lane
                 250.0,  # rho_jam < 250 veh/km/lane
                 50 / 3600,  # tau < 50 seconds

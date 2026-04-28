@@ -326,6 +326,7 @@ if __name__ == "__main__":
         model_options=(
             {"link_specific_alpha": False} if isinstance(model, METANET) else None
         ),
+        fixed_speed=VF,
         regularization_weight=parsed_args.regularization_weight,
         verbose=True,
         use_parameter_search=parsed_args.parameter_search,
