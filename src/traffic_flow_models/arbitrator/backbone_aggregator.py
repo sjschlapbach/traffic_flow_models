@@ -529,11 +529,11 @@ class BackboneStateAggregator:
             return sum(values) / len(values) if values else 0.0
 
         def state_fn(t_hours: float) -> TrafficState:
+            # TODO: We need to pre-process the user-specified input data to make sure all vehicles in SUMO simulation are of type car!
             # Effective vehicle length (km) used to convert occupancy fraction
-            # to vehicle density. If a jam density is provided use the
-            # reciprocal (km per vehicle). Otherwise fall back to a
-            # conservative default (~5 m => 0.005 km).
-            L_EFF_KM = 1 / jam_density if jam_density > 0 else 0.005
+            # to vehicle density. Assume that SUMO simulation was run with car
+            # type vehicles only -> 5m vehicle length (default SUMO value)
+            L_EFF_KM = 0.005
 
             flow_dict = flow_fn(t_hours)
             flow_total = flow_dict.get("flow", 0.0)
@@ -556,11 +556,12 @@ class BackboneStateAggregator:
             # Formula: k = Occupancy_fraction / L_eff
             occ_percent = mean_in_window(t_hours, raw_occupancy)
             occ_fraction = occ_percent / 100.0
-            # TODO:L_EFF_KM is hardcoded, 5m true for urban only traffic
-            L_EFF_KM = 0.005
             density_occupancy = occ_fraction / L_EFF_KM
 
-            # TODO: flow_total dependent on density
+            # ! CAUTION: Speed is defined as a derived quantity here -> if calibration is
+            # ! applied to this data, fix one degree of freedom to avoid correlation issues.
+            # compute the vehicle flow based on the occupancy-derived
+            # density, mean speed and the number of lanes
             flow_total = density_occupancy * speed * n_lanes
 
             return {
