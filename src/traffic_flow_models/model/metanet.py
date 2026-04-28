@@ -351,8 +351,8 @@ class METANET:
 
         Args:
             param_vec: 1-D calibration parameter vector. If link_specific_alpha=False,
-                      this should have 6 elements (tau, nu, kappa, delta, phi, alpha_global).
-                      If True, it should have (5 + num_links) elements with per-link alphas.
+                      this should have 9 elements (vf, qc_lane, rho_jam, tau, nu, kappa, delta, phi, alpha_global).
+                      If True, it should have (8 + num_links) elements with per-link alphas.
             network: Network instance (used to count links for alpha expansion).
             model_options: Dictionary of METANET-specific calibration options:
                 - 'link_specific_alpha' (bool): If False, param_vec contains a single
@@ -372,7 +372,7 @@ class METANET:
         # if using global alpha, expand to per-link format
         # param_vec is [tau, nu, kappa, delta, phi, alpha_global]
         # need to expand to [tau, nu, kappa, delta, phi, alpha_1, alpha_2, ..., alpha_n]
-        if len(param_vec) == 6:
+        if len(param_vec) == 9:
             # count unique motorway links, onramps, and offramps
             # use a set to avoid double-counting links that appear in both incoming and outgoing
             unique_links = set()
@@ -384,9 +384,11 @@ class METANET:
             num_links = len(unique_links)
 
             # expand parameter vector
-            system_param_vec = np.zeros(5 + num_links)
-            system_param_vec[:5] = param_vec[:5]  # tau, nu, kappa, delta, phi
-            system_param_vec[5:] = param_vec[5]  # replicate global alpha
+            system_param_vec = np.zeros(8 + num_links)
+            system_param_vec[:8] = param_vec[
+                :8
+            ]  # vf, qc_lane, rho_jam, tau, nu, kappa, delta, phi
+            system_param_vec[8:] = param_vec[8]  # replicate global alpha
             return system_param_vec
         else:
             # parameter vector already in system format
@@ -712,7 +714,7 @@ class METANET:
         """Create a CasADi symbolic vector for METANET model parameters.
 
         The created `casadi.SX` vector contains one entry for each scalar
-        parameter (`tau, nu, kappa, delta, phi`) followed by one `alpha`
+        parameter (`vf, qc_lane, rho_jam, tau, nu, kappa, delta, phi`) followed by one `alpha`
         entry per motorway link, onramp and offramp in the network. The
         ordering of per-link `alpha` entries matches the unpacking performed
         in `model_params_vec_to_dict`.
@@ -722,7 +724,7 @@ class METANET:
                 length of the symbolic parameter vector.
 
         Returns:
-            A `casadi.SX` symbolic column vector of shape `(num_links + 5, 1)`.
+            A `casadi.SX` symbolic column vector of shape `(num_links + 8, 1)`.
         """
 
         # count the number of motorway links, onramps and offramps in the network
@@ -736,8 +738,8 @@ class METANET:
                     num_links += 1
 
         # create symbolic variables for the model parameters (one entry for the alpha of each link)
-        # 5 more entries for the parameters tau, nu, kappa, delta, phi
-        model_params_sym = casadi.SX.sym("metanet_params", num_links + 5, 1)  # type: ignore
+        # 8 more entries for the parameters vf, qc_lane, rho_jam, tau, nu, kappa, delta, phi
+        model_params_sym = casadi.SX.sym("metanet_params", num_links + 8, 1)  # type: ignore
         return model_params_sym
 
     # endregion
@@ -950,7 +952,7 @@ class METANET:
         else:
             # keep track of the minimum free-flow speed of incoming motorway links
             # -> in case upstream flow is zero, use this value as upstream speed
-            min_vf: float = np.inf
+            min_vf: casadi.SX = casadi.SX(casadi.inf)
 
             numer_terms = []
             denom_terms = []
@@ -962,7 +964,7 @@ class METANET:
                     min_vf = casadi.fmin(min_vf, params["vf"])
 
             # catch the case where no values were measured -> should not happen
-            if len(numer_terms) == 0 or len(denom_terms) == 0 or np.isinf(min_vf):
+            if len(numer_terms) == 0 or len(denom_terms) == 0:
                 raise ValueError(
                     f"No incoming motorway links with defined speeds/flows for node {node.id}."
                 )
@@ -1391,7 +1393,9 @@ class METANET:
                 if isinstance(inc, Origin):
                     next_inflow, next_queue = store_and_forward_update(
                         params=params,
-                        lanes=int(np.finfo(int).max),
+                        lanes=int(
+                            1e8
+                        ),  # very large number (virtual infinity) to avoid that this is limiting
                         jam_density=(
                             node_virtual_downstream_jam_density
                             if node_virtual_downstream_jam_density is not None
