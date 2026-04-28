@@ -5,8 +5,6 @@ import pytest
 from traffic_flow_models import SUMOPipeline
 
 
-
-
 class TestSUMOPipeline:
     def test_init_creates_output_dir(self, tmp_path, monkeypatch):
         # run inside temporary working dir so results/ is created there
@@ -28,9 +26,7 @@ class TestSUMOPipeline:
         assert p.net_file.endswith(os.path.join("results", "myloc", "myloc.net.xml"))
         assert p.rou_file.endswith(os.path.join("results", "myloc", "myloc.rou.xml"))
 
-    def test_skip_if_exists_decorator_skips(
-        self, monkeypatch, tmp_path, capsys
-    ):
+    def test_skip_if_exists_decorator_skips(self, monkeypatch, tmp_path, capsys):
         monkeypatch.chdir(tmp_path)
         p = SUMOPipeline(
             "skiptest",
@@ -47,9 +43,7 @@ class TestSUMOPipeline:
         captured = capsys.readouterr()
         assert ".osm already exists" in captured.out
 
-    def test_convert_to_sumo_runs_netconvert(
-        self, monkeypatch, tmp_path
-    ):
+    def test_convert_to_sumo_runs_netconvert(self, monkeypatch, tmp_path):
         monkeypatch.chdir(tmp_path)
         p = SUMOPipeline(
             "convtest",
@@ -98,9 +92,7 @@ class TestSUMOPipeline:
             p.generate_demand(10, 3600.0)
         assert str(excinfo.value) == "Please set the 'SUMO_HOME' environment variable."
 
-    def test_generate_demand_invokes_randomTrips(
-        self, monkeypatch, tmp_path
-    ):
+    def test_generate_demand_invokes_randomTrips(self, monkeypatch, tmp_path):
         monkeypatch.chdir(tmp_path)
         p = SUMOPipeline(
             "dtest2",
@@ -150,9 +142,7 @@ class TestSUMOPipeline:
         # Assertions to ensure subprocess was called
         assert "cmd" in called
 
-    def test_convert_to_sumo_skips_when_net_exists(
-        self, monkeypatch, tmp_path, capsys
-    ):
+    def test_convert_to_sumo_skips_when_net_exists(self, monkeypatch, tmp_path, capsys):
         monkeypatch.chdir(tmp_path)
         p = SUMOPipeline(
             "convskip",
