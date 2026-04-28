@@ -4,9 +4,10 @@
     <additional-files value="detector.xml,edge_data_config.add.xml"/>
     <route-files value="scenario_d.rou.xml"/>
   </input>
-  <time><end value="5000"/></time>
+  <time><end value="15000"/></time>
   <output>
     <statistic-output value="scenario_d_stats.xml"/>
+    <tripinfo-output value="tripinfo.xml"/>
   </output>
   <report><duration-log.statistics value="true"/></report>
 </configuration>

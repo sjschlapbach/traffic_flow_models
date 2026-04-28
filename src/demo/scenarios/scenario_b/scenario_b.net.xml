@@ -2,83 +2,56 @@
 
 <net version="1.20" junctionCornerDetail="5" limitTurnSpeed="5.50" avoidOverlap="0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://sumo.dlr.de/xsd/net_file.xsd">
 
-    <location netOffset="0.00,0.00" convBoundary="0.00,-160.00,3000.00,100.00"
+    <location netOffset="0.00,0.00" convBoundary="0.00,-160.00,3000.00,100.00" 
     origBoundary="0.00,-160.00,3000.00,100.00" projParameter="!" />
-    
-    <edge id=":369369_0" function="internal">
-        <lane id=":369369_0_0" index="0" speed="27.78" length="15.16"
-            shape="988.84,-8.00 1004.00,-8.00" />
-        <lane id=":369369_0_1" index="1" speed="27.78" length="15.16"
-            shape="988.84,-4.80 1004.00,-4.80" />
-        <lane id=":369369_0_2" index="2" speed="27.78" length="15.16"
-            shape="988.84,-1.60 1004.00,-1.60" />
+
+    <edge id=":n1_0" function="internal">
+        <lane id=":n1_0_0" index="0" speed="27.78" length="15.16" shape="988.84,-8.00 1004.00,-8.00"/>
+        <lane id=":n1_0_1" index="1" speed="27.78" length="15.16" shape="988.84,-4.80 1004.00,-4.80"/>
+        <lane id=":n1_0_2" index="2" speed="27.78" length="15.16" shape="988.84,-1.60 1004.00,-1.60"/>
+    </edge>
+    <edge id=":n1_3" function="internal">
+        <lane id=":n1_3_0" index="0" speed="21.27" length="15.68" shape="990.10,-12.76 993.04,-10.57 995.73,-7.94 999.08,-5.73 1004.00,-4.80"/>
+        <lane id=":n1_3_1" index="1" speed="20.27" length="15.68" shape="990.10,-12.76 993.13,-9.80 995.97,-6.50 999.36,-3.50 1004.00,-1.60"/>
     </edge>
 
-    <edge id=":369369_3" function="internal">
-        <lane id=":369369_3_0" index="0" speed="21.27" length="15.68"
-            shape="990.10,-12.76 993.04,-10.57 995.73,-7.94 999.08,-5.73 1004.00,-4.80" />
-        <lane id=":369369_3_1" index="1" speed="20.27" length="15.68"
-            shape="990.10,-12.76 993.13,-9.80 995.97,-6.50 999.36,-3.50 1004.00,-1.60" />
+    <edge id="m1" from="n0" to="n1" priority="-1" type="highway.motorway">
+        <lane id="m1_0" index="0" speed="27.78" length="988.84" shape="0.00,-8.00 988.84,-8.00"/>
+        <lane id="m1_1" index="1" speed="27.78" length="988.84" shape="0.00,-4.80 988.84,-4.80"/>
+        <lane id="m1_2" index="2" speed="27.78" length="988.84" shape="0.00,-1.60 988.84,-1.60"/>
     </edge>
-
-
-    <edge id="1234567" from="123678" to="369369" priority="-1" type="highway.motorway">
-        <lane id="1234567_0" index="0" speed="27.78" length="988.84" shape="0.00,-8.00 988.84,-8.00" />
-        <lane id="1234567_1" index="1" speed="27.78" length="988.84" shape="0.00,-4.80 988.84,-4.80" />
-        <lane id="1234567_2" index="2" speed="27.78" length="988.84" shape="0.00,-1.60 988.84,-1.60" />
+    <edge id="m2" from="n1" to="n2" priority="-1" type="highway.motorway">
+        <lane id="m2_0" index="0" speed="27.78" length="1996.00" acceleration="1" shape="1004.00,-8.00 3000.00,-8.00"/>
+        <lane id="m2_1" index="1" speed="27.78" length="1996.00" acceleration="1" shape="1004.00,-4.80 3000.00,-4.80"/>
+        <lane id="m2_2" index="2" speed="27.78" length="1996.00" shape="1004.00,-1.60 3000.00,-1.60"/>
     </edge>
-
-    <edge id="7654321" from="369369" to="456456" priority="-1" type="highway.motorway">
-        <lane id="7654321_0" index="0" speed="27.78" length="1996.00" acceleration="1"
-            shape="1004.00,-8.00 3000.00,-8.00" />
-        <lane id="7654321_1" index="1" speed="27.78" length="1996.00" acceleration="1"
-            shape="1004.00,-4.80 3000.00,-4.80" />
-        <lane id="7654321_2" index="2" speed="27.78" length="1996.00"
-            shape="1004.00,-1.60 3000.00,-1.60" />
-    </edge>
-
-
-    <edge id="8963467" from="123123" to="369369" priority="-1" type="highway.motorway_link">
-    <lane id="8963467_0" index="0" speed="27.78" length="528.24"
+    <edge id="onramp" from="nonr" to="n1" priority="-1" type="highway.motorway_link">
+    <lane id="onramp_0" index="0" speed="27.78" length="528.24" 
         shape="480.00,-150.00 990.10,-12.76" />
 </edge>
 
-
-    <junction id="123678" type="dead_end" x="0.00" y="0.00" incLanes="" intLanes=""
-        shape="0.00,0.00 0.00,-9.60" />
-
-    <junction id="123123" type="dead_end" x="480.00" y="-150.00" incLanes="" intLanes=""
+    <junction id="n0" type="dead_end" x="0.00" y="0.00" incLanes="" intLanes="" shape="0.00,0.00 0.00,-9.60"/>
+    <junction id="n1" type="zipper" x="1000.00" y="0.00" incLanes="m1_0 m1_1 m1_2 onramp_0" intLanes=":n1_0_0 :n1_0_1 :n1_0_2 :n1_3_0 :n1_3_1" shape="1004.00,0.00 1004.00,-9.60 1001.01,-9.73 998.82,-10.11 995.38,-11.64 993.38,-12.81 990.70,-14.25 988.84,-9.60 988.84,0.00" customShape="1">
+        <request index="0" response="00000" foes="00000" cont="0"/>
+        <request index="1" response="01000" foes="01000" cont="0"/>
+        <request index="2" response="11000" foes="11000" cont="0"/>
+        <request index="3" response="00110" foes="00110" cont="0"/>
+        <request index="4" response="00100" foes="00100" cont="0"/>
+    </junction>
+    <junction id="n2" type="dead_end" x="3000.00" y="0.00" incLanes="m2_0 m2_1 m2_2" intLanes="" shape="3000.00,-9.60 3000.00,0.00"/>
+    <junction id="nonr" type="dead_end" x="480.00" y="-150.00" incLanes="" intLanes="" 
     shape="480.00,-150.00 478.57,-152.86" />
 
-    <junction id="369369" type="zipper" x="1000.00" y="0.00"
-        incLanes="1234567_0 1234567_1 1234567_2 8963467_0"
-        intLanes=":369369_0_0 :369369_0_1 :369369_0_2 :369369_3_0 :369369_3_1"
-        shape="1004.00,0.00 1004.00,-9.60 1001.01,-9.73 998.82,-10.11 995.38,-11.64 993.38,-12.81 990.70,-14.25 988.84,-9.60 988.84,0.00"
-        customShape="1">
-        <request index="0" response="00000" foes="00000" cont="0" />
-        <request index="1" response="01000" foes="01000" cont="0" />
-        <request index="2" response="11000" foes="11000" cont="0" />
-        <request index="3" response="00110" foes="00110" cont="0" />
-        <request index="4" response="00100" foes="00100" cont="0" />
-    </junction>
+    <connection from="m1" to="m2" fromLane="0" toLane="0" via=":n1_0_0" dir="s" state="M"/>
+    <connection from="m1" to="m2" fromLane="1" toLane="1" via=":n1_0_1" dir="s" state="Z"/>
+    <connection from="m1" to="m2" fromLane="2" toLane="2" via=":n1_0_2" dir="s" state="Z"/>
+    <connection from="onramp" to="m2" fromLane="0" toLane="1" via=":n1_3_0" dir="s" state="Z"/>
+    <connection from="onramp" to="m2" fromLane="0" toLane="2" via=":n1_3_1" dir="s" state="Z"/>
 
-    <junction id="456456" type="dead_end" x="3000.00" y="0.00"
-        incLanes="7654321_0 7654321_1 7654321_2" intLanes="" shape="3000.00,-9.60 3000.00,0.00" />
-
-    <connection from="1234567" to="7654321" fromLane="0" toLane="0" via=":369369_0_0" dir="s"
-        state="Z" />
-    <connection from="1234567" to="7654321" fromLane="1" toLane="1" via=":369369_0_1" dir="s"
-        state="Z" />
-    <connection from="1234567" to="7654321" fromLane="2" toLane="2" via=":369369_0_2" dir="s"
-        state="Z" />
-    <connection from="8963467" to="7654321" fromLane="0" toLane="1" via=":369369_3_0" dir="s"
-        state="Z" />
-    <connection from="8963467" to="7654321" fromLane="0" toLane="2" via=":369369_3_1" dir="s"
-        state="Z" />
-    <connection from=":369369_0" to="7654321" fromLane="0" toLane="0" dir="s" state="Z" />
-    <connection from=":369369_0" to="7654321" fromLane="1" toLane="1" dir="s" state="Z" />
-    <connection from=":369369_0" to="7654321" fromLane="2" toLane="2" dir="s" state="Z" />
-    <connection from=":369369_3" to="7654321" fromLane="0" toLane="1" dir="s" state="Z" />
-    <connection from=":369369_3" to="7654321" fromLane="1" toLane="2" dir="s" state="Z" />
+    <connection from=":n1_0" to="m2" fromLane="0" toLane="0" dir="s" state="Z"/>
+    <connection from=":n1_0" to="m2" fromLane="1" toLane="1" dir="s" state="Z"/>
+    <connection from=":n1_0" to="m2" fromLane="2" toLane="2" dir="s" state="Z"/>
+    <connection from=":n1_3" to="m2" fromLane="0" toLane="1" dir="s" state="Z"/>
+    <connection from=":n1_3" to="m2" fromLane="1" toLane="2" dir="s" state="Z"/>
 
 </net>
