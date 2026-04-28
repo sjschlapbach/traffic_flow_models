@@ -288,7 +288,7 @@ if __name__ == "__main__":
     backbone_aggregator = BackboneStateAggregator(
         detector_output_path=detector_output_file,
         detector_spec_path=spec_file,
-        window_size_minutes=10.0,
+        window_size_minutes=1.0,
     )
     _, highway_demands = backbone_aggregator.run(
         output_path=micro_results_path,
