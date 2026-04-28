@@ -39,7 +39,7 @@
 
 
     <edge id="8963467" from="123123" to="369369" priority="-1" type="highway.motorway_link">
-        <lane id="8963467_0" index="0" speed="27.78" length="213.34"
+        <lane id="8963467_0" index="0" speed="27.78" length="513.34"
             shape="799.28,-98.57 990.10,-12.76" />
     </edge>
 

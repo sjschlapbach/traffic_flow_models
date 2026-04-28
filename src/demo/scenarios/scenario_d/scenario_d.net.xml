@@ -35,10 +35,10 @@
         <lane id="m3_1" index="1" speed="27.78" length="1485.70" shape="2014.30,98.40 3500.00,98.40"/>
     </edge>
     <edge id="offramp" from="n2" to="noffr" priority="-1" type="highway.motorway_link">
-        <lane id="offramp_0" index="0" speed="27.78" length="207.04" shape="2014.10,91.16 2199.28,-1.43"/>
+        <lane id="offramp_0" index="0" speed="27.78" length="507.04" shape="2014.10,91.16 2199.28,-1.43"/>
     </edge>
     <edge id="onramp" from="nonr" to="n1" priority="-1" type="highway.motorway_link">
-        <lane id="onramp_0" index="0" speed="27.78" length="213.21" shape="799.28,1.43 990.70,85.75"/>
+        <lane id="onramp_0" index="0" speed="27.78" length="513.21" shape="799.28,1.43 990.70,85.75"/>
     </edge>
 
     <junction id="n0" type="dead_end" x="0.00" y="100.00" incLanes="" intLanes="" shape="0.00,100.00 0.00,90.40"/>

@@ -25,7 +25,7 @@
         <lane id="m2_2" index="2" speed="27.78" length="1996.00" shape="1004.00,-1.60 3000.00,-1.60"/>
     </edge>
     <edge id="onramp" from="nonr" to="n1" priority="-1" type="highway.motorway_link">
-        <lane id="onramp_0" index="0" speed="27.78" length="213.34" shape="799.28,-98.57 990.10,-12.76"/>
+        <lane id="onramp_0" index="0" speed="27.78" length="513.34" shape="799.28,-98.57 990.10,-12.76"/>
     </edge>
 
     <junction id="n0" type="dead_end" x="0.00" y="0.00" incLanes="" intLanes="" shape="0.00,0.00 0.00,-9.60"/>

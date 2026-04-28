@@ -533,7 +533,7 @@ class BackboneStateAggregator:
             # to vehicle density. If a jam density is provided use the
             # reciprocal (km per vehicle). Otherwise fall back to a
             # conservative default (~5 m => 0.005 km).
-            # L_EFF_KM = 1 / jam_density if jam_density > 0 else 0.005
+            L_EFF_KM = 1 / jam_density if jam_density > 0 else 0.005
 
             flow_dict = flow_fn(t_hours)
             flow_total = flow_dict.get("flow", 0.0)
