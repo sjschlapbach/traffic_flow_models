@@ -1,6 +1,7 @@
 import csv
 import json
 import warnings
+import numpy as np
 import xml.etree.ElementTree as ET
 from collections import defaultdict
 from dataclasses import dataclass
@@ -111,9 +112,13 @@ class BackboneStateAggregator:
     def parse_detector_output(self) -> None:
         """Parse SUMO detector output XML and extract per-interval counts and speeds.
 
-        SUMO induction loop intervals expose ``nVehEntered`` (or ``nVehContrib``)
-        for vehicle counts and ``speed`` for the time-mean speed of passing vehicles
-        in m/s.  Both are extracted and the speed is converted to km/h.
+        The XML may contain a mix of E2 lane-area detectors (backbone segments)
+        and E1 induction loops (origin / inflow / turning-rate). Each schema is
+        parsed against its own required attribute set:
+
+        - E2 intervals expose ``sampledSeconds``, ``meanSpeed``, ``meanOccupancy``.
+        - E1 intervals expose ``speed`` and ``occupancy`` (no ``sampledSeconds``).
+
         """
         tree = ET.parse(self.detector_output_path)
         root = tree.getroot()
@@ -138,15 +143,46 @@ class BackboneStateAggregator:
                     f"Detector {det_id}: end time {end} < begin time {begin}."
                 )
 
-            count = int(interval.get("nVehEntered", interval.get("nVehContrib", 0)))
+            raw_count = interval.get("nVehEntered")
+            if raw_count is None:
+                raise ValueError(f"Detector {det_id}: missing nVehEntered.")
+            count = int(raw_count)
 
-            sampled_seconds = float(interval.get("sampledSeconds", 0.0))
+            # Branch on schema using the E2-only attribute as the discriminator.
+            if interval.get("sampledSeconds") is not None:
+                # E2 lane-area detector (backbone segment)
+                raw_sampled_seconds = interval.get("sampledSeconds")
+                if raw_sampled_seconds is None:
+                    raise ValueError(
+                        f"Detector {det_id}: E2 interval missing sampledSeconds."
+                    )
+                sampled_seconds = float(raw_sampled_seconds)
 
-            # SUMO reports speed in m/s; -1 indicates no vehicles in interval
-            # raw_speed_ms = float(interval.get("speed", -1.0))
-            raw_speed_ms = float(interval.get("meanSpeed", -1.0))
-            speed_kmh = raw_speed_ms * 3.6 if raw_speed_ms >= 0 else 0.0
-            occupancy = float(interval.get("meanOccupancy", 0.0))
+                raw_speed_ms = interval.get("meanSpeed")
+                if raw_speed_ms is None:
+                    raise ValueError(
+                        f"Detector {det_id}: E2 interval missing meanSpeed."
+                    )
+                speed_ms = float(raw_speed_ms)
+
+                # SUMO uses -1 to signal "no vehicles"; map to 0 km/h.
+                speed_kmh = speed_ms * 3.6 if speed_ms >= 0 else 0.0
+
+                raw_occupancy = interval.get("meanOccupancy")
+                if raw_occupancy is None:
+                    raise ValueError(
+                        f"Detector {det_id}: E2 interval missing meanOccupancy."
+                    )
+                occupancy = float(raw_occupancy)
+            else:
+                # E1 induction loop (origin / inflow / turning rate)
+                sampled_seconds = 0.0  # not defined for point detectors
+                speed_kmh = (
+                    np.nan
+                )  # set to dummy value; E1 detectors are only used for origin demand computation
+                occupancy = (
+                    np.nan
+                )  # set to dummy value; E1 detectors are only used for origin demand computation
 
             self.detector_intervals[det_id].append(
                 (begin, count, speed_kmh, occupancy, sampled_seconds)
@@ -232,11 +268,11 @@ class BackboneStateAggregator:
 
             for begin, count, speed_kmh, occupancy, sampled_seconds in intervals:
                 bucket = cell_time_data[cell_key][begin]
-                weight_for_speed = sampled_seconds if sampled_seconds > 0 else count
 
                 bucket.count += count
-                bucket.weighted_speed_sum += speed_kmh * weight_for_speed
-                bucket.exposure_sum += weight_for_speed
+                # Time-weighted (vehicle-seconds) speed sum; empty intervals contribute 0.
+                bucket.weighted_speed_sum += speed_kmh * sampled_seconds
+                bucket.exposure_sum += sampled_seconds
                 bucket.lane_count += 1  # Interval for occupancy averaging
                 bucket.occupancy_sum += occupancy
 
@@ -245,15 +281,9 @@ class BackboneStateAggregator:
             for begin in sorted(time_data.keys()):
                 aggregate = time_data[begin]
 
-                speed_weight = (
-                    aggregate.exposure_sum
-                    if aggregate.exposure_sum > 0
-                    else aggregate.count
-                )
-
                 mean_speed = (
-                    aggregate.weighted_speed_sum / speed_weight
-                    if speed_weight > 0
+                    aggregate.weighted_speed_sum / aggregate.exposure_sum
+                    if aggregate.exposure_sum > 0
                     else 0.0
                 )
                 n_lanes = float(aggregate.lane_count)
@@ -536,7 +566,11 @@ class BackboneStateAggregator:
             L_EFF_KM = 0.005
 
             flow_dict = flow_fn(t_hours)
-            flow_total = flow_dict.get("flow", 0.0)
+            flow_total = flow_dict.get("flow")
+            if flow_total is None:
+                raise ValueError(
+                    f"Flow function returned None for time {t_hours} hours."
+                )
 
             # 1. Per-lane flow for density, but keep reported flow as total
             n_lanes = mean_in_window(t_hours, raw_n_lanes)
@@ -544,8 +578,12 @@ class BackboneStateAggregator:
 
             # 2. Calculate weighted mean speed
             if speed_numerator_fn is not None and count_denom_fn is not None:
-                num = speed_numerator_fn(t_hours).get("speed_x_count", 0.0)
-                den = count_denom_fn(t_hours).get("count_weight", 0.0)
+                num = speed_numerator_fn(t_hours).get("speed_x_count")
+                den = count_denom_fn(t_hours).get("count_weight")
+                if num is None or den is None:
+                    raise ValueError(
+                        f"Speed numerator or denominator function returned None for time {t_hours} hours."
+                    )
                 speed = num / den if den > 0 else free_flow_speed
             else:
                 speed = free_flow_speed
@@ -716,12 +754,11 @@ class BackboneStateAggregator:
                     if fn is None:
                         # leave zeros for missing cells
                         continue
+
                     state = fn(t_h)
-                    flows_row[idx] = float(round(state.get("flow", 0.0), 2))
-                    speeds_row[idx] = float(round(state.get("speed", 0.0), 2))
-                    densities_row[idx] = float(
-                        round(state.get("density_occupancy", 0.0), 4)
-                    )
+                    flows_row[idx] = float(round(state["flow"], 2))
+                    speeds_row[idx] = float(round(state["speed"], 2))
+                    densities_row[idx] = float(round(state["density_occupancy"], 4))
 
                 flows_time[edge_id].append(flows_row)
                 densities_time[edge_id].append(densities_row)
@@ -744,7 +781,7 @@ class BackboneStateAggregator:
                         n_lanes_vals.append(0)
                         continue
                     try:
-                        val = fn(query_times_hours[0]).get("n_lanes", 0)
+                        val = fn(query_times_hours[0])["n_lanes"]
                         n_lanes_vals.append(int(val))
                     except Exception:
                         n_lanes_vals.append(0)
@@ -791,11 +828,11 @@ class BackboneStateAggregator:
 
         # Populate link_properties for motorway links (best-effort)
         for edge_id, info in link_properties.items():
-            n_cells = int(info.get("num_cells", 0))
+            n_cells = int(info["num_cells"])
             cell_lengths = [None] * n_cells if n_cells > 0 else []
             metadata["link_properties"][edge_id] = {
                 "length": None,
-                "lanes": info.get("n_lanes", 0.0),
+                "lanes": info["n_lanes"],
                 "lane_capacity": None,
                 "free_flow_speed": free_flow_speed,
                 "jam_density": jam_density,
