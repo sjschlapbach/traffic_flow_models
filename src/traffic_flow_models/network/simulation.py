@@ -2006,9 +2006,9 @@ class Simulation:
                 offramp_queues_t,
             ) = self.network.state_vec_to_network_dict(state_history[:, t])
 
-            micro_flows_t: Union[dict[str, NDArray[np.float64]], None] = None
-            micro_densities_t: Union[dict[str, NDArray[np.float64]], None] = None
-            micro_speeds_t: Union[dict[str, NDArray[np.float64]], None] = None
+            micro_flows_t: dict[str, NDArray[np.float64]] = {}
+            micro_densities_t: dict[str, NDArray[np.float64]] = {}
+            micro_speeds_t: dict[str, NDArray[np.float64]] = {}
             if micro_state_history is not None:
                 (
                     micro_flows_t,
@@ -2068,18 +2068,23 @@ class Simulation:
                         (len(speeds_t[link_id]), num_timesteps)
                     )
 
-                for mainline_link_id in micro_flows_t.keys():
-                    micro_flows_over_time[mainline_link_id] = np.zeros(
-                        (len(micro_flows_t[mainline_link_id]), num_timesteps)
-                    )
-                for mainline_link_id in micro_densities_t.keys():
-                    micro_densities_over_time[mainline_link_id] = np.zeros(
-                        (len(micro_densities_t[mainline_link_id]), num_timesteps)
-                    )
-                for mainline_link_id in micro_speeds_t.keys():
-                    micro_speeds_over_time[mainline_link_id] = np.zeros(
-                        (len(micro_speeds_t[mainline_link_id]), num_timesteps)
-                    )
+                if (
+                    micro_flows_t is not None
+                    and micro_densities_t is not None
+                    and micro_speeds_t is not None
+                ):
+                    for mainline_link_id in micro_flows_t.keys():
+                        micro_flows_over_time[mainline_link_id] = np.zeros(
+                            (len(micro_flows_t[mainline_link_id]), num_timesteps)
+                        )
+                    for mainline_link_id in micro_densities_t.keys():
+                        micro_densities_over_time[mainline_link_id] = np.zeros(
+                            (len(micro_densities_t[mainline_link_id]), num_timesteps)
+                        )
+                    for mainline_link_id in micro_speeds_t.keys():
+                        micro_speeds_over_time[mainline_link_id] = np.zeros(
+                            (len(micro_speeds_t[mainline_link_id]), num_timesteps)
+                        )
 
                 for origin_id in origin_queues_t.keys():
                     origin_queues_over_time[origin_id] = np.zeros(num_timesteps)
@@ -2100,14 +2105,19 @@ class Simulation:
             for link_id, val in speeds_t.items():
                 speeds_over_time[link_id][:, t] = val
 
-            for mainline_link_id, val in micro_flows_t.items():
-                micro_flows_over_time[mainline_link_id][:, t] = val
+            if (
+                micro_flows_t is not None
+                and micro_densities_t is not None
+                and micro_speeds_t is not None
+            ):
+                for mainline_link_id, val in micro_flows_t.items():
+                    micro_flows_over_time[mainline_link_id][:, t] = val
 
-            for mainline_link_id, val in micro_densities_t.items():
-                micro_densities_over_time[mainline_link_id][:, t] = val
+                for mainline_link_id, val in micro_densities_t.items():
+                    micro_densities_over_time[mainline_link_id][:, t] = val
 
-            for mainline_link_id, val in micro_speeds_t.items():
-                micro_speeds_over_time[mainline_link_id][:, t] = val
+                for mainline_link_id, val in micro_speeds_t.items():
+                    micro_speeds_over_time[mainline_link_id][:, t] = val
 
             for origin_id, val in origin_queues_t.items():
                 origin_queues_over_time[origin_id][t] = float(val)
