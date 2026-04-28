@@ -2,9 +2,9 @@
 
 <net version="1.20" junctionCornerDetail="5" limitTurnSpeed="5.50" avoidOverlap="0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://sumo.dlr.de/xsd/net_file.xsd">
 
-    <location netOffset="0.00,0.00" convBoundary="0.00,-109.60,3000.00,100.00"
-        origBoundary="0.00,-109.60,3000.00,100.00" projParameter="!" />
-
+    <location netOffset="0.00,0.00" convBoundary="0.00,-160.00,3000.00,100.00"
+    origBoundary="0.00,-160.00,3000.00,100.00" projParameter="!" />
+    
     <edge id=":369369_0" function="internal">
         <lane id=":369369_0_0" index="0" speed="27.78" length="15.16"
             shape="988.84,-8.00 1004.00,-8.00" />
@@ -39,16 +39,16 @@
 
 
     <edge id="8963467" from="123123" to="369369" priority="-1" type="highway.motorway_link">
-        <lane id="8963467_0" index="0" speed="27.78" length="213.34"
-            shape="799.28,-98.57 990.10,-12.76" />
-    </edge>
+    <lane id="8963467_0" index="0" speed="27.78" length="528.24"
+        shape="480.00,-150.00 990.10,-12.76" />
+</edge>
 
 
     <junction id="123678" type="dead_end" x="0.00" y="0.00" incLanes="" intLanes=""
         shape="0.00,0.00 0.00,-9.60" />
 
-    <junction id="123123" type="dead_end" x="800.00" y="-100.00" incLanes="" intLanes=""
-        shape="800.00,-100.00 798.57,-102.86" />
+    <junction id="123123" type="dead_end" x="480.00" y="-150.00" incLanes="" intLanes=""
+    shape="480.00,-150.00 478.57,-152.86" />
 
     <junction id="369369" type="zipper" x="1000.00" y="0.00"
         incLanes="1234567_0 1234567_1 1234567_2 8963467_0"

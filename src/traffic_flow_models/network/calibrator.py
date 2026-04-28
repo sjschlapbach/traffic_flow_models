@@ -535,6 +535,17 @@ class Calibrator:
         # initialize with ground truth at window start
         x_current_predicted = ground_truth_states[:, window_indices[0]]
 
+        # return early if the calibration is initialized with unstable values
+        if (
+            np.any(np.isnan(ground_truth_states))
+            or np.any(np.isinf(ground_truth_states))
+            or np.any(np.isnan(ground_truth_disturbances))
+            or np.any(np.isinf(ground_truth_disturbances))
+        ):
+            raise ValueError(
+                "Ground truth states or disturbances contain NaN or Inf values, which will cause calibration to fail. Please clean the data before calibration."
+            )
+
         for _, t_idx in enumerate(window_indices[:-1]):
             # get disturbance at current time
             d_current = ground_truth_disturbances[:, t_idx]
@@ -542,6 +553,16 @@ class Calibrator:
             # predict next state using model with expanded parameter vector
             x_next_predicted = system(system_param_vec, x_current_predicted, d_current)
             x_next_predicted = np.array(x_next_predicted).flatten()
+
+            if np.any(np.isnan(x_next_predicted)) or np.any(np.isinf(x_next_predicted)):
+                print(
+                    f"Invalid value detected in state vector during prediction for calibration at index {t_idx}\n",
+                    "-> This may indicate that the current parameter guess is propagated for too long without correction, leading to divergence.\n",
+                    "-> Consider using a smaller window size or providing tigher / different parameter optimization bounds",
+                )
+                raise ValueError(
+                    "Predicted state contains NaN or Inf values, which will cause calibration to fail."
+                )
 
             # extract measurable components from ground truth
             predicted_measurable = measurable_indices[:, t_idx + 1]
