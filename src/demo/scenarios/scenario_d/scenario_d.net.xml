@@ -2,7 +2,7 @@
 
 <net version="1.20" junctionCornerDetail="5" limitTurnSpeed="5.50" avoidOverlap="0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://sumo.dlr.de/xsd/net_file.xsd">
 
-    <location netOffset="0.00,100.00" convBoundary="0.00,0.00,3500.00,200.00" origBoundary="0.00,-100.00,3500.00,100.00" projParameter="!"/>
+    <location netOffset="0.00,100.00" convBoundary="0.00,0.00,3500.00,105.00" origBoundary="0.00,-100.00,3500.00,5.00" projParameter="!"/>
 
     <edge id=":n1_0" function="internal">
         <lane id=":n1_0_0" index="0" speed="27.78" length="15.16" shape="988.84,92.00 1004.00,92.00"/>
@@ -34,11 +34,12 @@
         <lane id="m3_0" index="0" speed="27.78" length="1485.70" shape="2014.30,95.20 3500.00,95.20"/>
         <lane id="m3_1" index="1" speed="27.78" length="1485.70" shape="2014.30,98.40 3500.00,98.40"/>
     </edge>
-    <edge id="offramp" from="n2" to="noffr" priority="-1" type="highway.motorway_link">
-        <lane id="offramp_0" index="0" speed="27.78" length="207.04" shape="2014.10,91.16 2199.28,-1.43"/>
-    </edge>
     <edge id="onramp" from="nonr" to="n1" priority="-1" type="highway.motorway_link">
-        <lane id="onramp_0" index="0" speed="27.78" length="213.21" shape="799.28,1.43 990.70,85.75"/>
+        <lane id="onramp_0" index="0" speed="27.78" length="503.06" shape="495.00,0.00 990.70,85.75"/>
+    </edge>
+
+    <edge id="offramp" from="n2" to="noffr" priority="-1" type="highway.motorway_link">
+        <lane id="offramp_0" index="0" speed="27.78" length="509.13" shape="2014.10,91.16 2515.00,0.00"/>
     </edge>
 
     <junction id="n0" type="dead_end" x="0.00" y="100.00" incLanes="" intLanes="" shape="0.00,100.00 0.00,90.40"/>
@@ -54,8 +55,8 @@
         <request index="2" response="000" foes="000" cont="0"/>
     </junction>
     <junction id="n3" type="dead_end" x="3500.00" y="100.00" incLanes="m3_0 m3_1" intLanes="" shape="3500.00,93.60 3500.00,100.00"/>
-    <junction id="noffr" type="dead_end" x="2200.00" y="0.00" incLanes="offramp_0" intLanes="" shape="2198.57,-2.86 2200.00,-0.00"/>
-    <junction id="nonr" type="dead_end" x="800.00" y="0.00" incLanes="" intLanes="" shape="800.00,0.00 798.57,-2.86"/>
+    <junction id="nonr" type="dead_end" x="495.00" y="0.00" incLanes="" intLanes="" shape="495.00,0.00 493.57,-2.86"/>
+    <junction id="noffr" type="dead_end" x="2515.00" y="0.00" incLanes="offramp_0" intLanes="" shape="2513.57,-2.86 2515.00,0.00"/>
 
     <connection from="m1" to="m2" fromLane="0" toLane="0" via=":n1_0_0" dir="s" state="Z"/>
     <connection from="m1" to="m2" fromLane="1" toLane="1" via=":n1_0_1" dir="s" state="M"/>

@@ -7,6 +7,7 @@
   <time><end value="5000"/></time>
   <output>
     <statistic-output value="scenario_b_stats.xml"/>
+    <tripinfo-output value="tripinfo.xml"/>
   </output>
   <report><duration-log.statistics value="true"/></report>
 </configuration>

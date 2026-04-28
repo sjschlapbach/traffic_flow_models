@@ -275,7 +275,7 @@ if __name__ == "__main__":
     # compute splits (turning rates) from detector data
     # This is the primary source of splits - detector-based with lane-based fallback
     # Uses rolling window aggregation (2 minutes by default) over small detector intervals (15 seconds)
-    splits = pipeline.compute_splits(window_size_minutes=2.0)
+    splits = pipeline.compute_splits()
 
     # initialize the results directory
     timestamp_str = datetime.now().strftime("simulation_results_%Y-%m-%d_%H%M%S")
@@ -286,9 +286,7 @@ if __name__ == "__main__":
     road_params = NetworkArbitrator._load_road_params_from_json(road_params_config_path)
     micro_results_path = os.path.join(results_dir, "micro_results.json")
     backbone_aggregator = BackboneStateAggregator(
-        detector_output_path=detector_output_file,
-        detector_spec_path=spec_file,
-        window_size_minutes=1.0,
+        detector_output_path=detector_output_file, detector_spec_path=spec_file
     )
     _, highway_demands = backbone_aggregator.run(
         output_path=micro_results_path,

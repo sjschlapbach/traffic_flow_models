@@ -86,6 +86,7 @@ class SUMOSimulation:
             f'  <time><end value="{self.simulation_end_time}"/></time>\n'
             "  <output>\n"
             f'    <statistic-output value="{os.path.basename(self.stats_file)}"/>\n'
+            f'    <tripinfo-output value="tripinfo.xml"/>\n'
             "  </output>\n"
             '  <report><duration-log.statistics value="true"/></report>\n'
             "</configuration>"
