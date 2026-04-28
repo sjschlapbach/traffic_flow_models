@@ -18,7 +18,6 @@ from traffic_flow_models import (
     Simulation,
 )
 
-
 DEFAULT_MODEL_PARAMS = CTMParams(vf=100.0, qc_lane=2000.0, rho_jam=180.0)
 
 
