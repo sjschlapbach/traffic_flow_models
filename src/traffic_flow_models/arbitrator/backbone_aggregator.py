@@ -1,6 +1,7 @@
 import csv
 import json
 import warnings
+import numpy as np
 import xml.etree.ElementTree as ET
 from collections import defaultdict
 from dataclasses import dataclass
@@ -150,7 +151,12 @@ class BackboneStateAggregator:
             # Branch on schema using the E2-only attribute as the discriminator.
             if interval.get("sampledSeconds") is not None:
                 # E2 lane-area detector (backbone segment)
-                sampled_seconds = float(interval.get("sampledSeconds"))
+                raw_sampled_seconds = interval.get("sampledSeconds")
+                if raw_sampled_seconds is None:
+                    raise ValueError(
+                        f"Detector {det_id}: E2 interval missing sampledSeconds."
+                    )
+                sampled_seconds = float(raw_sampled_seconds)
 
                 raw_speed_ms = interval.get("meanSpeed")
                 if raw_speed_ms is None:
@@ -158,6 +164,9 @@ class BackboneStateAggregator:
                         f"Detector {det_id}: E2 interval missing meanSpeed."
                     )
                 speed_ms = float(raw_speed_ms)
+
+                # SUMO uses -1 to signal "no vehicles"; map to 0 km/h.
+                speed_kmh = speed_ms * 3.6 if speed_ms >= 0 else 0.0
 
                 raw_occupancy = interval.get("meanOccupancy")
                 if raw_occupancy is None:
@@ -168,21 +177,12 @@ class BackboneStateAggregator:
             else:
                 # E1 induction loop (origin / inflow / turning rate)
                 sampled_seconds = 0.0  # not defined for point detectors
-
-                raw_speed_ms = interval.get("speed")
-                if raw_speed_ms is None:
-                    raise ValueError(f"Detector {det_id}: E1 interval missing speed.")
-                speed_ms = float(raw_speed_ms)
-
-                raw_occupancy = interval.get("occupancy")
-                if raw_occupancy is None:
-                    raise ValueError(
-                        f"Detector {det_id}: E1 interval missing occupancy."
-                    )
-                occupancy = float(raw_occupancy)
-
-            # SUMO uses -1 to signal "no vehicles"; map to 0 km/h.
-            speed_kmh = speed_ms * 3.6 if speed_ms >= 0 else 0.0
+                speed_kmh = (
+                    np.nan
+                )  # set to dummy value; E1 detectors are only used for origin demand computation
+                occupancy = (
+                    np.nan
+                )  # set to dummy value; E1 detectors are only used for origin demand computation
 
             self.detector_intervals[det_id].append(
                 (begin, count, speed_kmh, occupancy, sampled_seconds)
