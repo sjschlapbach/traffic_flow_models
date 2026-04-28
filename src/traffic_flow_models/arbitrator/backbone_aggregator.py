@@ -111,9 +111,13 @@ class BackboneStateAggregator:
     def parse_detector_output(self) -> None:
         """Parse SUMO detector output XML and extract per-interval counts and speeds.
 
-        SUMO induction loop intervals expose ``nVehEntered`` (or ``nVehContrib``)
-        for vehicle counts and ``speed`` for the time-mean speed of passing vehicles
-        in m/s.  Both are extracted and the speed is converted to km/h.
+        The XML may contain a mix of E2 lane-area detectors (backbone segments)
+        and E1 induction loops (origin / inflow / turning-rate). Each schema is
+        parsed against its own required attribute set:
+
+        - E2 intervals expose ``sampledSeconds``, ``meanSpeed``, ``meanOccupancy``.
+        - E1 intervals expose ``speed`` and ``occupancy`` (no ``sampledSeconds``).
+
         """
         tree = ET.parse(self.detector_output_path)
         root = tree.getroot()
@@ -142,24 +146,43 @@ class BackboneStateAggregator:
             if raw_count is None:
                 raise ValueError(f"Detector {det_id}: missing nVehEntered.")
             count = int(raw_count)
-            raw_sampled_seconds = interval.get("sampledSeconds")
-            if raw_sampled_seconds is None:
-                raise ValueError(f"Detector {det_id}: missing sampledSeconds.")
-            sampled_seconds = float(raw_sampled_seconds)
 
-            # SUMO reports speed in m/s; -1 indicates no vehicles in interval
-            # raw_speed_ms = float(interval.get("speed"))
-            raw_speed_ms = interval.get("meanSpeed")
-            if raw_speed_ms is None:
-                raise ValueError(f"Detector {det_id}: missing meanSpeed.")
-            speed_ms = float(raw_speed_ms)
+            # Branch on schema using the E2-only attribute as the discriminator.
+            if interval.get("sampledSeconds") is not None:
+                # E2 lane-area detector (backbone segment)
+                sampled_seconds = float(interval.get("sampledSeconds"))
 
+                raw_speed_ms = interval.get("meanSpeed")
+                if raw_speed_ms is None:
+                    raise ValueError(
+                        f"Detector {det_id}: E2 interval missing meanSpeed."
+                    )
+                speed_ms = float(raw_speed_ms)
+
+                raw_occupancy = interval.get("meanOccupancy")
+                if raw_occupancy is None:
+                    raise ValueError(
+                        f"Detector {det_id}: E2 interval missing meanOccupancy."
+                    )
+                occupancy = float(raw_occupancy)
+            else:
+                # E1 induction loop (origin / inflow / turning rate)
+                sampled_seconds = 0.0  # not defined for point detectors
+
+                raw_speed_ms = interval.get("speed")
+                if raw_speed_ms is None:
+                    raise ValueError(f"Detector {det_id}: E1 interval missing speed.")
+                speed_ms = float(raw_speed_ms)
+
+                raw_occupancy = interval.get("occupancy")
+                if raw_occupancy is None:
+                    raise ValueError(
+                        f"Detector {det_id}: E1 interval missing occupancy."
+                    )
+                occupancy = float(raw_occupancy)
+
+            # SUMO uses -1 to signal "no vehicles"; map to 0 km/h.
             speed_kmh = speed_ms * 3.6 if speed_ms >= 0 else 0.0
-
-            raw_occupancy = interval.get("meanOccupancy")
-            if raw_occupancy is None:
-                raise ValueError(f"Detector {det_id}: missing meanOccupancy.")
-            occupancy = float(raw_occupancy)
 
             self.detector_intervals[det_id].append(
                 (begin, count, speed_kmh, occupancy, sampled_seconds)
@@ -245,11 +268,11 @@ class BackboneStateAggregator:
 
             for begin, count, speed_kmh, occupancy, sampled_seconds in intervals:
                 bucket = cell_time_data[cell_key][begin]
-                weight_for_speed = sampled_seconds if sampled_seconds > 0 else count
 
                 bucket.count += count
-                bucket.weighted_speed_sum += speed_kmh * weight_for_speed
-                bucket.exposure_sum += weight_for_speed
+                # Time-weighted (vehicle-seconds) speed sum; empty intervals contribute 0.
+                bucket.weighted_speed_sum += speed_kmh * sampled_seconds
+                bucket.exposure_sum += sampled_seconds
                 bucket.lane_count += 1  # Interval for occupancy averaging
                 bucket.occupancy_sum += occupancy
 
@@ -258,15 +281,9 @@ class BackboneStateAggregator:
             for begin in sorted(time_data.keys()):
                 aggregate = time_data[begin]
 
-                speed_weight = (
-                    aggregate.exposure_sum
-                    if aggregate.exposure_sum > 0
-                    else aggregate.count
-                )
-
                 mean_speed = (
-                    aggregate.weighted_speed_sum / speed_weight
-                    if speed_weight > 0
+                    aggregate.weighted_speed_sum / aggregate.exposure_sum
+                    if aggregate.exposure_sum > 0
                     else 0.0
                 )
                 n_lanes = float(aggregate.lane_count)
