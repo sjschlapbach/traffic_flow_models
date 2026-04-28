@@ -921,7 +921,7 @@ class Simulation:
                 )
 
                 print(
-                    f"  Loading microsimulation results from resmapled file {subsampled_micro_data} for plotting."
+                    f"  Loading microsimulation results from resampled file {subsampled_micro_data} for plotting."
                 )
                 _, state_micro, _, _ = self.load_results(
                     filepath=subsampled_micro_data,
