@@ -6,25 +6,36 @@ import json
 from typing import cast
 from numpy.typing import NDArray
 
-from traffic_flow_models.network.network import Network
-from traffic_flow_models.network.node import Node
-from traffic_flow_models.network.origin import Origin
-from traffic_flow_models.network.destination import Destination
-from traffic_flow_models.network.offramp import Offramp
-from traffic_flow_models.network.onramp import Onramp
-from traffic_flow_models.network.motorway_link import MotorwayLink
-from traffic_flow_models.network.simulation import Simulation
+from traffic_flow_models import (
+    CTMParams,
+    Network,
+    Node,
+    Origin,
+    Destination,
+    Offramp,
+    Onramp,
+    MotorwayLink,
+    Simulation,
+)
+
+
+DEFAULT_MODEL_PARAMS = CTMParams(vf=100.0, qc_lane=2000.0, rho_jam=180.0)
 
 
 # helper function to partition motorway links for tests
 def partition_motorway_links(
-    network: Network, preferred_cell_size: float = 0.5, dt: float = 0.001
+    network: Network,
+    preferred_cell_size: float = 0.5,
+    dt: float = 0.001,
+    max_vf: float = DEFAULT_MODEL_PARAMS["vf"],
 ) -> None:
     """Partition all MotorwayLink instances in a network."""
     for node in network.list_nodes():
         for link in node.incoming + node.outgoing:
             if isinstance(link, MotorwayLink):
-                link.partition_link(preferred_cell_size, dt)
+                link.partition_link(
+                    max_vf=max_vf, preferred_cell_size=preferred_cell_size, dt=dt
+                )
 
 
 class TestNetwork:
@@ -59,16 +70,10 @@ class TestNetwork:
 
     def test_get_link_simple_cases(self):
         """Verify that `get_link` returns the correct link objects or None."""
-        main = MotorwayLink(
-            length=1.0, lanes=1, lane_capacity=1500, free_flow_speed=80, jam_density=140
-        )
+        main = MotorwayLink(length=1.0, lanes=1)
         origin = Origin()
-        onramp = Onramp(
-            length=0.5, lanes=1, lane_capacity=1800, free_flow_speed=90, jam_density=160
-        )
-        offramp = Offramp(
-            lanes=1, lane_capacity=1800, free_flow_speed=90, jam_density=160
-        )
+        onramp = Onramp(length=0.5, lanes=1)
+        offramp = Offramp(lanes=1)
         dest = Destination()
 
         node1 = Node(id="n1", incoming=[origin, onramp], outgoing=[main])
@@ -84,9 +89,7 @@ class TestNetwork:
 
     def test_get_link_missing_and_empty_network(self):
         """Verify `get_link` returns None for missing ids and when network is empty."""
-        main = MotorwayLink(
-            length=1.0, lanes=2, lane_capacity=1500, free_flow_speed=80, jam_density=140
-        )
+        main = MotorwayLink(length=1.0, lanes=2)
         origin = Origin()
         dest = Destination()
 
@@ -103,9 +106,7 @@ class TestNetwork:
 
     def test_validate_path_connected_nodes(self):
         # create shared mainline link between node1 -> node2
-        main = MotorwayLink(
-            length=1.0, lanes=1, lane_capacity=1500, free_flow_speed=80, jam_density=140
-        )
+        main = MotorwayLink(length=1.0, lanes=1)
 
         origin = Origin()
         dest = Destination()
@@ -121,22 +122,14 @@ class TestNetwork:
         """Origin must feed onramp through a node, onramp merges into motorway."""
         origin_main = Origin()
         origin_ramp = Origin()
-        onr = Onramp(
-            length=0.5, lanes=1, lane_capacity=1800, free_flow_speed=90, jam_density=170
-        )
+        onr = Onramp(length=0.5, lanes=1)
         main1 = MotorwayLink(
             length=1.0,
             lanes=2,
-            lane_capacity=1800,
-            free_flow_speed=100,
-            jam_density=150,
         )
         main2 = MotorwayLink(
             length=1.0,
             lanes=2,
-            lane_capacity=1800,
-            free_flow_speed=100,
-            jam_density=150,
         )
         dest = Destination()
 
@@ -154,16 +147,9 @@ class TestNetwork:
         # create an offramp whose downstream node does not lead to a destination
         offr = Offramp(
             lanes=1,
-            lane_capacity=2000,
-            free_flow_speed=100,
-            jam_density=180,
         )
-        main = MotorwayLink(
-            length=1.0, lanes=1, lane_capacity=1500, free_flow_speed=80, jam_density=140
-        )
-        main_after_off = MotorwayLink(
-            length=1.0, lanes=1, lane_capacity=1500, free_flow_speed=80, jam_density=140
-        )
+        main = MotorwayLink(length=1.0, lanes=1)
+        main_after_off = MotorwayLink(length=1.0, lanes=1)
         origin = Origin()
         dest_main = Destination()
         dest_extra = Destination()
@@ -181,13 +167,9 @@ class TestNetwork:
     def test_validate_offramp_structure_passes(self):
         """Offramp must exit through a downstream node into a destination."""
         origin = Origin()
-        main1 = MotorwayLink(
-            length=1.0, lanes=2, lane_capacity=1800, free_flow_speed=90, jam_density=150
-        )
-        main2 = MotorwayLink(
-            length=1.0, lanes=2, lane_capacity=1800, free_flow_speed=90, jam_density=150
-        )
-        offr = Offramp(lanes=1, lane_capacity=1200, free_flow_speed=70, jam_density=140)
+        main1 = MotorwayLink(length=1.0, lanes=2)
+        main2 = MotorwayLink(length=1.0, lanes=2)
+        offr = Offramp(lanes=1)
         dest_main = Destination()
         dest_off = Destination()
 
@@ -201,9 +183,7 @@ class TestNetwork:
         assert net.validate() is True
 
     def test_validate_unconnected_component_raises(self):
-        main = MotorwayLink(
-            length=1.0, lanes=1, lane_capacity=1500, free_flow_speed=80, jam_density=140
-        )
+        main = MotorwayLink(length=1.0, lanes=1)
         origin = Origin()
         dest = Destination()
 
@@ -214,9 +194,7 @@ class TestNetwork:
         # isolated node (links not shared)
         origin2 = Origin()
         dest2 = Destination()
-        main2 = MotorwayLink(
-            length=1.0, lanes=1, lane_capacity=1500, free_flow_speed=80, jam_density=140
-        )
+        main2 = MotorwayLink(length=1.0, lanes=1)
         node3 = Node(id="n3", incoming=[origin2], outgoing=[main2])
         node4 = Node(id="n4", incoming=[main2], outgoing=[dest2])
 
@@ -228,12 +206,8 @@ class TestNetwork:
         """Test that a node connected to an origin can only have one motorway link as outgoing."""
         # create a node with Origin incoming and two MotorwayLinks outgoing (invalid)
         origin = Origin()
-        main1 = MotorwayLink(
-            length=1.0, lanes=2, lane_capacity=1500, free_flow_speed=80, jam_density=140
-        )
-        main2 = MotorwayLink(
-            length=1.0, lanes=2, lane_capacity=1500, free_flow_speed=80, jam_density=140
-        )
+        main1 = MotorwayLink(length=1.0, lanes=2)
+        main2 = MotorwayLink(length=1.0, lanes=2)
         dest1 = Destination()
         dest2 = Destination()
 
@@ -254,9 +228,6 @@ class TestNetwork:
         origin = Origin()
         offramp = Offramp(
             lanes=1,
-            lane_capacity=2000,
-            free_flow_speed=100,
-            jam_density=180,
         )
         dest_off = Destination()
 
@@ -276,16 +247,9 @@ class TestNetwork:
         onramp = Onramp(
             length=0.5,
             lanes=1,
-            lane_capacity=2000,
-            free_flow_speed=100,
-            jam_density=180,
         )
-        main1 = MotorwayLink(
-            length=1.0, lanes=2, lane_capacity=1500, free_flow_speed=80, jam_density=140
-        )
-        main2 = MotorwayLink(
-            length=1.0, lanes=2, lane_capacity=1500, free_flow_speed=80, jam_density=140
-        )
+        main1 = MotorwayLink(length=1.0, lanes=2)
+        main2 = MotorwayLink(length=1.0, lanes=2)
         dest = Destination()
         dest2 = Destination()
 
@@ -302,15 +266,10 @@ class TestNetwork:
 
     def test_validate_onramp_without_origin_fails(self):
         # create mainline and an onramp feeding into it (no Origin present)
-        main = MotorwayLink(
-            length=1.0, lanes=1, lane_capacity=1500, free_flow_speed=80, jam_density=140
-        )
+        main = MotorwayLink(length=1.0, lanes=1)
         onr = Onramp(
             length=0.5,
             lanes=1,
-            lane_capacity=2000,
-            free_flow_speed=100,
-            jam_density=180,
         )
         dest = Destination()
 
@@ -324,9 +283,7 @@ class TestNetwork:
 
     def test_validate_requires_origin_or_onramp_raises(self):
         # network with only motorway links and a destination but no Origin/Onramp
-        main = MotorwayLink(
-            length=1.0, lanes=1, lane_capacity=1500, free_flow_speed=80, jam_density=140
-        )
+        main = MotorwayLink(length=1.0, lanes=1)
         dest = Destination()
 
         node1 = Node(id="n1", incoming=[main], outgoing=[main])
@@ -338,9 +295,7 @@ class TestNetwork:
 
     def test_validate_requires_destination_raises(self):
         # network with Origin and motorway links but no Destination anywhere
-        main = MotorwayLink(
-            length=1.0, lanes=1, lane_capacity=1500, free_flow_speed=80, jam_density=140
-        )
+        main = MotorwayLink(length=1.0, lanes=1)
         origin = Origin()
 
         node1 = Node(id="n1", incoming=[origin], outgoing=[main])
@@ -359,9 +314,6 @@ class TestNetwork:
                 MotorwayLink(
                     length=1.0,
                     lanes=1,
-                    lane_capacity=1500,
-                    free_flow_speed=80,
-                    jam_density=140,
                 )
             ],
         )
@@ -377,9 +329,6 @@ class TestNetwork:
                 MotorwayLink(
                     length=1.0,
                     lanes=1,
-                    lane_capacity=1500,
-                    free_flow_speed=80,
-                    jam_density=140,
                 )
             ],
             outgoing=[],
@@ -390,9 +339,7 @@ class TestNetwork:
 
     def test_validate_incoming_destination_id_mismatch_raises(self):
 
-        main = MotorwayLink(
-            length=1.0, lanes=1, lane_capacity=1500, free_flow_speed=80, jam_density=140
-        )
+        main = MotorwayLink(length=1.0, lanes=1)
         origin = Origin()
         dest = Destination()
 
@@ -407,9 +354,7 @@ class TestNetwork:
             net.validate()
 
     def test_validate_outgoing_origin_id_mismatch_raises(self):
-        main = MotorwayLink(
-            length=1.0, lanes=1, lane_capacity=1500, free_flow_speed=80, jam_density=140
-        )
+        main = MotorwayLink(length=1.0, lanes=1)
         origin = Origin()
         dest = Destination()
 
@@ -423,9 +368,7 @@ class TestNetwork:
             net.validate()
 
     def test_validate_missing_destination_or_origin_id_raises(self):
-        main = MotorwayLink(
-            length=1.0, lanes=1, lane_capacity=1500, free_flow_speed=80, jam_density=140
-        )
+        main = MotorwayLink(length=1.0, lanes=1)
         origin = Origin()
         dest = Destination()
 
@@ -446,9 +389,7 @@ class TestNetwork:
 
     def test_network_validate_rejects_invalid_link_types_set_directly(self):
         # create a node and bypass the Node helpers by assigning lists directly
-        main = MotorwayLink(
-            length=1.0, lanes=1, lane_capacity=1500, free_flow_speed=80, jam_density=140
-        )
+        main = MotorwayLink(length=1.0, lanes=1)
         n = Node(id="bad")
 
         # invalid incoming type (Destination is not allowed as incoming)
@@ -488,9 +429,7 @@ class TestNetwork:
     def test_network_dict_to_state_vec_simple_network(self):
         """Test packing state dictionaries to vector for simple Origin->Motorway->Destination network."""
         # create simple network: Origin -> MotorwayLink -> Destination
-        main = MotorwayLink(
-            length=1.0, lanes=2, lane_capacity=1500, free_flow_speed=80, jam_density=140
-        )
+        main = MotorwayLink(length=1.0, lanes=2)
         origin = Origin()
         dest = Destination()
 
@@ -560,9 +499,7 @@ class TestNetwork:
     def test_state_vec_to_network_dict_simple_network(self):
         """Test unpacking state vector to dictionaries for simple network."""
         # create simple network
-        main = MotorwayLink(
-            length=1.0, lanes=2, lane_capacity=1500, free_flow_speed=80, jam_density=140
-        )
+        main = MotorwayLink(length=1.0, lanes=2)
         origin = Origin()
         dest = Destination()
 
@@ -600,9 +537,7 @@ class TestNetwork:
     def test_round_trip_state_conversion_simple(self):
         """Test dict->vec->dict round-trip conversion preserves all values."""
         # create simple network
-        main = MotorwayLink(
-            length=1.0, lanes=2, lane_capacity=1500, free_flow_speed=80, jam_density=140
-        )
+        main = MotorwayLink(length=1.0, lanes=2)
         origin = Origin()
         dest = Destination()
 
@@ -659,24 +594,15 @@ class TestNetwork:
     def test_network_dict_to_state_vec_complex_network(self):
         """Test state packing for complex network with all link types."""
         # create network with Origin, Onramp, Offramp, MotorwayLink, Destination
-        main1 = MotorwayLink(
-            length=1.0, lanes=3, lane_capacity=1500, free_flow_speed=80, jam_density=140
-        )
-        main2 = MotorwayLink(
-            length=1.5, lanes=2, lane_capacity=1500, free_flow_speed=80, jam_density=140
-        )
+        main1 = MotorwayLink(length=1.0, lanes=3)
+        main2 = MotorwayLink(length=1.5, lanes=2)
         origin = Origin()
         onramp = Onramp(
             length=0.5,
             lanes=1,
-            lane_capacity=2000,
-            free_flow_speed=100,
-            jam_density=180,
         )
         dest1 = Destination()
-        offramp = Offramp(
-            lanes=1, lane_capacity=2000, free_flow_speed=100, jam_density=180
-        )
+        offramp = Offramp(lanes=1)
         dest2 = Destination()
 
         node1 = Node(id="n1", incoming=[origin], outgoing=[main1])
@@ -747,24 +673,15 @@ class TestNetwork:
     def test_round_trip_state_conversion_complex(self):
         """Test dict->vec->dict round-trip for complex network."""
         # create complex network
-        main1 = MotorwayLink(
-            length=1.0, lanes=3, lane_capacity=1500, free_flow_speed=80, jam_density=140
-        )
-        main2 = MotorwayLink(
-            length=1.5, lanes=2, lane_capacity=1500, free_flow_speed=80, jam_density=140
-        )
+        main1 = MotorwayLink(length=1.0, lanes=3)
+        main2 = MotorwayLink(length=1.5, lanes=2)
         origin = Origin()
         onramp = Onramp(
             length=0.5,
             lanes=1,
-            lane_capacity=2000,
-            free_flow_speed=100,
-            jam_density=180,
         )
         dest1 = Destination()
-        offramp = Offramp(
-            lanes=1, lane_capacity=2000, free_flow_speed=100, jam_density=180
-        )
+        offramp = Offramp(lanes=1)
         dest2 = Destination()
 
         node1 = Node(id="n1", incoming=[origin], outgoing=[main1])
@@ -837,9 +754,7 @@ class TestNetwork:
     def test_network_dict_to_disturbance_vec_simple(self):
         """Test packing disturbance dictionaries to vector for simple network."""
         # create simple network
-        main = MotorwayLink(
-            length=1.0, lanes=2, lane_capacity=1500, free_flow_speed=80, jam_density=140
-        )
+        main = MotorwayLink(length=1.0, lanes=2)
         origin = Origin()
         dest = Destination()
 
@@ -880,9 +795,7 @@ class TestNetwork:
     def test_disturbance_vec_to_network_dict_simple(self):
         """Test unpacking disturbance vector to dictionaries."""
         # create simple network
-        main = MotorwayLink(
-            length=1.0, lanes=2, lane_capacity=1500, free_flow_speed=80, jam_density=140
-        )
+        main = MotorwayLink(length=1.0, lanes=2)
         origin = Origin()
         dest = Destination()
 
@@ -918,23 +831,14 @@ class TestNetwork:
     def test_round_trip_disturbance_conversion(self):
         """Test dict->vec->dict round-trip for disturbance conversion."""
         # create network with onramp and offramp
-        main1 = MotorwayLink(
-            length=1.0, lanes=2, lane_capacity=1500, free_flow_speed=80, jam_density=140
-        )
-        main2 = MotorwayLink(
-            length=1.0, lanes=2, lane_capacity=1500, free_flow_speed=80, jam_density=140
-        )
+        main1 = MotorwayLink(length=1.0, lanes=2)
+        main2 = MotorwayLink(length=1.0, lanes=2)
         origin = Origin()
         onramp = Onramp(
             length=0.5,
             lanes=1,
-            lane_capacity=2000,
-            free_flow_speed=100,
-            jam_density=180,
         )
-        offramp = Offramp(
-            lanes=1, lane_capacity=2000, free_flow_speed=100, jam_density=180
-        )
+        offramp = Offramp(lanes=1)
         dest1 = Destination()
         dest2 = Destination()
 
@@ -993,9 +897,7 @@ class TestNetwork:
 
     def test_state_vec_too_short_raises(self):
         """Test that unpacking too-short state vector raises ValueError."""
-        main = MotorwayLink(
-            length=1.0, lanes=2, lane_capacity=1500, free_flow_speed=80, jam_density=140
-        )
+        main = MotorwayLink(length=1.0, lanes=2)
         origin = Origin()
         dest = Destination()
 
@@ -1011,9 +913,7 @@ class TestNetwork:
 
     def test_disturbance_vec_too_short_raises(self):
         """Test that unpacking too-short disturbance vector raises ValueError."""
-        main = MotorwayLink(
-            length=1.0, lanes=2, lane_capacity=1500, free_flow_speed=80, jam_density=140
-        )
+        main = MotorwayLink(length=1.0, lanes=2)
         origin = Origin()
         dest = Destination()
 
@@ -1030,15 +930,9 @@ class TestNetwork:
     def test_compute_upcoming_lane_drop_with_drop(self):
         """Test lane drop detection when downstream link has fewer lanes."""
         # create network with lane drop: 3 lanes -> 2 lanes
-        main1 = MotorwayLink(
-            length=1.0, lanes=3, lane_capacity=1500, free_flow_speed=80, jam_density=140
-        )
-        main2 = MotorwayLink(
-            length=1.0, lanes=2, lane_capacity=1500, free_flow_speed=80, jam_density=140
-        )
-        main3 = MotorwayLink(
-            length=1.0, lanes=2, lane_capacity=1500, free_flow_speed=80, jam_density=140
-        )
+        main1 = MotorwayLink(length=1.0, lanes=3)
+        main2 = MotorwayLink(length=1.0, lanes=2)
+        main3 = MotorwayLink(length=1.0, lanes=2)
         origin = Origin()
         dest = Destination()
 
@@ -1061,12 +955,8 @@ class TestNetwork:
     def test_compute_upcoming_lane_drop_no_drop(self):
         """Test lane drop detection when no lanes are dropped."""
         # create network with same lanes
-        main1 = MotorwayLink(
-            length=1.0, lanes=2, lane_capacity=1500, free_flow_speed=80, jam_density=140
-        )
-        main2 = MotorwayLink(
-            length=1.0, lanes=2, lane_capacity=1500, free_flow_speed=80, jam_density=140
-        )
+        main1 = MotorwayLink(length=1.0, lanes=2)
+        main2 = MotorwayLink(length=1.0, lanes=2)
         origin = Origin()
         dest = Destination()
 
@@ -1084,12 +974,8 @@ class TestNetwork:
     def test_compute_upcoming_lane_drop_with_offramp(self):
         """Test lane drop detection when downstream is an offramp with fewer lanes."""
         # create network: mainline -> offramp (lane reduction)
-        main = MotorwayLink(
-            length=1.0, lanes=3, lane_capacity=1500, free_flow_speed=80, jam_density=140
-        )
-        offramp = Offramp(
-            lanes=1, lane_capacity=2000, free_flow_speed=100, jam_density=180
-        )
+        main = MotorwayLink(length=1.0, lanes=3)
+        offramp = Offramp(lanes=1)
         dest = Destination()
 
         origin = Origin()
@@ -1107,15 +993,9 @@ class TestNetwork:
     def test_compute_upcoming_lane_drop_multiple_outgoing(self):
         """Test lane drop returns 0 when node has multiple outgoing links (not simple continuation)."""
         # create merge node with multiple outgoing links
-        main1 = MotorwayLink(
-            length=1.0, lanes=3, lane_capacity=1500, free_flow_speed=80, jam_density=140
-        )
-        main2 = MotorwayLink(
-            length=1.0, lanes=2, lane_capacity=1500, free_flow_speed=80, jam_density=140
-        )
-        offramp = Offramp(
-            lanes=1, lane_capacity=2000, free_flow_speed=100, jam_density=180
-        )
+        main1 = MotorwayLink(length=1.0, lanes=3)
+        main2 = MotorwayLink(length=1.0, lanes=2)
+        offramp = Offramp(lanes=1)
         dest1 = Destination()
         dest2 = Destination()
 
@@ -1136,9 +1016,7 @@ class TestNetwork:
 
     def test_compute_upcoming_lane_drop_missing_destination_raises(self):
         """Test that missing destination_node_id raises ValueError."""
-        main = MotorwayLink(
-            length=1.0, lanes=2, lane_capacity=1500, free_flow_speed=80, jam_density=140
-        )
+        main = MotorwayLink(length=1.0, lanes=2)
         origin = Origin()
         dest = Destination()
 
@@ -1157,9 +1035,7 @@ class TestNetwork:
     def test_save_network_structure_txt(self):
         """Test saving network structure to text file."""
         # create simple network
-        main = MotorwayLink(
-            length=1.5, lanes=2, lane_capacity=1500, free_flow_speed=80, jam_density=140
-        )
+        main = MotorwayLink(length=1.5, lanes=2)
         origin = Origin()
         dest = Destination()
 
@@ -1225,23 +1101,13 @@ class TestNetwork:
         """Test that a circular network topology (with feedback loop) passes validation."""
         # create circular network: Origin -> Link1 -> Link2 -> Link3 -> Link4 -> back to Link2
         # add offramp at node 3 for traffic exit
-        link1 = MotorwayLink(
-            length=1.0, lanes=2, lane_capacity=1500, free_flow_speed=80, jam_density=140
-        )
-        link2 = MotorwayLink(
-            length=1.0, lanes=2, lane_capacity=1500, free_flow_speed=80, jam_density=140
-        )
-        link3 = MotorwayLink(
-            length=1.0, lanes=2, lane_capacity=1500, free_flow_speed=80, jam_density=140
-        )
-        link4 = MotorwayLink(
-            length=1.0, lanes=2, lane_capacity=1500, free_flow_speed=80, jam_density=140
-        )
+        link1 = MotorwayLink(length=1.0, lanes=2)
+        link2 = MotorwayLink(length=1.0, lanes=2)
+        link3 = MotorwayLink(length=1.0, lanes=2)
+        link4 = MotorwayLink(length=1.0, lanes=2)
 
         origin = Origin()
-        offramp = Offramp(
-            lanes=1, lane_capacity=2000, free_flow_speed=100, jam_density=180
-        )
+        offramp = Offramp(lanes=1)
         dest = Destination()
 
         # Node1: Origin feeds into Link1
@@ -1262,23 +1128,13 @@ class TestNetwork:
     def test_circular_network_state_conversion(self):
         """Test state vector conversion works correctly for circular network."""
         # create circular network
-        link1 = MotorwayLink(
-            length=1.0, lanes=2, lane_capacity=1500, free_flow_speed=80, jam_density=140
-        )
-        link2 = MotorwayLink(
-            length=1.0, lanes=2, lane_capacity=1500, free_flow_speed=80, jam_density=140
-        )
-        link3 = MotorwayLink(
-            length=1.0, lanes=2, lane_capacity=1500, free_flow_speed=80, jam_density=140
-        )
-        link4 = MotorwayLink(
-            length=1.0, lanes=2, lane_capacity=1500, free_flow_speed=80, jam_density=140
-        )
+        link1 = MotorwayLink(length=1.0, lanes=2)
+        link2 = MotorwayLink(length=1.0, lanes=2)
+        link3 = MotorwayLink(length=1.0, lanes=2)
+        link4 = MotorwayLink(length=1.0, lanes=2)
 
         origin = Origin()
-        offramp = Offramp(
-            lanes=1, lane_capacity=2000, free_flow_speed=100, jam_density=180
-        )
+        offramp = Offramp(lanes=1)
         dest = Destination()
 
         node1 = Node(id="n1", incoming=[origin], outgoing=[link1])
@@ -1354,23 +1210,13 @@ class TestNetwork:
     def test_circular_network_disturbance_conversion(self):
         """Test disturbance vector conversion for circular network with split ratios."""
         # create circular network
-        link1 = MotorwayLink(
-            length=1.0, lanes=2, lane_capacity=1500, free_flow_speed=80, jam_density=140
-        )
-        link2 = MotorwayLink(
-            length=1.0, lanes=2, lane_capacity=1500, free_flow_speed=80, jam_density=140
-        )
-        link3 = MotorwayLink(
-            length=1.0, lanes=2, lane_capacity=1500, free_flow_speed=80, jam_density=140
-        )
-        link4 = MotorwayLink(
-            length=1.0, lanes=2, lane_capacity=1500, free_flow_speed=80, jam_density=140
-        )
+        link1 = MotorwayLink(length=1.0, lanes=2)
+        link2 = MotorwayLink(length=1.0, lanes=2)
+        link3 = MotorwayLink(length=1.0, lanes=2)
+        link4 = MotorwayLink(length=1.0, lanes=2)
 
         origin = Origin()
-        offramp = Offramp(
-            lanes=1, lane_capacity=2000, free_flow_speed=100, jam_density=180
-        )
+        offramp = Offramp(lanes=1)
         dest = Destination()
 
         node1 = Node(id="n1", incoming=[origin], outgoing=[link1])
@@ -1430,9 +1276,6 @@ class TestNetwork:
             id="main_link",
             length=1.5,
             lanes=2,
-            lane_capacity=1500,
-            free_flow_speed=80,
-            jam_density=140,
         )
         origin = Origin(id="origin_1")
         dest = Destination(id="dest_1")
@@ -1470,9 +1313,6 @@ class TestNetwork:
             )
             assert main_link_data["length"] == 1.5
             assert main_link_data["lanes"] == 2
-            assert main_link_data["lane_capacity"] == 1500
-            assert main_link_data["free_flow_speed"] == 80
-            assert main_link_data["jam_density"] == 140
 
     def test_load_network_from_json_simple(self):
         """Test loading a simple network structure from JSON file."""
@@ -1481,9 +1321,6 @@ class TestNetwork:
             id="main_link",
             length=1.5,
             lanes=2,
-            lane_capacity=1500,
-            free_flow_speed=80,
-            jam_density=140,
         )
         origin = Origin(id="origin_1")
         dest = Destination(id="dest_1")
@@ -1524,9 +1361,6 @@ class TestNetwork:
             assert loaded_main.id == main.id
             assert loaded_main.length == main.length
             assert loaded_main.lanes == main.lanes
-            assert loaded_main.Qc_lane == main.Qc_lane
-            assert loaded_main.vf == main.vf
-            assert loaded_main.rho_jam == main.rho_jam
 
             loaded_origin = loaded_node1.incoming[0]
             assert loaded_node1.incoming[0].id == origin.id
@@ -1542,9 +1376,6 @@ class TestNetwork:
         main = MotorwayLink(
             length=1.5,
             lanes=2,
-            lane_capacity=1500,
-            free_flow_speed=80,
-            jam_density=140,
             id="main_link",
         )
         origin = Origin(id="origin_1")
@@ -1588,9 +1419,6 @@ class TestNetwork:
             id="main_link",
             length=2.5,
             lanes=3,
-            lane_capacity=1800,
-            free_flow_speed=120,
-            jam_density=160,
         )
         origin = Origin(id="origin_1")
         dest = Destination(id="dest_1")
@@ -1615,9 +1443,6 @@ class TestNetwork:
             assert loaded_main.id == main.id
             assert loaded_main.length == main.length
             assert loaded_main.lanes == main.lanes
-            assert loaded_main.Qc_lane == main.Qc_lane
-            assert loaded_main.vf == main.vf
-            assert loaded_main.rho_jam == main.rho_jam
 
     def test_round_trip_json_complex_network(self):
         """Test save/load for complex network with all link types."""
@@ -1625,34 +1450,22 @@ class TestNetwork:
         main1 = MotorwayLink(
             length=1.0,
             lanes=3,
-            lane_capacity=1500,
-            free_flow_speed=80,
-            jam_density=140,
             id="main1",
         )
         main2 = MotorwayLink(
             length=1.5,
             lanes=2,
-            lane_capacity=1500,
-            free_flow_speed=80,
-            jam_density=140,
             id="main2",
         )
         origin = Origin(id="origin_1")
         onramp = Onramp(
             length=0.5,
             lanes=1,
-            lane_capacity=2000,
-            free_flow_speed=100,
-            jam_density=180,
             id="onramp_1",
         )
         dest1 = Destination(id="dest_1")
         offramp = Offramp(
             lanes=1,
-            lane_capacity=2000,
-            free_flow_speed=100,
-            jam_density=180,
             id="offramp_1",
         )
         dest2 = Destination(id="dest_2")
@@ -1713,9 +1526,7 @@ class TestNetwork:
     def test_load_from_json_validates_successfully(self):
         """Test that loaded network passes validation."""
         # create valid network
-        main = MotorwayLink(
-            length=1.0, lanes=2, lane_capacity=1500, free_flow_speed=80, jam_density=140
-        )
+        main = MotorwayLink(length=1.0, lanes=2)
         origin = Origin()
         dest = Destination()
 
@@ -1748,9 +1559,6 @@ class TestNetwork:
         main = MotorwayLink(
             length=2.0,
             lanes=3,
-            lane_capacity=2000,
-            free_flow_speed=100,
-            jam_density=180,
         )
         origin = Origin()
         dest = Destination()
@@ -1761,7 +1569,7 @@ class TestNetwork:
 
         # run short simulation
         model = CTM()
-        sim = Simulation(net, model)
+        sim = Simulation(net, model, DEFAULT_MODEL_PARAMS)
         time_array, _, _ = sim.run(
             duration=0.1,
             dt=0.01,
@@ -1775,7 +1583,7 @@ class TestNetwork:
         # save results
         with tempfile.TemporaryDirectory() as tmpdir:
             filepath = os.path.join(tmpdir, "results.json")
-            sim.save_results(filepath=filepath)
+            sim.save_results(filepath=filepath, model_params=DEFAULT_MODEL_PARAMS)
 
             # verify file exists and is valid JSON
             assert os.path.exists(filepath)
@@ -1796,9 +1604,6 @@ class TestNetwork:
         main = MotorwayLink(
             length=2.0,
             lanes=3,
-            lane_capacity=2000,
-            free_flow_speed=100,
-            jam_density=180,
         )
         origin = Origin()
         dest = Destination()
@@ -1809,7 +1614,7 @@ class TestNetwork:
 
         # run simulation
         model = CTM()
-        sim = Simulation(net, model)
+        sim = Simulation(net, model, DEFAULT_MODEL_PARAMS)
         time_array, state_history, disturbance_history = sim.run(
             duration=0.1,
             dt=0.01,
@@ -1823,7 +1628,7 @@ class TestNetwork:
         # save and load results
         with tempfile.TemporaryDirectory() as tmpdir:
             filepath = os.path.join(tmpdir, "results.json")
-            sim.save_results(filepath=filepath)
+            sim.save_results(filepath=filepath, model_params=DEFAULT_MODEL_PARAMS)
 
             loaded_time, loaded_state, loaded_disturbance, metadata = (
                 Simulation.load_results(filepath=filepath, network=net)
@@ -1844,9 +1649,6 @@ class TestNetwork:
         main = MotorwayLink(
             length=2.0,
             lanes=3,
-            lane_capacity=2000,
-            free_flow_speed=100,
-            jam_density=180,
         )
         origin = Origin()
         dest = Destination()
@@ -1860,7 +1662,7 @@ class TestNetwork:
         dt = 0.01
         duration = 0.1
         preferred_cell_size = 0.5
-        sim = Simulation(net, model)
+        sim = Simulation(net, model, DEFAULT_MODEL_PARAMS)
         time_array, state_history, disturbance_history = sim.run(
             duration=duration,
             dt=dt,
@@ -1875,7 +1677,7 @@ class TestNetwork:
         # save and load
         with tempfile.TemporaryDirectory() as tmpdir:
             filepath = os.path.join(tmpdir, "results_with_metadata.json")
-            sim.save_results(filepath=filepath)
+            sim.save_results(filepath=filepath, model_params=DEFAULT_MODEL_PARAMS)
 
             # verify metadata in file
             with open(filepath, "r") as f:
@@ -1901,9 +1703,6 @@ class TestNetwork:
             assert main.id in link_props
             assert link_props[main.id]["length"] == 2.0
             assert link_props[main.id]["lanes"] == 3
-            assert link_props[main.id]["lane_capacity"] == 2000
-            assert link_props[main.id]["free_flow_speed"] == 100
-            assert link_props[main.id]["jam_density"] == 180
 
             # check cell discretization info
             assert "num_cells" in link_props[main.id]
@@ -1919,7 +1718,7 @@ class TestNetwork:
             crit_densities = metadata_dict["critical_densities"]
             assert main.id in crit_densities
             expected_rho_crit = model.critical_density(
-                lane_capacity=2000, free_flow_speed=100
+                params=DEFAULT_MODEL_PARAMS, link_id=main.id
             )
             assert abs(crit_densities[main.id] - expected_rho_crit) < 1e-6
 
@@ -1939,9 +1738,7 @@ class TestNetwork:
     def test_load_simulation_results_json_validates_structure(self):
         """Test that loading simulation results validates required fields."""
         # create minimal network
-        main = MotorwayLink(
-            length=1.0, lanes=2, lane_capacity=1500, free_flow_speed=80, jam_density=140
-        )
+        main = MotorwayLink(length=1.0, lanes=2)
         origin = Origin()
         dest = Destination()
 
@@ -1979,9 +1776,7 @@ class TestNetwork:
         from traffic_flow_models import CTM
 
         # create and simulate first network
-        main1 = MotorwayLink(
-            length=1.0, lanes=2, lane_capacity=1500, free_flow_speed=80, jam_density=140
-        )
+        main1 = MotorwayLink(length=1.5, lanes=2)
         origin1 = Origin()
         dest1 = Destination()
 
@@ -1990,7 +1785,7 @@ class TestNetwork:
         net1 = Network(nodes=[node1, node2])
 
         model = CTM()
-        sim = Simulation(net1, model)
+        sim = Simulation(net1, model, DEFAULT_MODEL_PARAMS)
         time_array, state_history, disturbance_history = sim.run(
             duration=0.05,
             dt=0.01,
@@ -2004,22 +1799,16 @@ class TestNetwork:
         # save results from first network
         with tempfile.TemporaryDirectory() as tmpdir:
             filepath = os.path.join(tmpdir, "results.json")
-            sim.save_results(filepath=filepath)
+            sim.save_results(filepath=filepath, model_params=DEFAULT_MODEL_PARAMS)
 
             # create different network with different structure
             main2 = MotorwayLink(
                 length=2.0,
                 lanes=3,
-                lane_capacity=2000,
-                free_flow_speed=100,
-                jam_density=180,
             )
             onramp = Onramp(
                 length=0.5,
                 lanes=1,
-                lane_capacity=1500,
-                free_flow_speed=80,
-                jam_density=140,
             )
             dest2 = Destination()
 
@@ -2041,23 +1830,13 @@ class TestNetwork:
         main1 = MotorwayLink(
             length=3.0,
             lanes=3,
-            lane_capacity=2000,
-            free_flow_speed=100,
-            jam_density=180,
         )
-        onramp = Onramp(
-            length=0.5, lanes=1, lane_capacity=1500, free_flow_speed=80, jam_density=140
-        )
+        onramp = Onramp(length=0.5, lanes=1)
         main2 = MotorwayLink(
             length=2.0,
             lanes=3,
-            lane_capacity=2000,
-            free_flow_speed=100,
-            jam_density=180,
         )
-        offramp = Offramp(
-            lanes=1, lane_capacity=1500, free_flow_speed=60, jam_density=140
-        )
+        offramp = Offramp(lanes=1)
         dest_offramp = Destination()
         dest_main = Destination()
 
@@ -2071,7 +1850,7 @@ class TestNetwork:
 
         # simulate
         model = CTM()
-        sim = Simulation(net, model)
+        sim = Simulation(net, model, DEFAULT_MODEL_PARAMS)
         time_array, state_history, disturbance_history = sim.run(
             duration=0.05,
             dt=0.01,
@@ -2097,7 +1876,7 @@ class TestNetwork:
         # save and load
         with tempfile.TemporaryDirectory() as tmpdir:
             filepath = os.path.join(tmpdir, "complex_results.json")
-            sim.save_results(filepath=filepath)
+            sim.save_results(filepath=filepath, model_params=DEFAULT_MODEL_PARAMS)
 
             # verify file contents
             with open(filepath, "r") as f:
@@ -2131,9 +1910,7 @@ class TestNetwork:
         from traffic_flow_models import CTM
 
         # create simple network
-        main = MotorwayLink(
-            length=1.0, lanes=2, lane_capacity=1500, free_flow_speed=80, jam_density=140
-        )
+        main = MotorwayLink(length=1.5, lanes=2)
         origin = Origin()
         dest = Destination()
 
@@ -2143,7 +1920,7 @@ class TestNetwork:
 
         # simulate to get valid structure
         model = CTM()
-        sim = Simulation(net, model)
+        sim = Simulation(net, model, DEFAULT_MODEL_PARAMS)
         time_array, state_history, disturbance_history = sim.run(
             duration=0.02,
             dt=0.01,
@@ -2156,7 +1933,7 @@ class TestNetwork:
 
         with tempfile.TemporaryDirectory() as tmpdir:
             filepath = os.path.join(tmpdir, "results.json")
-            sim.save_results(filepath=filepath)
+            sim.save_results(filepath=filepath, model_params=DEFAULT_MODEL_PARAMS)
 
             # corrupt the data with non-numeric values
             with open(filepath, "r") as f:
@@ -2184,9 +1961,7 @@ class TestNetwork:
         # create network with explicit IDs
         origin = Origin()
         origin_id = origin.id
-        main = MotorwayLink(
-            length=2.0, lanes=2, lane_capacity=1800, free_flow_speed=90, jam_density=150
-        )
+        main = MotorwayLink(length=2.0, lanes=2)
         main_id = main.id
         dest = Destination()
         dest_id = dest.id
@@ -2196,7 +1971,7 @@ class TestNetwork:
         net = Network(nodes=[node1, node2])
 
         model = CTM()
-        sim = Simulation(net, model)
+        sim = Simulation(net, model, DEFAULT_MODEL_PARAMS)
         time_array, state_history, disturbance_history = sim.run(
             duration=0.03,
             dt=0.01,
@@ -2209,7 +1984,7 @@ class TestNetwork:
 
         with tempfile.TemporaryDirectory() as tmpdir:
             filepath = os.path.join(tmpdir, "results.json")
-            sim.save_results(filepath=filepath)
+            sim.save_results(filepath=filepath, model_params=DEFAULT_MODEL_PARAMS)
 
             with open(filepath, "r") as f:
                 data = json.load(f)
@@ -2229,9 +2004,6 @@ class TestNetwork:
         main = MotorwayLink(
             length=5.0,
             lanes=3,
-            lane_capacity=2000,
-            free_flow_speed=100,
-            jam_density=180,
         )
         origin = Origin()
         dest = Destination()
@@ -2242,7 +2014,7 @@ class TestNetwork:
 
         # simulate with more timesteps
         model = CTM()
-        sim = Simulation(net, model)
+        sim = Simulation(net, model, DEFAULT_MODEL_PARAMS)
         time_array, state_history, disturbance_history = sim.run(
             duration=0.5,  # longer duration
             dt=0.01,
@@ -2257,7 +2029,7 @@ class TestNetwork:
 
         with tempfile.TemporaryDirectory() as tmpdir:
             filepath = os.path.join(tmpdir, "multi_timestep.json")
-            sim.save_results(filepath=filepath)
+            sim.save_results(filepath=filepath, model_params=DEFAULT_MODEL_PARAMS)
 
             with open(filepath, "r") as f:
                 data = json.load(f)
@@ -2283,9 +2055,7 @@ class TestNetwork:
         from traffic_flow_models import CTM
 
         # create network
-        main = MotorwayLink(
-            length=1.0, lanes=2, lane_capacity=1500, free_flow_speed=80, jam_density=140
-        )
+        main = MotorwayLink(length=1.5, lanes=2)
         origin = Origin()
         dest = Destination()
 
@@ -2295,7 +2065,7 @@ class TestNetwork:
 
         # simulate
         model = CTM()
-        sim = Simulation(net, model)
+        sim = Simulation(net, model, DEFAULT_MODEL_PARAMS)
         time_array, state_history, disturbance_history = sim.run(
             duration=0.02,
             dt=0.01,
@@ -2308,7 +2078,7 @@ class TestNetwork:
 
         with tempfile.TemporaryDirectory() as tmpdir:
             filepath = os.path.join(tmpdir, "results.json")
-            sim.save_results(filepath=filepath)
+            sim.save_results(filepath=filepath, model_params=DEFAULT_MODEL_PARAMS)
 
             # load and remove a required field
             with open(filepath, "r") as f:
@@ -2331,9 +2101,7 @@ class TestNetwork:
     def test_validate_disturbance_history_numerical_valid_data(self):
         """Test that validate_disturbance_history_numerical accepts valid numerical data."""
         # create simple network
-        main = MotorwayLink(
-            length=1.0, lanes=2, lane_capacity=1500, free_flow_speed=80, jam_density=140
-        )
+        main = MotorwayLink(length=1.0, lanes=2)
         origin = Origin()
         dest = Destination()
 
@@ -2363,9 +2131,7 @@ class TestNetwork:
     ):
         """Test that validate_disturbance_history_numerical rejects non-numerical origin demands."""
         # create simple network
-        main = MotorwayLink(
-            length=1.0, lanes=2, lane_capacity=1500, free_flow_speed=80, jam_density=140
-        )
+        main = MotorwayLink(length=1.0, lanes=2)
         origin = Origin()
         dest = Destination()
 
@@ -2392,9 +2158,7 @@ class TestNetwork:
     ):
         """Test that validate_disturbance_history_numerical rejects non-dict turning rates."""
         # create simple network
-        main = MotorwayLink(
-            length=1.0, lanes=2, lane_capacity=1500, free_flow_speed=80, jam_density=140
-        )
+        main = MotorwayLink(length=1.0, lanes=2)
         origin = Origin()
         dest = Destination()
 
@@ -2421,9 +2185,7 @@ class TestNetwork:
     ):
         """Test that validate_disturbance_history_numerical rejects non-numerical turning rate values."""
         # create simple network
-        main = MotorwayLink(
-            length=1.0, lanes=2, lane_capacity=1500, free_flow_speed=80, jam_density=140
-        )
+        main = MotorwayLink(length=1.0, lanes=2)
         origin = Origin()
         dest = Destination()
 
@@ -2450,9 +2212,7 @@ class TestNetwork:
     def test_validate_disturbance_history_numerical_rejects_non_numerical_flow_bc(self):
         """Test that validate_disturbance_history_numerical rejects non-numerical flow boundary conditions."""
         # create simple network
-        main = MotorwayLink(
-            length=1.0, lanes=2, lane_capacity=1500, free_flow_speed=80, jam_density=140
-        )
+        main = MotorwayLink(length=1.0, lanes=2)
         origin = Origin()
         dest = Destination()
 
@@ -2479,9 +2239,7 @@ class TestNetwork:
     ):
         """Test that validate_disturbance_history_numerical rejects non-numerical density boundary conditions."""
         # create simple network
-        main = MotorwayLink(
-            length=1.0, lanes=2, lane_capacity=1500, free_flow_speed=80, jam_density=140
-        )
+        main = MotorwayLink(length=1.0, lanes=2)
         origin = Origin()
         dest = Destination()
 
@@ -2508,9 +2266,7 @@ class TestNetwork:
         from traffic_flow_models import CTM
 
         # create simple network
-        main = MotorwayLink(
-            length=1.0, lanes=2, lane_capacity=1500, free_flow_speed=80, jam_density=140
-        )
+        main = MotorwayLink(length=1.5, lanes=2)
         origin = Origin()
         dest = Destination()
 
@@ -2520,7 +2276,7 @@ class TestNetwork:
 
         # simulate
         model = CTM()
-        sim = Simulation(net, model)
+        sim = Simulation(net, model, DEFAULT_MODEL_PARAMS)
         time_array, state_history, disturbance_history = sim.run(
             duration=0.02,
             dt=0.01,
@@ -2533,7 +2289,7 @@ class TestNetwork:
 
         with tempfile.TemporaryDirectory() as tmpdir:
             filepath = os.path.join(tmpdir, "results.json")
-            sim.save_results(filepath=filepath)
+            sim.save_results(filepath=filepath, model_params=DEFAULT_MODEL_PARAMS)
 
             # corrupt disturbance data
             with open(filepath, "r") as f:

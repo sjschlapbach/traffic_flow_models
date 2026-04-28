@@ -12,45 +12,22 @@ from traffic_flow_models import (
 
 class TestOnramp:
     def test_init_assigns_attributes(self):
-        link = MotorwayLink(
-            length=2.0,
-            lanes=3,
-            lane_capacity=2000,
-            free_flow_speed=100,
-            jam_density=150,
-        )
-        link.partition_link(preferred_cell_size=2.0, dt=0.001)
+        link = MotorwayLink(length=2.0, lanes=3)
+        link.partition_link(max_vf=100.0, preferred_cell_size=2.0, dt=0.001)
 
-        onramp = Onramp(
-            length=0.5,
-            lanes=2,
-            lane_capacity=1800,
-            free_flow_speed=90,
-            jam_density=160,
-        )
+        onramp = Onramp(length=0.5, lanes=2)
         node = Node(incoming=[onramp], outgoing=[link])
 
         # ensure validate() does not raise and check the properties of the onramp
         node.validate()
         assert onramp in node.incoming
         assert onramp.lanes == 2
-        assert onramp.Qc_lane == 1800
-        assert onramp.vf == 90
-        assert onramp.rho_jam == 160
 
     def test_network_cell_assignment_via_constructor(self):
-        link = MotorwayLink(
-            length=1.0, lanes=1, lane_capacity=1500, free_flow_speed=80, jam_density=140
-        )
-        link.partition_link(preferred_cell_size=1.0, dt=0.001)
+        link = MotorwayLink(length=1.0, lanes=1)
+        link.partition_link(max_vf=80.0, preferred_cell_size=1.0, dt=0.001)
 
-        onramp = Onramp(
-            length=0.5,
-            lanes=3,
-            lane_capacity=2000,
-            free_flow_speed=100,
-            jam_density=150,
-        )
+        onramp = Onramp(length=0.5, lanes=3)
         n = Node(incoming=[onramp], outgoing=[link])
 
         # onramp should record its destination node id when connected
@@ -58,34 +35,20 @@ class TestOnramp:
 
     def test_set_onramp_relations_raises_for_unconnected_onramp(self):
         net = Network(nodes=[])
-        onramp = Onramp(
-            length=0.5, lanes=1, lane_capacity=1000, free_flow_speed=60, jam_density=100
-        )
+        onramp = Onramp(length=0.5, lanes=1)
 
         with pytest.raises(ValueError):
             net.set_onramp_relations(onramp)
 
     def test_set_onramp_relations_circular_network_no_duplicates(self):
         # circular motorway with three nodes, each receiving an onramp
-        m1 = MotorwayLink(
-            length=1.0, lanes=1, lane_capacity=1500, free_flow_speed=80, jam_density=140
-        )
-        m2 = MotorwayLink(
-            length=1.0, lanes=1, lane_capacity=1500, free_flow_speed=80, jam_density=140
-        )
-        m3 = MotorwayLink(
-            length=1.0, lanes=1, lane_capacity=1500, free_flow_speed=80, jam_density=140
-        )
+        m1 = MotorwayLink(length=1.0, lanes=1)
+        m2 = MotorwayLink(length=1.0, lanes=1)
+        m3 = MotorwayLink(length=1.0, lanes=1)
 
-        up = Onramp(
-            length=0.5, lanes=1, lane_capacity=1000, free_flow_speed=60, jam_density=100
-        )
-        target = Onramp(
-            length=0.5, lanes=1, lane_capacity=1000, free_flow_speed=60, jam_density=100
-        )
-        down = Onramp(
-            length=0.5, lanes=1, lane_capacity=1000, free_flow_speed=60, jam_density=100
-        )
+        up = Onramp(length=0.5, lanes=1)
+        target = Onramp(length=0.5, lanes=1)
+        down = Onramp(length=0.5, lanes=1)
 
         node1 = Node(incoming=[m3, up], outgoing=[m1])
         node2 = Node(incoming=[m1, target], outgoing=[m2])
@@ -132,26 +95,8 @@ class TestOnramp:
     def test_long_highway_many_onramps_limits(self):
         # build a long linear motorway with 20 onramps feeding successive nodes
         N_ONRAMPS = 20
-        links = [
-            MotorwayLink(
-                length=1.0,
-                lanes=1,
-                lane_capacity=1500,
-                free_flow_speed=80,
-                jam_density=140,
-            )
-            for _ in range(N_ONRAMPS + 1)
-        ]
-        onramps = [
-            Onramp(
-                length=0.5,
-                lanes=1,
-                lane_capacity=1000,
-                free_flow_speed=60,
-                jam_density=100,
-            )
-            for _ in range(N_ONRAMPS)
-        ]
+        links = [MotorwayLink(length=1.0, lanes=1) for _ in range(N_ONRAMPS + 1)]
+        onramps = [Onramp(length=0.5, lanes=1) for _ in range(N_ONRAMPS)]
 
         origin = Origin()
         dest = Destination()

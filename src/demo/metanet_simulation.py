@@ -154,6 +154,7 @@ if __name__ == "__main__":
         sim.visualize(
             results_filepath=os.path.join(results_dir, "simulation_results.json"),
             output_filepath=video_path,
+            model_params=model_params,
             fps=30,
             subsampling=1,
         )
