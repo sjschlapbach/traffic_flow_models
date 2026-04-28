@@ -743,6 +743,7 @@ class Simulation:
         preferred_cell_size: float = 0.5,
         plot_results: bool = True,
         show_plots: bool = False,
+        plot_micro_results: bool = False,
         results_dir: str | None = None,
     ):
         """Run the network simulation over a time horizon.
@@ -906,6 +907,35 @@ class Simulation:
             )
             print(f"  Simulation results saved to {results_path}")
 
+            # check if the micro results should be loaded and verify that the file is given
+            state_micro = None
+            if plot_micro_results:
+                micro_results_path = os.path.join(results_dir, "micro_results.json")
+                if not os.path.isfile(micro_results_path):
+                    raise ValueError(
+                        f"Micro results file {micro_results_path} not found. Cannot plot micro results. Please ensure the microsimulation results are saved to this path."
+                    )
+
+                # subsample microscopic results to match macroscopic time array
+                print("  Subsampling microsimulation results for plotting.")
+                subsampled_micro_data = os.path.join(
+                    results_dir, "subsampled_micro_data.json"
+                )
+                Simulation.resample_results_file(
+                    source_filepath=micro_results_path,
+                    dest_filepath=subsampled_micro_data,
+                    target_time_array=time_array,
+                )
+
+                print(
+                    f"  Loading microsimulation results from resampled file {subsampled_micro_data} for plotting."
+                )
+                _, state_micro, _, _ = self.load_results(
+                    filepath=subsampled_micro_data,
+                    network=self.network,
+                    load_mainline_only=True,
+                )
+
             # save network structure as text file
             structure_path = os.path.join(results_dir, "network_structure.txt")
             self.network.save_to_txt(structure_path)
@@ -917,6 +947,7 @@ class Simulation:
             self.plot_results(
                 time_array=time_array,
                 state_history=state_history,
+                micro_state_history=state_micro,
                 disturbance_history=disturbance_history,
                 save_dir=results_dir,
             )
@@ -1937,6 +1968,7 @@ class Simulation:
         self,
         time_array: NDArray[np.float64],
         state_history: NDArray[np.float64],
+        micro_state_history: NDArray[np.float64] | None,
         disturbance_history: NDArray[np.float64],
         save_dir: str = "results",
     ) -> None:
@@ -1950,6 +1982,7 @@ class Simulation:
         Args:
             time_array: 1-D array of time points (hours).
             state_history: 2-D array of state vectors over time, shape (state_size, timesteps).
+            micro_state_history: 2-D array of microscopic state vectors over time, shape (micro_state_size, timesteps).
             disturbance_history: 2-D array of disturbances over time, shape (disturbance_size, timesteps-1).
             save_dir: Directory where plots should be saved (default: "results").
         """
@@ -1973,6 +2006,10 @@ class Simulation:
         onramp_queues_over_time: dict[str, np.ndarray] = {}
         offramp_queues_over_time: dict[str, np.ndarray] = {}
 
+        micro_flows_over_time: dict[str, np.ndarray] = {}
+        micro_densities_over_time: dict[str, np.ndarray] = {}
+        micro_speeds_over_time: dict[str, np.ndarray] = {}
+
         for t in range(num_timesteps):
             (
                 flows_t,
@@ -1982,6 +2019,19 @@ class Simulation:
                 onramp_queues_t,
                 offramp_queues_t,
             ) = self.network.state_vec_to_network_dict(state_history[:, t])
+
+            micro_flows_t: dict[str, NDArray[np.float64]] = {}
+            micro_densities_t: dict[str, NDArray[np.float64]] = {}
+            micro_speeds_t: dict[str, NDArray[np.float64]] = {}
+            if micro_state_history is not None:
+                (
+                    micro_flows_t,
+                    micro_densities_t,
+                    micro_speeds_t,
+                    _,
+                    _,
+                    _,
+                ) = self.network.state_vec_to_network_dict(micro_state_history[:, t])
 
             # make sure that the history values are numerical
             self._validate_state_history_numerical(
@@ -2001,22 +2051,54 @@ class Simulation:
             onramp_queues_t = {k: np.asarray(v) for k, v in onramp_queues_t.items()}
             offramp_queues_t = {k: np.asarray(v) for k, v in offramp_queues_t.items()}
 
+            if micro_state_history is not None:
+                if (
+                    micro_flows_t is None
+                    or micro_densities_t is None
+                    or micro_speeds_t is None
+                ):
+                    raise ValueError(
+                        "Micro state history provided but could not be parsed into micro flows/densities/speeds."
+                    )
+
+                micro_flows_t = {k: np.asarray(v) for k, v in micro_flows_t.items()}
+                micro_densities_t = {
+                    k: np.asarray(v) for k, v in micro_densities_t.items()
+                }
+                micro_speeds_t = {k: np.asarray(v) for k, v in micro_speeds_t.items()}
+
             # initialize dictionaries on first iteration
             if t == 0:
                 for link_id in flows_t.keys():
                     flows_over_time[link_id] = np.zeros(
                         (len(flows_t[link_id]), num_timesteps)
                     )
-
                 for link_id in densities_t.keys():
                     densities_over_time[link_id] = np.zeros(
                         (len(densities_t[link_id]), num_timesteps)
                     )
-
                 for link_id in speeds_t.keys():
                     speeds_over_time[link_id] = np.zeros(
                         (len(speeds_t[link_id]), num_timesteps)
                     )
+
+                if (
+                    micro_flows_t is not None
+                    and micro_densities_t is not None
+                    and micro_speeds_t is not None
+                ):
+                    for mainline_link_id in micro_flows_t.keys():
+                        micro_flows_over_time[mainline_link_id] = np.zeros(
+                            (len(micro_flows_t[mainline_link_id]), num_timesteps)
+                        )
+                    for mainline_link_id in micro_densities_t.keys():
+                        micro_densities_over_time[mainline_link_id] = np.zeros(
+                            (len(micro_densities_t[mainline_link_id]), num_timesteps)
+                        )
+                    for mainline_link_id in micro_speeds_t.keys():
+                        micro_speeds_over_time[mainline_link_id] = np.zeros(
+                            (len(micro_speeds_t[mainline_link_id]), num_timesteps)
+                        )
 
                 for origin_id in origin_queues_t.keys():
                     origin_queues_over_time[origin_id] = np.zeros(num_timesteps)
@@ -2036,6 +2118,20 @@ class Simulation:
 
             for link_id, val in speeds_t.items():
                 speeds_over_time[link_id][:, t] = val
+
+            if (
+                micro_flows_t is not None
+                and micro_densities_t is not None
+                and micro_speeds_t is not None
+            ):
+                for mainline_link_id, val in micro_flows_t.items():
+                    micro_flows_over_time[mainline_link_id][:, t] = val
+
+                for mainline_link_id, val in micro_densities_t.items():
+                    micro_densities_over_time[mainline_link_id][:, t] = val
+
+                for mainline_link_id, val in micro_speeds_t.items():
+                    micro_speeds_over_time[mainline_link_id][:, t] = val
 
             for origin_id, val in origin_queues_t.items():
                 origin_queues_over_time[origin_id][t] = float(val)
@@ -2093,6 +2189,21 @@ class Simulation:
                         densities=densities_over_time[link.id],
                         flows=flows_over_time[link.id],
                         speeds=speeds_over_time[link.id],
+                        micro_densities=(
+                            micro_densities_over_time[link.id]
+                            if micro_state_history is not None
+                            else None
+                        ),
+                        micro_flows=(
+                            micro_flows_over_time[link.id]
+                            if micro_state_history is not None
+                            else None
+                        ),
+                        micro_speeds=(
+                            micro_speeds_over_time[link.id]
+                            if micro_state_history is not None
+                            else None
+                        ),
                         save_dir=link_dir,
                     )
 
@@ -2187,6 +2298,9 @@ class Simulation:
         densities: NDArray[np.float64],
         flows: NDArray[np.float64],
         speeds: NDArray[np.float64],
+        micro_densities: NDArray[np.float64] | None,
+        micro_flows: NDArray[np.float64] | None,
+        micro_speeds: NDArray[np.float64] | None,
         save_dir: str,
     ) -> None:
         """Create density, flow, and speed plots for a motorway link.
@@ -2197,6 +2311,9 @@ class Simulation:
             densities: 2-D array of densities over time (cells x time).
             flows: 2-D array of flows over time (cells x time).
             speeds: 2-D array of speeds over time (cells x time).
+            micro_densities: 2-D array of densities from microsimulation over time (cells x time).
+            micro_flows: 2-D array of flows from microsimulation over time (cells x time).
+            micro_speeds: 2-D array of speeds from microsimulation over time (cells x time).
             save_dir: Directory where plots should be saved.
         """
         num_cells = len(link)
@@ -2210,6 +2327,13 @@ class Simulation:
             np.max(flows[:, :-1]) * 1.1, link.lanes * self.model_params["qc_lane"] * 1.1
         )
         max_speed = max(np.max(speeds[:, :-1]) * 1.1, self.model_params["vf"] * 1.1)
+
+        if micro_densities is not None:
+            max_density = max(max_density, np.max(micro_densities) * 1.1)
+        if micro_flows is not None:
+            max_flow = max(max_flow, np.max(micro_flows[:, :-1]) * 1.1)
+        if micro_speeds is not None:
+            max_speed = max(max_speed, np.max(micro_speeds[:, :-1]) * 1.1)
 
         # figure 1: Density
         fig1, axes1 = plt.subplots(nrows, ncols, figsize=(4 * ncols, 3 * nrows))
@@ -2226,15 +2350,26 @@ class Simulation:
             axes1 = axes1.flatten()
 
         for i, _ in link.enumerate_cells():
-            axes1[i].plot(time_seconds, densities[i, :], linewidth=1.5)
+            axes1[i].plot(time_seconds, densities[i, :], linewidth=1.5, label="Macro")
             axes1[i].axhline(
                 self.model_params["rho_jam"], color="red", linestyle="--", linewidth=1
             )
+
+            if micro_densities is not None:
+                axes1[i].plot(
+                    time_seconds,
+                    micro_densities[i, :],
+                    linewidth=1.5,
+                    linestyle=":",
+                    label="SUMO",
+                )
+
             axes1[i].set_ylim([0, max(self.model_params["rho_jam"] * 1.1, max_density)])
             axes1[i].set_xlim([0, actual_duration])
             axes1[i].set_xlabel("time (s)")
             axes1[i].set_ylabel("density (veh/km/lane)")
             axes1[i].grid(True)
+            axes1[i].legend()
             axes1[i].set_title(f"Cell {i + 1}")
 
         for ax in axes1[num_cells:]:
@@ -2262,7 +2397,7 @@ class Simulation:
 
         for i, _ in link.enumerate_cells():
             axes2[i].plot(
-                time_seconds[:-1], flows[i, :-1], linewidth=1.5, label="Cell outflow"
+                time_seconds[:-1], flows[i, :-1], linewidth=1.5, label="Macro"
             )
             axes2[i].axhline(
                 link.lanes * self.model_params["qc_lane"],
@@ -2270,6 +2405,16 @@ class Simulation:
                 linestyle="--",
                 linewidth=1,
             )
+
+            if micro_flows is not None:
+                axes2[i].plot(
+                    time_seconds[:-1],
+                    micro_flows[i, :-1],
+                    linewidth=1.5,
+                    linestyle=":",
+                    label="SUMO",
+                )
+
             axes2[i].set_ylim(
                 [0, max(link.lanes * self.model_params["qc_lane"] * 1.1, max_flow)]
             )
@@ -2277,6 +2422,7 @@ class Simulation:
             axes2[i].set_xlabel("time (s)")
             axes2[i].set_ylabel("flow (veh/h)")
             axes2[i].grid(True)
+            axes2[i].legend()
             axes2[i].set_title(f"Cell {i + 1}")
 
         for ax in axes2[num_cells:]:
@@ -2302,13 +2448,26 @@ class Simulation:
 
         for i, _ in link.enumerate_cells():
             vf_cell = self.model_params["vf"]
-            axes3[i].plot(time_seconds[:-1], speeds[i, :-1], linewidth=1.5)
+            axes3[i].plot(
+                time_seconds[:-1], speeds[i, :-1], linewidth=1.5, label="Macro"
+            )
             axes3[i].axhline(vf_cell, color="red", linestyle="--", linewidth=1)
+
+            if micro_speeds is not None:
+                axes3[i].plot(
+                    time_seconds[:-1],
+                    micro_speeds[i, :-1],
+                    linewidth=1.5,
+                    linestyle=":",
+                    label="SUMO",
+                )
+
             axes3[i].set_ylim([0, max(vf_cell * 1.1, max_speed)])
             axes3[i].set_xlim([0, actual_duration])
             axes3[i].set_xlabel("time (s)")
             axes3[i].set_ylabel("speed (km/h)")
             axes3[i].grid(True)
+            axes3[i].legend()
             axes3[i].set_title(f"Cell {i + 1}")
 
         for ax in axes3[num_cells:]:
