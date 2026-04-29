@@ -528,6 +528,30 @@ class Calibrator:
             model_options=model_options,
         )
 
+        # compute the mean values for flow, density, speed from
+        # the ground truth data to use for normalization
+        links = self.network.list_links()
+        gt_flows, gt_densities, gt_speeds, _, _, _ = (
+            self.network.state_vec_to_network_dict(ground_truth_states)
+        )
+
+        link_mean_flows = {}
+        link_mean_densities = {}
+        link_mean_speeds = {}
+        for link in links:
+
+            link_flows = gt_flows.get(link.id, None)
+            if link_flows is not None:
+                link_mean_flows[link.id] = np.mean(link_flows)
+
+            link_densities = gt_densities.get(link.id, None)
+            if link_densities is not None:
+                link_mean_densities[link.id] = np.mean(link_densities)
+
+            link_speeds = gt_speeds.get(link.id, None)
+            if link_speeds is not None:
+                link_mean_speeds[link.id] = np.mean(link_speeds)
+
         # simulate forward through the window using multi-step prediction
         # (start from ground truth only at window beginning, then propagate predictions)
         residuals_list = []
@@ -565,7 +589,7 @@ class Calibrator:
                 )
 
             # extract measurable components from ground truth
-            predicted_measurable = measurable_indices[:, t_idx + 1]
+            x_measured = measurable_indices[:, t_idx + 1]
 
             # compute residuals for measurable states only
             residuals = []
@@ -584,14 +608,44 @@ class Calibrator:
                 for link in node.outgoing:
                     if isinstance(link, MotorwayLink):
                         num_cells = len(link)
-                        # flows, densities, speeds
-                        for _ in range(num_cells * 3):
+
+                        # normalize flows, densities, and speeds based on the
+                        # link-specific average values throughout the entire
+                        # simulation to normalize the residuals accordingly
+                        # structure: num_cell flows, num_cell densities, num_cell speeds for each link
+                        for _ in range(num_cells):
                             residuals.append(
-                                x_next_predicted[current_idx]
-                                - predicted_measurable[measurable_idx]
+                                (
+                                    x_next_predicted[current_idx]
+                                    - x_measured[measurable_idx]
+                                )
+                                / (link_mean_flows[link.id] + 1e-8)
                             )
                             current_idx += 1
                             measurable_idx += 1
+
+                        for _ in range(num_cells):
+                            residuals.append(
+                                (
+                                    x_next_predicted[current_idx]
+                                    - x_measured[measurable_idx]
+                                )
+                                / (link_mean_densities[link.id] + 1e-8)
+                            )
+                            current_idx += 1
+                            measurable_idx += 1
+
+                        for _ in range(num_cells):
+                            residuals.append(
+                                (
+                                    x_next_predicted[current_idx]
+                                    - x_measured[measurable_idx]
+                                )
+                                / (link_mean_speeds[link.id] + 1e-8)
+                            )
+                            current_idx += 1
+                            measurable_idx += 1
+
                     elif isinstance(link, Offramp):
                         current_idx += 2
                     elif isinstance(link, Destination):
