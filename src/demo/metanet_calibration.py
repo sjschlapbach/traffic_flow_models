@@ -30,7 +30,6 @@ import numpy as np
 import matplotlib.pyplot as plt
 from typing import Callable, Tuple
 from datetime import datetime
-from numpy.typing import NDArray
 
 from traffic_flow_models import METANET, METANETParams, Network, Calibrator, Simulation
 from demo.scenarios import (
@@ -61,7 +60,16 @@ def calculate_parameter_errors(
     errors = {}
 
     # calculate errors for all parameters
-    for param_name in ["tau", "nu", "kappa", "delta", "phi"]:
+    for param_name in [
+        "vf",
+        "qc_lane",
+        "rho_jam",
+        "tau",
+        "nu",
+        "kappa",
+        "delta",
+        "phi",
+    ]:
         true_val = true_params[param_name]
         calib_val = calibrated_params[param_name]
         rel_error = abs(calib_val - true_val) / (true_val + 1e-10) * 100
@@ -463,7 +471,16 @@ def run_calibration_experiment(
     print(f"{'Parameter':<10} {'True':<15} {'Calibrated':<15} {'Rel. Error':<15}")
     print("-" * 80)
 
-    for param_name in ["tau", "nu", "kappa", "delta", "phi"]:
+    for param_name in [
+        "vf",
+        "qc_lane",
+        "rho_jam",
+        "tau",
+        "nu",
+        "kappa",
+        "delta",
+        "phi",
+    ]:
         true_val = true_params[param_name]
         calib_val = calibrated_params_exact[param_name]
         rel_error = abs(calib_val - true_val) / (true_val + 1e-10) * 100
@@ -600,7 +617,16 @@ def run_calibration_experiment(
     print(f"{'Parameter':<10} {'True':<15} {'Calibrated':<15} {'Rel. Error':<15}")
     print("-" * 80)
 
-    for param_name in ["tau", "nu", "kappa", "delta", "phi"]:
+    for param_name in [
+        "vf",
+        "qc_lane",
+        "rho_jam",
+        "tau",
+        "nu",
+        "kappa",
+        "delta",
+        "phi",
+    ]:
         true_val = true_params[param_name]
         calib_val = calibrated_params_noisy_noreg[param_name]
         rel_error = abs(calib_val - true_val) / (true_val + 1e-10) * 100
@@ -648,7 +674,16 @@ def run_calibration_experiment(
     print(f"{'Parameter':<10} {'True':<15} {'Calibrated':<15} {'Rel. Error':<15}")
     print("-" * 80)
 
-    for param_name in ["tau", "nu", "kappa", "delta", "phi"]:
+    for param_name in [
+        "vf",
+        "qc_lane",
+        "rho_jam",
+        "tau",
+        "nu",
+        "kappa",
+        "delta",
+        "phi",
+    ]:
         true_val = true_params[param_name]
         calib_val = calibrated_params_noisy_reg[param_name]
         rel_error = abs(calib_val - true_val) / (true_val + 1e-10) * 100
@@ -696,7 +731,16 @@ def run_calibration_experiment(
     print(f"{'Parameter':<10} {'True':<15} {'Calibrated':<15} {'Rel. Error':<15}")
     print("-" * 80)
 
-    for param_name in ["tau", "nu", "kappa", "delta", "phi"]:
+    for param_name in [
+        "vf",
+        "qc_lane",
+        "rho_jam",
+        "tau",
+        "nu",
+        "kappa",
+        "delta",
+        "phi",
+    ]:
         true_val = true_params[param_name]
         calib_val = calibrated_params_noisy_link_alpha[param_name]
         rel_error = abs(calib_val - true_val) / (true_val + 1e-10) * 100
@@ -756,7 +800,17 @@ def run_calibration_experiment(
     print("-" * 80)
 
     # parameter names for METANET (in order)
-    param_names = ["tau", "nu", "kappa", "delta", "phi", "alpha"]
+    param_names = [
+        "vf",
+        "qc_lane",
+        "rho_jam",
+        "tau",
+        "nu",
+        "kappa",
+        "delta",
+        "phi",
+        "alpha",
+    ]
 
     calibrator.plot_parameter_convergence(
         param_history_exact=param_history_exact,
@@ -954,6 +1008,9 @@ def main():
 
     # ground truth METANET parameters (same for both scenarios)
     true_params: METANETParams = {
+        "vf": 120.0,  # km/h
+        "qc_lane": 2000.0,  # veh/h/lane
+        "rho_jam": 150.0,  # veh/km/lane
         "tau": 22.0 / 3600,  # hours
         "nu": 15.0,
         "kappa": 10.0,
@@ -964,6 +1021,9 @@ def main():
 
     # initial guess (slightly perturbed)
     initial_params: METANETParams = {
+        "vf": 100.0,  # km/h
+        "qc_lane": 1500.0,  # veh/h/lane
+        "rho_jam": 120.0,  # veh/km/lane
         "tau": 10.0 / 3600,
         "nu": 20.0,
         "kappa": 20.0,
@@ -973,6 +1033,9 @@ def main():
     }
 
     print("\nTrue parameters:")
+    print(f"  vf    = {true_params['vf']:.2f} km/h")
+    print(f"  qc_lane = {true_params['qc_lane']:.2f} veh/h/lane")
+    print(f"  rho_jam = {true_params['rho_jam']:.2f} veh/km/lane")
     print(f"  tau   = {true_params['tau']:.6f}")
     print(f"  nu    = {true_params['nu']:.2f}")
     print(f"  kappa = {true_params['kappa']:.2f}")

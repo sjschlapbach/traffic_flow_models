@@ -5,25 +5,16 @@ from traffic_flow_models import MotorwayLink, Cell, Node
 
 class TestMotorwayLink:
     def test_add_cell_single(self):
-        link = MotorwayLink(
-            length=2.0,
-            lanes=3,
-            lane_capacity=2000,
-            free_flow_speed=100,
-            jam_density=150,
-        )
+        link = MotorwayLink(length=2.0, lanes=3)
+        max_vf = 100.0
 
         # partition into a single cell
-        link.partition_link(preferred_cell_size=2.0, dt=0.001)
+        link.partition_link(max_vf=max_vf, preferred_cell_size=2.0, dt=0.001)
         l = link.get_cell(0)
 
         assert isinstance(l, Cell)
         assert l.length == 2.0
         assert link.lanes == 3
-        assert link.Qc_lane == 2000
-        assert link.Qc == 6000
-        assert link.vf == 100
-        assert link.rho_jam == 150
 
         # verify linked list: single cell has no upstream/downstream
         assert l.upstream is None
@@ -33,12 +24,11 @@ class TestMotorwayLink:
         assert len(link) == 1
 
     def test_add_cell_chaining_multiple(self):
-        link = MotorwayLink(
-            length=6.0, lanes=1, lane_capacity=1500, free_flow_speed=80, jam_density=140
-        )
+        link = MotorwayLink(length=6.0, lanes=1)
+        max_vf = 80.0
 
         # partition into three roughly equal cells
-        link.partition_link(preferred_cell_size=2.0, dt=0.001)
+        link.partition_link(max_vf=max_vf, preferred_cell_size=2.0, dt=0.001)
         a = link.get_cell(0)
         b = link.get_cell(1)
         c = link.get_cell(2)
@@ -66,10 +56,8 @@ class TestMotorwayLink:
         assert link.get_cell(2) is c
 
     def test_index_error_for_invalid_cell_index(self):
-        link = MotorwayLink(
-            length=1.0, lanes=1, lane_capacity=1500, free_flow_speed=80, jam_density=140
-        )
-        link.partition_link(preferred_cell_size=1.0, dt=0.001)
+        link = MotorwayLink(length=1.0, lanes=1)
+        link.partition_link(max_vf=80.0, preferred_cell_size=1.0, dt=0.001)
 
         # out of bounds should raise IndexError from list access
         with pytest.raises(IndexError):
@@ -78,15 +66,9 @@ class TestMotorwayLink:
     def test_motorway_link_sizes_and_pointer_integrity(self):
         # build motorway link of various sizes and check linked list pointers
         for n in (1, 2, 5, 10):
-            link = MotorwayLink(
-                length=10.0,
-                lanes=1,
-                lane_capacity=1500,
-                free_flow_speed=80,
-                jam_density=140,
-            )
+            link = MotorwayLink(length=10.0, lanes=1)
             preferred = round(link.length / n, 3)
-            link.partition_link(preferred_cell_size=preferred, dt=0.001)
+            link.partition_link(max_vf=80.0, preferred_cell_size=preferred, dt=0.001)
             cells = list(link)
 
             # verify motorway link size
@@ -119,9 +101,7 @@ class TestMotorwayLink:
                 assert link.get_cell(i) is cells[i]
 
     def test_node_connection_sets_node_ids(self):
-        link = MotorwayLink(
-            length=1.0, lanes=1, lane_capacity=1500, free_flow_speed=80, jam_density=140
-        )
+        link = MotorwayLink(length=1.0, lanes=1)
 
         # precondition: node ids unset
         assert getattr(link, "origin_node_id", None) is None

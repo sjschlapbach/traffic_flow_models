@@ -19,9 +19,12 @@ from traffic_flow_models.arbitrator.loop_detector_generator import LoopDetectorG
 from traffic_flow_models.arbitrator.turning_rate_aggregator import TurningRateAggregator
 from traffic_flow_models.arbitrator.network_arbitrator import (
     NetworkArbitrator,
-    RoadParamsConfig,
-    RoadTypeParams,
 )
+
+# TODO: REPLACE FIXED DUMMY VALUES WITH PROPER SOLUTION
+VF = 100.0
+QC_LANE = 2000.0
+JAM_DENSITY = 180.0
 
 
 def skip_if_exists(attr_name):
@@ -66,7 +69,6 @@ class SUMOPipeline:
         self,
         name: str,
         location: str,
-        road_params_config_path: str,
         output_dir: str,
         clean_output_dir: bool = False,
     ) -> None:
@@ -75,14 +77,11 @@ class SUMOPipeline:
         Args:
             name: Name identifier for the simulation.
             location: Geographic location to fetch OSM data from.
-            road_params_config_path: Path to JSON configuration file containing
-                road parameters (lane_capacity, jam_density, free_flow_speed for each road type).
             output_dir: Directory where all intermediate and final output files are stored.
             clean_output_dir: If True, deletes and recreates output_dir before starting.
         """
         self.name: str = name
         self.location: str = location
-        self.road_params_config_path: str = road_params_config_path
 
         # set up output directory
         self.output_dir: str = output_dir
@@ -117,7 +116,6 @@ class SUMOPipeline:
         self.offramp_ids: Optional[list[str]] = None
         self.destination_ids: Optional[list[str]] = None
         self.backbone_node_ids: Optional[set[str]] = None
-        self.road_params: Optional[RoadParamsConfig] = None
         self.diverge_node_info: Optional[dict[str, list[str]]] = None
 
     @skip_if_exists("osm_file")
@@ -592,7 +590,6 @@ class SUMOPipeline:
         list[str],
         list[str],
         list[str],
-        RoadParamsConfig,
         dict[str, list[str]],
         set[str],
     ]:
@@ -621,7 +618,6 @@ class SUMOPipeline:
         """
         self.arbitrator = NetworkArbitrator(
             net_xml_path=os.path.normpath(self.net_file),
-            road_params_config_path=self.road_params_config_path,
             min_link_length=min_link_length,
             target_cell_length=target_cell_length,
         )
@@ -631,7 +627,6 @@ class SUMOPipeline:
             self.onramp_ids,
             self.offramp_ids,
             self.destination_ids,
-            self.road_params,
             self.diverge_node_info,
             self.backbone_node_ids,
             self.sumo_edge_id_map,
@@ -643,7 +638,6 @@ class SUMOPipeline:
             self.onramp_ids,
             self.offramp_ids,
             self.destination_ids,
-            self.road_params,
             self.diverge_node_info,
             self.backbone_node_ids,
         )
@@ -816,11 +810,10 @@ class SUMOPipeline:
     def bc_flow_from_density(
         rho_lane: float,
         n_lanes: int,
-        road_params: RoadTypeParams,
     ) -> float:
-        q_max_lane = road_params["lane_capacity"]  # veh/h/lane
-        rho_jam_lane = road_params["jam_density"]  # veh/km/lane
-        v_f = road_params["free_flow_speed"]  # km/h
+        q_max_lane = QC_LANE  # veh/h/lane
+        rho_jam_lane = JAM_DENSITY  # veh/km/lane
+        v_f = VF  # km/h
 
         # Per-lane density for the FD calculation
         if rho_lane < 0.0 or rho_lane > rho_jam_lane:
@@ -874,8 +867,6 @@ class SUMOPipeline:
             raise ValueError(
                 "Destination boundary conditions cannot be computed in case of missing destinations."
             )
-        if self.road_params is None:
-            raise ValueError("Road parameters are not initialized.")
 
         # Parse SUMO edge data — collect density time series per edge
         tree = ET.parse(edge_data_path)
@@ -903,10 +894,6 @@ class SUMOPipeline:
                 to_index.setdefault(t, []).append(eid)
 
         lane_counts = self.get_edge_lane_counts()
-        motorway_params = self.road_params.get("motorway") or next(
-            iter(self.road_params.values())
-        )
-
         destination_flow_bc: dict[str, Callable] = {}
         destination_density_bc: dict[str, Callable] = {}
 
@@ -930,9 +917,7 @@ class SUMOPipeline:
                 )
                 destination_density_bc[dest_id] = lambda t: 10.0
                 destination_flow_bc[dest_id] = (
-                    lambda t: motorway_params["lane_capacity"]
-                    * sum(lane_counts.values())
-                    / len(lane_counts)
+                    lambda t: JAM_DENSITY * sum(lane_counts.values()) / len(lane_counts)
                 )
                 continue
 
@@ -947,10 +932,8 @@ class SUMOPipeline:
             destination_density_bc[dest_id] = get_rho_lane
 
             # Flow BC — per link total, derived from FD
-            def get_q_total(
-                t, _rho_fn=get_rho_lane, lanes=total_lanes, _params=motorway_params
-            ) -> float:
-                return self.bc_flow_from_density(_rho_fn(t), lanes, _params)
+            def get_q_total(t, _rho_fn=get_rho_lane, lanes=total_lanes) -> float:
+                return self.bc_flow_from_density(_rho_fn(t), lanes)
 
             destination_flow_bc[dest_id] = get_q_total
 
@@ -964,7 +947,6 @@ class SUMOPipeline:
         list[str],
         list[str],
         list[str],
-        RoadParamsConfig,
         dict[str, list[str]],
         set[str],
     ]:
@@ -981,7 +963,6 @@ class SUMOPipeline:
                 - onramp_ids: List of onramp node IDs in the network.
                 - offramp_ids: List of offramp node IDs in the network.
                 - destination_ids: List of destination node IDs in the network.
-                - road_params: Road parameters configuration used for the network.
                 - diverge_node_info: Dictionary mapping diverge node IDs to lists of SUMO edge IDs.
                 - backbone_node_ids: Set of node IDs that form the motorway backbone.
 
@@ -999,7 +980,6 @@ class SUMOPipeline:
             or self.offramp_ids is None
             or self.destination_ids is None
             or self.backbone_node_ids is None
-            or self.road_params is None
             or self.diverge_node_info is None
         ):
             raise ValueError("Network parameters have not been properly initialized.")
@@ -1010,7 +990,6 @@ class SUMOPipeline:
             self.onramp_ids,
             self.offramp_ids,
             self.destination_ids,
-            self.road_params,
             self.diverge_node_info,
             self.backbone_node_ids,
         )

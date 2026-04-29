@@ -3,7 +3,7 @@ import math
 import warnings
 import networkx as nx
 import xml.etree.ElementTree as ET
-from typing import Union, Tuple, Callable, TypedDict, cast
+from typing import Union, Tuple, Callable, cast
 
 
 from traffic_flow_models.network import (
@@ -15,35 +15,6 @@ from traffic_flow_models.network import (
     MotorwayLink,
     Node,
 )
-
-
-class RoadTypeParams(TypedDict):
-    """Parameters for a specific road type.
-
-    Attributes:
-        lane_capacity: Maximum flow capacity per lane (veh/h/lane).
-        jam_density: Maximum density at jam conditions (veh/km/lane).
-        free_flow_speed: Speed at free-flow conditions (km/h).
-    """
-
-    lane_capacity: float
-    jam_density: float
-    free_flow_speed: float
-
-
-class RoadParamsConfig(TypedDict):
-    """Configuration for road parameters by road type.
-
-    Must include the following road types: motorway, trunk, primary,
-    secondary, tertiary, default.
-    """
-
-    motorway: RoadTypeParams
-    trunk: RoadTypeParams
-    primary: RoadTypeParams
-    secondary: RoadTypeParams
-    tertiary: RoadTypeParams
-    default: RoadTypeParams
 
 
 class NetworkArbitrator:
@@ -71,7 +42,6 @@ class NetworkArbitrator:
     def __init__(
         self,
         net_xml_path: str,
-        road_params_config_path: str,
         target_cell_length: float = 0.3,
         # hwy_filter: Union[list[Tuple[str, str]], None] = None,
         min_link_length: Union[float, None] = None,
@@ -80,8 +50,6 @@ class NetworkArbitrator:
 
         Args:
             net_xml_path: Path to the SUMO network XML file (.net.xml).
-            road_params_config_path: Path to JSON configuration file containing
-                road parameters (lane_capacity, jam_density, free_flow_speed for each road type).
             target_cell_length: Target length for cells in the macroscopic network (km).
             min_link_length: Minimum acceptable link length in kilometers for CFL stability.
                 Links shorter than this threshold are either stretched (if > 50% of minimum)
@@ -112,94 +80,6 @@ class NetworkArbitrator:
         #     ]
         # )
 
-        # load road parameters from config file
-        self.road_params: RoadParamsConfig = (
-            NetworkArbitrator._load_road_params_from_json(road_params_config_path)
-        )
-
-    @staticmethod
-    def _validate_road_params(params: dict) -> None:
-        """Validate road parameters configuration.
-
-        Ensures all required road types are present with correct parameter structure.
-        Validates that all parameter values are positive numbers.
-
-        Args:
-            params: Dictionary containing road parameters to validate.
-
-        Raises:
-            ValueError: If required road types are missing, parameters are missing,
-                or parameter values are invalid (not positive numbers).
-        """
-        required_road_types = [
-            "motorway",
-            "trunk",
-            "primary",
-            "secondary",
-            "tertiary",
-            "default",
-        ]
-        required_params = ["lane_capacity", "jam_density", "free_flow_speed"]
-
-        # check all required road types are present
-        for road_type in required_road_types:
-            if road_type not in params:
-                raise ValueError(
-                    f"Missing required road type '{road_type}' in road parameters configuration."
-                )
-
-            # check all required parameters are present for this road type
-            for param in required_params:
-                if param not in params[road_type]:
-                    raise ValueError(
-                        f"Missing required parameter '{param}' for road type '{road_type}'."
-                    )
-
-                # validate parameter type and value
-                value = params[road_type][param]
-                if not isinstance(value, (int, float)):
-                    raise ValueError(
-                        f"Parameter '{param}' for road type '{road_type}' must be a number, got {type(value).__name__}."
-                    )
-                if value <= 0:
-                    raise ValueError(
-                        f"Parameter '{param}' for road type '{road_type}' must be positive, got {value}."
-                    )
-
-    @staticmethod
-    def _load_road_params_from_json(config_path: str) -> RoadParamsConfig:
-        """Load and validate road parameters from JSON configuration file.
-
-        Args:
-            config_path: Path to the JSON configuration file.
-
-        Returns:
-            Validated road parameters configuration dictionary.
-
-        Raises:
-            FileNotFoundError: If the configuration file does not exist.
-            json.JSONDecodeError: If the file is not valid JSON.
-            ValueError: If the configuration is invalid (see _validate_road_params).
-        """
-        try:
-            with open(config_path, "r") as f:
-                params = json.load(f)
-        except FileNotFoundError:
-            raise FileNotFoundError(
-                f"Road parameters configuration file not found: {config_path}"
-            )
-        except json.JSONDecodeError as e:
-            raise json.JSONDecodeError(
-                f"Invalid JSON in road parameters configuration file: {config_path}",
-                e.doc,
-                e.pos,
-            )
-
-        # validate the loaded parameters
-        NetworkArbitrator._validate_road_params(params)
-
-        return params
-
     def run(
         self,
     ) -> Tuple[
@@ -208,7 +88,6 @@ class NetworkArbitrator:
         list[str],
         list[str],
         list[str],
-        RoadParamsConfig,
         dict[str, list[str]],
         set[str],
         dict[str, list[str]],
@@ -281,7 +160,6 @@ class NetworkArbitrator:
             onramp_ids,
             offramp_ids,
             destination_ids,
-            self.road_params,
             diverge_node_info,
             backbone_node_ids,
             sumo_edge_id_map,
@@ -933,13 +811,6 @@ class NetworkArbitrator:
 
         for u, v, data in self.graph.edges(data=True):
             edge_type = data.get("type", "default").lower()
-            params: RoadTypeParams = cast(
-                RoadTypeParams,
-                next(
-                    (val for key, val in self.road_params.items() if key in edge_type),
-                    self.road_params["default"],
-                ),
-            )
 
             u_str, v_str = str(u), str(v)
             is_ramp = "highway.motorway_link" in edge_type
@@ -949,9 +820,6 @@ class NetworkArbitrator:
                     id=str(data["id"]),
                     length=data["length"],
                     lanes=data["lanes"],
-                    lane_capacity=params["lane_capacity"],
-                    free_flow_speed=params["free_flow_speed"],
-                    jam_density=params["jam_density"],
                     origin_node_id=u_str,
                     destination_node_id=v_str,
                 )
@@ -959,9 +827,6 @@ class NetworkArbitrator:
                 link = Offramp(
                     id=str(data["id"]),
                     lanes=data["lanes"],
-                    lane_capacity=params["lane_capacity"],
-                    free_flow_speed=params["free_flow_speed"],
-                    jam_density=params["jam_density"],
                     origin_node_id=u_str,
                     destination_node_id=v_str,
                 )
@@ -970,9 +835,6 @@ class NetworkArbitrator:
                     id=str(data["id"]),
                     length=data["length"],
                     lanes=data["lanes"],
-                    lane_capacity=params["lane_capacity"],
-                    free_flow_speed=params["free_flow_speed"],
-                    jam_density=params["jam_density"],
                     origin_node_id=u_str,
                     destination_node_id=v_str,
                 )
