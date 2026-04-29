@@ -30,7 +30,9 @@ class TestCTM:
         assert np.isclose(computed_rho_cr, expected_rho_cr)
 
         # CTM backward wave speed: Qc / (rho_jam - rho_cr)
-        expected_w = params["qc_lane"] / (params["rho_jam"] - expected_rho_cr)
+        expected_w = (link.lanes * params["qc_lane"]) / (
+            params["rho_jam"] - expected_rho_cr
+        )
         computed_w = model.backward_wave_speed(params=params, lanes=link.lanes)
         assert np.isclose(computed_w, expected_w)
 
