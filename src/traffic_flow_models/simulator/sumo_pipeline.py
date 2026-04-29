@@ -357,9 +357,8 @@ class SUMOPipeline:
             tree = ET.parse(path)
             for el in tree.getroot():
                 if el.tag in ("vehicle", "trip"):
-                    el.set("type", "urban") 
+                    el.set("type", "urban")
                     all_vehicles.append(el)
-                
 
         all_vehicles.sort(key=lambda x: float(x.get("depart", "0")))
         merged_root.extend(all_vehicles)
