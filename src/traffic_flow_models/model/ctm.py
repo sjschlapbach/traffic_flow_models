@@ -249,7 +249,7 @@ class CTM:
         """
 
         rho_cr = self.critical_density(params=params, link_id="")
-        return params["qc_lane"] / (params["rho_jam"] - rho_cr)
+        return (lanes * params["qc_lane"]) / (params["rho_jam"] - rho_cr)
 
     # ! Symbolic model parameter handling (validation, packing, unpacking)
     # region
