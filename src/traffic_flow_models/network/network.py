@@ -154,6 +154,18 @@ class Network:
         """Return a shallow copy of the node list."""
         return self._nodes
 
+    def list_links(
+        self,
+    ) -> list[MotorwayLink | Origin | Onramp | Offramp | Destination]:
+        """Return a list of all links in the network."""
+        links_list = []
+        for n in self.list_nodes():
+            links_list.extend(n.incoming)
+            links_list.extend(n.outgoing)
+
+        unique_links = list({link.id: link for link in links_list}.values())
+        return unique_links
+
     # endregion
 
     # ! Converstion / reshaping methods
