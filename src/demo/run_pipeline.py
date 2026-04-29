@@ -324,8 +324,8 @@ if __name__ == "__main__":
         ground_truth_filepath=micro_results_path,
         model=model,
         initial_params=None,
-        window_size=10,
-        stride=5,
+        window_size=3,
+        stride=3,
         model_options=(
             {"link_specific_alpha": False} if isinstance(model, METANET) else None
         ),
