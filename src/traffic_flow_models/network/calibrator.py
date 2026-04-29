@@ -539,7 +539,6 @@ class Calibrator:
         link_mean_densities = {}
         link_mean_speeds = {}
         for link in links:
-
             link_flows = gt_flows.get(link.id, None)
             if link_flows is not None:
                 link_mean_flows[link.id] = np.mean(link_flows)
@@ -619,7 +618,7 @@ class Calibrator:
                                     x_next_predicted[current_idx]
                                     - x_measured[measurable_idx]
                                 )
-                                / (link_mean_flows[link.id] + 1e-8)
+                                / (max(1.0, link_mean_flows[link.id]))
                             )
                             current_idx += 1
                             measurable_idx += 1
@@ -630,7 +629,7 @@ class Calibrator:
                                     x_next_predicted[current_idx]
                                     - x_measured[measurable_idx]
                                 )
-                                / (link_mean_densities[link.id] + 1e-8)
+                                / (max(1.0, link_mean_densities[link.id]))
                             )
                             current_idx += 1
                             measurable_idx += 1
@@ -641,7 +640,7 @@ class Calibrator:
                                     x_next_predicted[current_idx]
                                     - x_measured[measurable_idx]
                                 )
-                                / (link_mean_speeds[link.id] + 1e-8)
+                                / (max(1.0, link_mean_speeds[link.id]))
                             )
                             current_idx += 1
                             measurable_idx += 1
