@@ -405,6 +405,44 @@ class METANET:
             )
             return param_vec
 
+    def generate_fd_values(
+        self, params: METANETParams
+    ) -> Tuple[NDArray[np.float64], NDArray[np.float64]]:
+        """Generate METANET fundamental-diagram values for plotting.
+
+        This method computes the flow for a range of densities from 0 to the jam density
+        using the METANET fundamental diagram defined by the provided parameters. The resulting
+        flow values can be used for plotting the fundamental diagram or for calibration analysis.
+
+        Returns:
+            A tuple of ``(densities, flows)`` where both arrays have length 200.
+        """
+        alpha = params["alpha"]
+        if isinstance(alpha, dict):
+            print(
+                "[WARNING]: METANET Fundamental Diagram is computed based on mean alpha value -> link-specific FDs are in use!"
+            )
+            alpha_value = float(np.mean(list(alpha.values())))
+        else:
+            alpha_value = float(alpha)
+
+        single_alpha_params = params.copy()
+        single_alpha_params["alpha"] = alpha_value
+        rho_cr = self.critical_density(params=single_alpha_params, link_id="")
+
+        densities = np.linspace(0, params["rho_jam"], num=200)
+        equilibrium_speed = cast(
+            NDArray[np.float64],
+            [
+                self.stationary_velocity(
+                    params=single_alpha_params, link_id="", density=density
+                )
+                for density in densities
+            ],
+        )
+        flows = densities * equilibrium_speed
+        return densities, flows
+
     # endregion
 
     # ! Fundamental diagram helper functions

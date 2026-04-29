@@ -2854,6 +2854,112 @@ class Simulation:
         )
         plt.close(fig)
 
+    def plot_fd_comparison(
+        self,
+        micro_flows: dict[str, NDArray[np.float64]],
+        micro_densities: dict[str, NDArray[np.float64]],
+        macro_flows: dict[str, NDArray[np.float64]],
+        macro_densities: dict[str, NDArray[np.float64]],
+        model_params: CTMParams | METANETParams,
+        output_path: str,
+    ):
+        """Create a fundamental diagram comparison plot between micro and macro states.
+
+        Args:
+            micro_flows: Dictionary mapping link IDs to 2-D arrays of flow time series from microsimulation (cells x time).
+            micro_densities: Dictionary mapping link IDs to 2-D arrays of density time series from microsimulation (cells x time).
+            macro_flows: Dictionary mapping link IDs to 2-D arrays of flow time series from macroscopic model (cells x time).
+            macro_densities: Dictionary mapping link IDs to 2-D arrays of density time series from macroscopic model (cells x time).
+            model_params: The parameters of the macroscopic model (used for reference lines in the plot).
+            output_path: File path where the plot should be saved.
+        """
+        links = self.network.list_links()
+        mainline_links = [link for link in links if isinstance(link, MotorwayLink)]
+
+        # iterate through links, extract flow and density time series
+        # from the micro and macro state arrays (average over cells,
+        # if there are multiple)
+        micro_flow_means = []
+        micro_density_means = []
+        macro_flow_means = []
+        macro_density_means = []
+        for link in mainline_links:
+            if link.id not in micro_flows or link.id not in micro_densities:
+                raise ValueError(
+                    f"Missing micro flow or density data for link {link.id}"
+                )
+            if link.id not in macro_flows or link.id not in macro_densities:
+                raise ValueError(
+                    f"Missing macro flow or density data for link {link.id}"
+                )
+
+            link_micro_flows = (
+                micro_flows[link.id] / link.lanes
+            )  # convert to per-lane values
+            link_micro_densities = micro_densities[link.id]
+            link_macro_flows = (
+                macro_flows[link.id] / link.lanes
+            )  # convert to per-lane values
+            link_macro_densities = macro_densities[link.id]
+
+            if link_micro_flows.shape[0] != len(link) or link_micro_densities.shape[
+                0
+            ] != len(link):
+                raise ValueError(
+                    f"Micro flow or density data for link {link.id} has incorrect number of values (expected {len(link)})"
+                )
+            if link_macro_flows.shape[0] != len(link) or link_macro_densities.shape[
+                0
+            ] != len(link):
+                raise ValueError(
+                    f"Macro flow or density data for link {link.id} has incorrect number of values (expected {len(link)})"
+                )
+
+            micro_flow_means.append(np.mean(link_micro_flows, axis=0))
+            micro_density_means.append(np.mean(link_micro_densities, axis=0))
+            macro_flow_means.append(np.mean(link_macro_flows, axis=0))
+            macro_density_means.append(np.mean(link_macro_densities, axis=0))
+
+        # compute parameters for an FD curve based on the model parameters
+        if isinstance(self.model, CTM):
+            fd_densities, fd_flows = self.model.generate_fd_values(
+                cast(CTMParams, model_params)
+            )
+        elif isinstance(self.model, METANET):
+            fd_densities, fd_flows = self.model.generate_fd_values(
+                cast(METANETParams, model_params)
+            )
+        else:
+            raise ValueError(
+                f"Unsupported model type '{type(self.model)}' for FD curve generation"
+            )
+
+        # create a plot where we plot flow (y-axis) against density (x-axis)
+        fig, ax = plt.subplots(figsize=(8, 6))
+        ax.scatter(
+            micro_density_means,
+            micro_flow_means,
+            color="blue",
+            alpha=0.6,
+            label="SUMO (micro)",
+        )
+        ax.scatter(
+            macro_density_means,
+            macro_flow_means,
+            color="orange",
+            alpha=0.6,
+            label="CTM/METANET (macro)",
+        )
+        ax.plot(fd_densities, fd_flows, color="red", linestyle="--", label="FD Curve")
+        ax.set_xlabel("Density (veh/km)")
+        ax.set_ylabel("Flow (veh/h)")
+        ax.set_title("Fundamental Diagram Comparison")
+        ax.legend()
+        ax.grid(True)
+        plt.tight_layout()
+        plt.savefig(output_path, dpi=300, bbox_inches="tight")
+        plt.close(fig)
+
     def visualize(
         self,
         results_filepath: str,
