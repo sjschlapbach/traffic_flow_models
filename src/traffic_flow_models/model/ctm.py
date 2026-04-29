@@ -195,6 +195,30 @@ class CTM:
         """
         return param_vec
 
+    def generate_fd_values(self, params: CTMParams):
+        """Generate flow values for a range of densities based on the CTM fundamental diagram.
+
+        This method computes the flow for a range of densities from 0 to the jam density
+        using the CTM fundamental diagram defined by the provided parameters. The resulting
+        flow values can be used for plotting the fundamental diagram or for calibration analysis.
+
+        Args:
+            params: CTMParams dictionary containing 'vf', 'qc_lane', and 'rho_jam'.
+
+        Returns:
+            A tuple of (densities, flows) where:
+                - densities: 1-D numpy array of density values from 0 to rho_jam.
+                - flows: 1-D numpy array of flow values corresponding to the densities.
+        """
+        rho_cr = self.critical_density(params=params, link_id="")
+        densities = np.linspace(0, params["rho_jam"], num=200)
+        flows = np.minimum(
+            params["vf"] * densities,
+            params["qc_lane"]
+            - params["qc_lane"] / (params["rho_jam"] - rho_cr) * (densities - rho_cr),
+        )
+        return densities, flows
+
     # endregion
 
     # ! Fundamental diagram helper functions

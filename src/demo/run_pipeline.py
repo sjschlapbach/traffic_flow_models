@@ -7,9 +7,12 @@ python src/demo/run_pipeline.py --location "Zurich, Switzerland" --vehicle-deman
 python src/demo/run_pipeline.py --sumo-cfg-dir "src/demo/scenarios/example" --no-plot
 """
 
-import argparse
 import os
+import argparse
+import numpy as np
+from numpy.typing import NDArray
 from datetime import datetime
+from typing import cast
 
 from traffic_flow_models import (
     CTM,
@@ -437,6 +440,21 @@ if __name__ == "__main__":
         f.write(f"Total VKT (Macroscopic Simulation): {macro_VKT:.2f} veh-km\n")
         f.write(f"Total VHT (Macroscopic Simulation): {macro_VHT:.2f} veh-h\n")
         f.write(f"Overall Average Speed: {avg_speed:.2f} km/h\n")
+
+    # generate a plot comparing the mainline density and flow (FD) between micro- and macroscopic simulations
+    # -> should include scatter points as well as FD curve corresponding to the calibrated parameters
+    micro_flows, micro_densities, _, _, _, _ = network.state_vec_to_network_dict(
+        micro_states
+    )
+    macro_flows, macro_densities, _, _, _, _ = network.state_vec_to_network_dict(states)
+    sim.plot_fd_comparison(
+        micro_flows=cast(dict[str, NDArray[np.float64]], micro_flows),
+        micro_densities=cast(dict[str, NDArray[np.float64]], micro_densities),
+        macro_flows=cast(dict[str, NDArray[np.float64]], macro_flows),
+        macro_densities=cast(dict[str, NDArray[np.float64]], macro_densities),
+        model_params=calibrated_params,
+        output_path=os.path.join(results_dir, "fd_comparison.png"),
+    )
 
     # generate video visualization if requested
     if generate_video:
