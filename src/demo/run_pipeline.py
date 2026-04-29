@@ -356,6 +356,7 @@ if __name__ == "__main__":
         destination_density_bc=destination_density_bc,
         destination_flow_bc=destination_flow_bc,
         plot_results=True,
+        plot_micro_results=True,
         show_plots=plot_enabled,
         results_dir=results_dir,
     )
