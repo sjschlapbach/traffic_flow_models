@@ -340,6 +340,7 @@ class SUMOPipeline:
         """
         merged_root = ET.Element("routes")
         # ET.SubElement(merged_root, "vType", id="urban", vClass="passenger")
+        all_vehicles.append(el)
         ET.SubElement(merged_root, "vType", id="passenger_car", vClass="passenger")
         urban_vtype = ET.SubElement(
             merged_root, "vType", id="urban", vClass="passenger"
@@ -356,7 +357,9 @@ class SUMOPipeline:
             tree = ET.parse(path)
             for el in tree.getroot():
                 if el.tag in ("vehicle", "trip"):
+                    el.set("type", "urban") 
                     all_vehicles.append(el)
+                
 
         all_vehicles.sort(key=lambda x: float(x.get("depart", "0")))
         merged_root.extend(all_vehicles)
