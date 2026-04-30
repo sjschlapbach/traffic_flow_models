@@ -25,11 +25,6 @@ from traffic_flow_models import (
     BackboneStateAggregator,
 )
 
-# TODO: REPLACE FIXED DUMMY VALUES WITH PROPER SOLUTION
-VF = 100.0
-QC_LANE = 2000.0
-JAM_DENSITY = 180.0
-
 if __name__ == "__main__":
     args = argparse.ArgumentParser(
         description="Run entire SUMO and Macroscopic Simulation Pipeline for an arbitrary City (Nomatim standard strings)."
@@ -47,6 +42,12 @@ if __name__ == "__main__":
         type=int,
         default=20000,
         help="Vehicle demand for the scenario (default: 20000)",
+    )
+    args.add_argument(
+        "--free-flow-speed",
+        type=float,
+        default=100.0,
+        help=f"Free-flow speed in km/h (default: 100.0 km/h)",
     )
     args.add_argument(
         "--highway-vehicle-demand",
@@ -191,14 +192,15 @@ if __name__ == "__main__":
 
     # compute minimum link length for CFL stability
     # must account for both CFL condition (vf * dt) and preferred cell size
-    max_free_flow_speed = 120.0  # km/h
-    cfl_minimum = max_free_flow_speed * dt  # CFL condition: cell_length >= vf * dt
+    cfl_minimum = (
+        parsed_args.free_flow_speed * dt
+    )  # CFL condition: cell_length >= vf * dt
     min_link_length = max(cfl_minimum, preferred_cell_size) + 0.01  # km
 
     # if the preferred cell size is smaller than the CFL minimum, notify the user
     if preferred_cell_size < cfl_minimum:
         raise ValueError(
-            f"Preferred cell size ({preferred_cell_size} km) is too small for CFL stability with the given timestep (dt={dt} h) and maximum free-flow speed ({max_free_flow_speed} km/h). Minimum cell size for stability is {cfl_minimum:.3f} km. Please increase the preferred cell size or adjust the timestep."
+            f"Preferred cell size ({preferred_cell_size} km) is too small for CFL stability with the given timestep (dt={dt} h) and maximum free-flow speed ({parsed_args.free_flow_speed} km/h). Minimum cell size for stability is {cfl_minimum:.3f} km. Please increase the preferred cell size or adjust the timestep."
         )
 
     # create an instance of the macroscopic traffic flow model network
@@ -268,7 +270,9 @@ if __name__ == "__main__":
     # compute boundary conditions from microscopic simulation results
     edge_data_path = os.path.join(pipeline.output_dir, "edge_data_output.xml")
     destination_flow_bc, destination_density_bc = (
-        pipeline.build_destination_bc_from_sumo_edges(edge_data_path=edge_data_path)
+        pipeline.build_destination_bc_from_sumo_edges(
+            edge_data_path=edge_data_path, free_flow_speed=parsed_args.free_flow_speed
+        )
     )
 
     # compute splits (turning rates) from detector data
@@ -290,8 +294,7 @@ if __name__ == "__main__":
         output_path=micro_results_path,
         urban_demands=urban_demands,
         time_step_minutes=1.0,
-        free_flow_speed=VF,
-        jam_density=JAM_DENSITY,
+        free_flow_speed=parsed_args.free_flow_speed,
         preferred_cell_size=preferred_cell_size,
         sumo_network_path=pipeline.net_file,
         origin_ids=origin_ids,
@@ -329,7 +332,7 @@ if __name__ == "__main__":
         model_options=(
             {"link_specific_alpha": False} if isinstance(model, METANET) else None
         ),
-        fixed_speed=VF,
+        fixed_speed=parsed_args.free_flow_speed,
         regularization_weight=parsed_args.regularization_weight,
         verbose=True,
         use_parameter_search=parsed_args.parameter_search,
