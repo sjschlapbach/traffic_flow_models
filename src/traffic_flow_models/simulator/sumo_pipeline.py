@@ -22,7 +22,6 @@ from traffic_flow_models.arbitrator.network_arbitrator import (
 )
 
 # TODO: REPLACE FIXED DUMMY VALUES WITH PROPER SOLUTION
-VF = 100.0
 QC_LANE = 2000.0
 JAM_DENSITY = 180.0
 
@@ -808,12 +807,11 @@ class SUMOPipeline:
 
     @staticmethod
     def bc_flow_from_density(
-        rho_lane: float,
-        n_lanes: int,
+        rho_lane: float, n_lanes: int, free_flow_speed: float
     ) -> float:
         q_max_lane = QC_LANE  # veh/h/lane
         rho_jam_lane = JAM_DENSITY  # veh/km/lane
-        v_f = VF  # km/h
+        v_f = free_flow_speed  # km/h
 
         # Per-lane density for the FD calculation
         if rho_lane < 0.0 or rho_lane > rho_jam_lane:
@@ -839,8 +837,7 @@ class SUMOPipeline:
         return max(0.0, q_lane) * n_lanes
 
     def build_destination_bc_from_sumo_edges(
-        self,
-        edge_data_path: str,
+        self, edge_data_path: str, free_flow_speed: float
     ) -> tuple[dict[str, Callable], dict[str, Callable]]:
         """Build time-varying flow and density boundary conditions for each destination node.
 
@@ -852,6 +849,7 @@ class SUMOPipeline:
         Args:
             edge_data_path: Path to a SUMO ``<edgeData>`` output XML file containing
                 per-interval density measurements (``density`` attribute on ``<edge>`` elements).
+            free_flow_speed: Free flow speed (km/h) to use in the fundamental diagram calculation.
 
         Returns:
             A tuple of two dictionaries, both keyed by destination node ID:
@@ -933,7 +931,9 @@ class SUMOPipeline:
 
             # Flow BC — per link total, derived from FD
             def get_q_total(t, _rho_fn=get_rho_lane, lanes=total_lanes) -> float:
-                return self.bc_flow_from_density(_rho_fn(t), lanes)
+                return self.bc_flow_from_density(
+                    rho_lane=_rho_fn(t), n_lanes=lanes, free_flow_speed=free_flow_speed
+                )
 
             destination_flow_bc[dest_id] = get_q_total
 

@@ -423,7 +423,7 @@ class BackboneStateAggregator:
         return origin_demands
 
     def compute_traffic_state(
-        self, free_flow_speed: float, jam_density: float
+        self, free_flow_speed: float
     ) -> dict[str, Callable[[float], TrafficState]]:
         """Compute time-varying flow, density, and speed functions for every edge.
 
@@ -455,9 +455,7 @@ class BackboneStateAggregator:
                 continue
 
             state_fn = self._make_state_function(
-                intervals=intervals,
-                free_flow_speed=free_flow_speed,
-                jam_density=jam_density,
+                intervals=intervals, free_flow_speed=free_flow_speed
             )
             if state_fn is not None:
                 state_functions[edge_id] = state_fn
@@ -465,7 +463,7 @@ class BackboneStateAggregator:
         return state_functions
 
     def _make_state_function(
-        self, intervals: list[EdgeInterval], free_flow_speed: float, jam_density: float
+        self, intervals: list[EdgeInterval], free_flow_speed: float
     ) -> Callable[[float], TrafficState] | None:
         """Build a rolling-window state function for a single edge.
 
@@ -627,7 +625,6 @@ class BackboneStateAggregator:
         duration: float | None = None,
         preferred_cell_size: float | None = None,
         free_flow_speed: float | None = None,
-        jam_density: float | None = None,
     ) -> str:
         """Evaluate state functions on a time grid and write results to JSON.
 
@@ -656,8 +653,6 @@ class BackboneStateAggregator:
                 known.
             free_flow_speed: Optional free-flow speed in km/h used when
                 deriving densities.
-            jam_density: Optional jam density in veh/km/lane used when
-                converting occupancy to density.
 
         Returns:
             The resolved ``output_path`` string.
@@ -835,7 +830,6 @@ class BackboneStateAggregator:
                 "lanes": info["n_lanes"],
                 "lane_capacity": None,
                 "free_flow_speed": free_flow_speed,
-                "jam_density": jam_density,
                 "num_cells": n_cells,
                 "cell_lengths": cell_lengths,
             }
@@ -882,7 +876,6 @@ class BackboneStateAggregator:
         output_path: str,
         urban_demands: dict[str, Callable[[float], float]],
         free_flow_speed: float,
-        jam_density: float,
         sumo_network_path: str,
         origin_ids: list[str],
         query_times_hours: list[float] | None = None,
@@ -913,9 +906,7 @@ class BackboneStateAggregator:
         self.classify_and_map()
         self.aggregate_spatially()
 
-        state_functions = self.compute_traffic_state(
-            free_flow_speed=free_flow_speed, jam_density=jam_density
-        )
+        state_functions = self.compute_traffic_state(free_flow_speed=free_flow_speed)
 
         total_vehicles = sum(
             sum(count for _, count, _, _, _, _ in ivs)
@@ -945,7 +936,6 @@ class BackboneStateAggregator:
             duration=(self.max_time / 3600.0) if self.max_time is not None else None,
             preferred_cell_size=preferred_cell_size,
             free_flow_speed=free_flow_speed,
-            jam_density=jam_density,
         )
 
         return path, highway_demands
