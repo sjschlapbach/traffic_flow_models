@@ -1,57 +1,36 @@
 <routes>
-    
-    <vType id="urban" length="5.0" maxSpeed="27.78" lcCooperative="1.0"/>
 
+    <vType id="urban" length="5.0" maxSpeed="27.78" lcCooperative="1.0"/>
 
     <route id="main_route" edges="m1 m2" />
     <route id="ramp_route" edges="onramp m2" />
 
-    <flow id="main_0" route="main_route" type="urban" begin="0" end="300" vehsPerHour="1333.3"
-        departSpeed="max" departLane="random" />
-    <flow id="ramp_0" route="ramp_route" type="urban" begin="0" end="300" vehsPerHour="416.7"
-        departSpeed="max" departLane="random" />
-    <flow id="main_300" route="main_route" type="urban" begin="300" end="600" vehsPerHour="4000.0"
-        departSpeed="max" departLane="random" />
-    <flow id="ramp_300" route="ramp_route" type="urban" begin="300" end="600" vehsPerHour="1250.0"
-        departSpeed="max" departLane="random" />
-    <flow id="main_600" route="main_route" type="urban" begin="600" end="900" vehsPerHour="4000.0"
-        departSpeed="max" departLane="random" />
-    <flow id="ramp_600" route="ramp_route" type="urban" begin="600" end="900" vehsPerHour="2083.3"
-        departSpeed="max" departLane="random" />
-    <flow id="main_900" route="main_route" type="urban" begin="900" end="1200" vehsPerHour="4000.0"
-        departSpeed="max" departLane="random" />
-    <flow id="ramp_900" route="ramp_route" type="urban" begin="900" end="1200" vehsPerHour="2500.0"
-        departSpeed="max" departLane="random" />
-    <flow id="main_1200" route="main_route" type="urban" begin="1200" end="1500" vehsPerHour="4000.0"
-        departSpeed="max" departLane="random" />
-    <flow id="ramp_1200" route="ramp_route" type="urban" begin="1200" end="1500" vehsPerHour="2500.0"
-        departSpeed="max" departLane="random" />
-    <flow id="main_1500" route="main_route" type="urban" begin="1500" end="1800" vehsPerHour="4000.0"
-        departSpeed="max" departLane="random" />
-    <flow id="ramp_1500" route="ramp_route" type="urban" begin="1500" end="1800" vehsPerHour="2500.0"
-        departSpeed="max" departLane="random" />
-    <flow id="main_1800" route="main_route" type="urban" begin="1800" end="2100" vehsPerHour="4000.0"
-        departSpeed="max" departLane="random" />
-    <flow id="ramp_1800" route="ramp_route" type="urban" begin="1800" end="2100" vehsPerHour="2500.0"
-        departSpeed="max" departLane="random" />
-    <flow id="main_2100" route="main_route" type="urban" begin="2100" end="2400" vehsPerHour="4000.0"
-        departSpeed="max" departLane="random" />
-    <flow id="ramp_2100" route="ramp_route" type="urban" begin="2100" end="2400" vehsPerHour="2500.0"
-        departSpeed="max" departLane="random" />
-    <flow id="main_2400" route="main_route" type="urban" begin="2400" end="2700" vehsPerHour="4000.0"
-        departSpeed="max" departLane="random" />
-    <flow id="ramp_2400" route="ramp_route" type="urban" begin="2400" end="2700" vehsPerHour="2500.0"
-        departSpeed="max" departLane="random" />
-    <flow id="main_2700" route="main_route" type="urban" begin="2700" end="3000" vehsPerHour="4000.0"
-        departSpeed="max" departLane="random" />
-    <flow id="ramp_2700" route="ramp_route" type="urban" begin="2700" end="3000" vehsPerHour="2083.3"
-        departSpeed="max" departLane="random" />
-    <flow id="main_3000" route="main_route" type="urban" begin="3000" end="3300" vehsPerHour="4000.0"
-        departSpeed="max" departLane="random" />
-    <flow id="ramp_3000" route="ramp_route" type="urban" begin="3000" end="3300" vehsPerHour="1250.0"
-        departSpeed="max" departLane="random" />
-    <flow id="main_3300" route="main_route" type="urban" begin="3300" end="3600" vehsPerHour="1333.3"
-        departSpeed="max" departLane="random" />
-    <flow id="ramp_3300" route="ramp_route" type="urban" begin="3300" end="3600" vehsPerHour="416.7"
-        departSpeed="max" departLane="random" />
+
+    <flow id="main_0"    route="main_route" type="urban" begin="0"    end="400"  vehsPerHour="909.1"  departSpeed="max" departLane="random"/>
+    <flow id="ramp_0"    route="ramp_route" type="urban" begin="0"    end="400"  vehsPerHour="568.2"  departSpeed="max" departLane="random"/>
+
+    <flow id="main_400"  route="main_route" type="urban" begin="400"  end="800"  vehsPerHour="2181.8" departSpeed="max" departLane="random"/>
+    <flow id="ramp_400"  route="ramp_route" type="urban" begin="400"  end="800"  vehsPerHour="1363.6" departSpeed="max" departLane="random"/>
+
+    <flow id="main_800"  route="main_route" type="urban" begin="800"  end="1200" vehsPerHour="3090.9" departSpeed="max" departLane="random"/>
+    <flow id="ramp_800"  route="ramp_route" type="urban" begin="800"  end="1200" vehsPerHour="1931.8" departSpeed="max" departLane="random"/>
+
+    <flow id="main_1200" route="main_route" type="urban" begin="1200" end="1600" vehsPerHour="3636.4" departSpeed="max" departLane="random"/>
+    <flow id="ramp_1200" route="ramp_route" type="urban" begin="1200" end="1600" vehsPerHour="2272.7" departSpeed="max" departLane="random"/>
+
+    <flow id="main_1600" route="main_route" type="urban" begin="1600" end="2000" vehsPerHour="4000.0" departSpeed="max" departLane="random"/>
+    <flow id="ramp_1600" route="ramp_route" type="urban" begin="1600" end="2000" vehsPerHour="2500.0" departSpeed="max" departLane="random"/>
+
+    <flow id="main_2000" route="main_route" type="urban" begin="2000" end="2400" vehsPerHour="3636.4" departSpeed="max" departLane="random"/>
+    <flow id="ramp_2000" route="ramp_route" type="urban" begin="2000" end="2400" vehsPerHour="2272.7" departSpeed="max" departLane="random"/>
+
+    <flow id="main_2400" route="main_route" type="urban" begin="2400" end="2800" vehsPerHour="3090.9" departSpeed="max" departLane="random"/>
+    <flow id="ramp_2400" route="ramp_route" type="urban" begin="2400" end="2800" vehsPerHour="1931.8" departSpeed="max" departLane="random"/>
+
+    <flow id="main_2800" route="main_route" type="urban" begin="2800" end="3200" vehsPerHour="2181.8" departSpeed="max" departLane="random"/>
+    <flow id="ramp_2800" route="ramp_route" type="urban" begin="2800" end="3200" vehsPerHour="1363.6" departSpeed="max" departLane="random"/>
+
+    <flow id="main_3200" route="main_route" type="urban" begin="3200" end="3600" vehsPerHour="909.1"  departSpeed="max" departLane="random"/>
+    <flow id="ramp_3200" route="ramp_route" type="urban" begin="3200" end="3600" vehsPerHour="568.2"  departSpeed="max" departLane="random"/>
+
 </routes>

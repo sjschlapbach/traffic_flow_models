@@ -1048,6 +1048,7 @@ def main():
 
     # ! Scenario A
     network_a, metadata_a, _ = setup_network_a()
+
     run_calibration_experiment(
         scenario_name="Scenario A",
         network=network_a,
@@ -1066,6 +1067,7 @@ def main():
 
     # ! Scenario C (with lane drop/bottleneck)
     network_c, metadata_c, _ = setup_network_c()
+
     run_calibration_experiment(
         scenario_name="Scenario C",
         network=network_c,
