@@ -1,0 +1,13 @@
+<configuration>
+  <input>
+    <net-file value="scenario_c.net.xml"/>
+    <additional-files value="detector.xml,edge_data_config.add.xml"/>
+    <route-files value="scenario_c.rou.xml"/>
+  </input>
+  <time><end value="5000"/></time>
+  <output>
+    <statistic-output value="scenario_c_stats.xml"/>
+    <tripinfo-output value="tripinfo.xml"/>
+  </output>
+  <report><duration-log.statistics value="true"/></report>
+</configuration>

@@ -4,51 +4,52 @@
     <route id="main_exit" edges="m1 m2 offramp"/>
     <route id="ramp_thru" edges="onramp m2 m3"/>
     <route id="ramp_exit" edges="onramp m2 offramp"/>
-
-
-    <flow id="m_thru_0"    route="main_thru" begin="0"    end="400"  vehsPerHour="636.4"  departLane="random"/>
-    <flow id="m_exit_0"    route="main_exit" begin="0"    end="400"  vehsPerHour="159.1"  departLane="random"/>
-    <flow id="r_thru_0"    route="ramp_thru" begin="0"    end="400"  vehsPerHour="363.6"  departLane="random"/>
-    <flow id="r_exit_0"    route="ramp_exit" begin="0"    end="400"  vehsPerHour="90.9"   departLane="random"/>
-
-    <flow id="m_thru_400"  route="main_thru" begin="400"  end="800"  vehsPerHour="1527.3" departLane="random"/>
-    <flow id="m_exit_400"  route="main_exit" begin="400"  end="800"  vehsPerHour="381.8"  departLane="random"/>
-    <flow id="r_thru_400"  route="ramp_thru" begin="400"  end="800"  vehsPerHour="872.7"  departLane="random"/>
-    <flow id="r_exit_400"  route="ramp_exit" begin="400"  end="800"  vehsPerHour="218.2"  departLane="random"/>
-
-    <flow id="m_thru_800"  route="main_thru" begin="800"  end="1200" vehsPerHour="2163.6" departLane="random"/>
-    <flow id="m_exit_800"  route="main_exit" begin="800"  end="1200" vehsPerHour="540.9"  departLane="random"/>
-    <flow id="r_thru_800"  route="ramp_thru" begin="800"  end="1200" vehsPerHour="1236.4" departLane="random"/>
-    <flow id="r_exit_800"  route="ramp_exit" begin="800"  end="1200" vehsPerHour="309.1"  departLane="random"/>
-
-    <flow id="m_thru_1200" route="main_thru" begin="1200" end="1600" vehsPerHour="2545.5" departLane="random"/>
-    <flow id="m_exit_1200" route="main_exit" begin="1200" end="1600" vehsPerHour="636.4"  departLane="random"/>
-    <flow id="r_thru_1200" route="ramp_thru" begin="1200" end="1600" vehsPerHour="1454.5" departLane="random"/>
-    <flow id="r_exit_1200" route="ramp_exit" begin="1200" end="1600" vehsPerHour="363.6"  departLane="random"/>
-
-    <flow id="m_thru_1600" route="main_thru" begin="1600" end="2000" vehsPerHour="2800.0" departLane="random"/>
-    <flow id="m_exit_1600" route="main_exit" begin="1600" end="2000" vehsPerHour="700.0"  departLane="random"/>
-    <flow id="r_thru_1600" route="ramp_thru" begin="1600" end="2000" vehsPerHour="1600.0" departLane="random"/>
-    <flow id="r_exit_1600" route="ramp_exit" begin="1600" end="2000" vehsPerHour="400.0"  departLane="random"/>
-
-    <flow id="m_thru_2000" route="main_thru" begin="2000" end="2400" vehsPerHour="2545.5" departLane="random"/>
-    <flow id="m_exit_2000" route="main_exit" begin="2000" end="2400" vehsPerHour="636.4"  departLane="random"/>
-    <flow id="r_thru_2000" route="ramp_thru" begin="2000" end="2400" vehsPerHour="1454.5" departLane="random"/>
-    <flow id="r_exit_2000" route="ramp_exit" begin="2000" end="2400" vehsPerHour="363.6"  departLane="random"/>
-
-    <flow id="m_thru_2400" route="main_thru" begin="2400" end="2800" vehsPerHour="2163.6" departLane="random"/>
-    <flow id="m_exit_2400" route="main_exit" begin="2400" end="2800" vehsPerHour="540.9"  departLane="random"/>
-    <flow id="r_thru_2400" route="ramp_thru" begin="2400" end="2800" vehsPerHour="1236.4" departLane="random"/>
-    <flow id="r_exit_2400" route="ramp_exit" begin="2400" end="2800" vehsPerHour="309.1"  departLane="random"/>
-
-    <flow id="m_thru_2800" route="main_thru" begin="2800" end="3200" vehsPerHour="1527.3" departLane="random"/>
-    <flow id="m_exit_2800" route="main_exit" begin="2800" end="3200" vehsPerHour="381.8"  departLane="random"/>
-    <flow id="r_thru_2800" route="ramp_thru" begin="2800" end="3200" vehsPerHour="872.7"  departLane="random"/>
-    <flow id="r_exit_2800" route="ramp_exit" begin="2800" end="3200" vehsPerHour="218.2"  departLane="random"/>
-
-    <flow id="m_thru_3200" route="main_thru" begin="3200" end="3600" vehsPerHour="636.4"  departLane="random"/>
-    <flow id="m_exit_3200" route="main_exit" begin="3200" end="3600" vehsPerHour="159.1"  departLane="random"/>
-    <flow id="r_thru_3200" route="ramp_thru" begin="3200" end="3600" vehsPerHour="363.6"  departLane="random"/>
-    <flow id="r_exit_3200" route="ramp_exit" begin="3200" end="3600" vehsPerHour="90.9"   departLane="random"/>
-
+    <flow id="m_thru_0" route="main_thru" begin="0" end="300" vehsPerHour="1400.0" departLane="random"/>
+    <flow id="m_exit_0" route="main_exit" begin="0" end="300" vehsPerHour="350.0" departLane="random"/>
+    <flow id="r_thru_0" route="ramp_thru" begin="0" end="300" vehsPerHour="800.0" departLane="random"/>
+    <flow id="r_exit_0" route="ramp_exit" begin="0" end="300" vehsPerHour="200.0" departLane="random"/>
+    <flow id="m_thru_300" route="main_thru" begin="300" end="600" vehsPerHour="2800.0" departLane="random"/>
+    <flow id="m_exit_300" route="main_exit" begin="300" end="600" vehsPerHour="700.0" departLane="random"/>
+    <flow id="r_thru_300" route="ramp_thru" begin="300" end="600" vehsPerHour="1600.0" departLane="random"/>
+    <flow id="r_exit_300" route="ramp_exit" begin="300" end="600" vehsPerHour="400.0" departLane="random"/>
+    <flow id="m_thru_600" route="main_thru" begin="600" end="900" vehsPerHour="2800.0" departLane="random"/>
+    <flow id="m_exit_600" route="main_exit" begin="600" end="900" vehsPerHour="700.0" departLane="random"/>
+    <flow id="r_thru_600" route="ramp_thru" begin="600" end="900" vehsPerHour="1600.0" departLane="random"/>
+    <flow id="r_exit_600" route="ramp_exit" begin="600" end="900" vehsPerHour="400.0" departLane="random"/>
+    <flow id="m_thru_900" route="main_thru" begin="900" end="1200" vehsPerHour="2800.0" departLane="random"/>
+    <flow id="m_exit_900" route="main_exit" begin="900" end="1200" vehsPerHour="700.0" departLane="random"/>
+    <flow id="r_thru_900" route="ramp_thru" begin="900" end="1200" vehsPerHour="1600.0" departLane="random"/>
+    <flow id="r_exit_900" route="ramp_exit" begin="900" end="1200" vehsPerHour="400.0" departLane="random"/>
+    <flow id="m_thru_1200" route="main_thru" begin="1200" end="1500" vehsPerHour="2800.0" departLane="random"/>
+    <flow id="m_exit_1200" route="main_exit" begin="1200" end="1500" vehsPerHour="700.0" departLane="random"/>
+    <flow id="r_thru_1200" route="ramp_thru" begin="1200" end="1500" vehsPerHour="1600.0" departLane="random"/>
+    <flow id="r_exit_1200" route="ramp_exit" begin="1200" end="1500" vehsPerHour="400.0" departLane="random"/>
+    <flow id="m_thru_1500" route="main_thru" begin="1500" end="1800" vehsPerHour="2800.0" departLane="random"/>
+    <flow id="m_exit_1500" route="main_exit" begin="1500" end="1800" vehsPerHour="700.0" departLane="random"/>
+    <flow id="r_thru_1500" route="ramp_thru" begin="1500" end="1800" vehsPerHour="1485.7" departLane="random"/>
+    <flow id="r_exit_1500" route="ramp_exit" begin="1500" end="1800" vehsPerHour="371.4" departLane="random"/>
+    <flow id="m_thru_1800" route="main_thru" begin="1800" end="2100" vehsPerHour="2566.7" departLane="random"/>
+    <flow id="m_exit_1800" route="main_exit" begin="1800" end="2100" vehsPerHour="641.7" departLane="random"/>
+    <flow id="r_thru_1800" route="ramp_thru" begin="1800" end="2100" vehsPerHour="1257.1" departLane="random"/>
+    <flow id="r_exit_1800" route="ramp_exit" begin="1800" end="2100" vehsPerHour="314.3" departLane="random"/>
+    <flow id="m_thru_2100" route="main_thru" begin="2100" end="2400" vehsPerHour="2100.0" departLane="random"/>
+    <flow id="m_exit_2100" route="main_exit" begin="2100" end="2400" vehsPerHour="525.0" departLane="random"/>
+    <flow id="r_thru_2100" route="ramp_thru" begin="2100" end="2400" vehsPerHour="1028.6" departLane="random"/>
+    <flow id="r_exit_2100" route="ramp_exit" begin="2100" end="2400" vehsPerHour="257.1" departLane="random"/>
+    <flow id="m_thru_2400" route="main_thru" begin="2400" end="2700" vehsPerHour="1633.3" departLane="random"/>
+    <flow id="m_exit_2400" route="main_exit" begin="2400" end="2700" vehsPerHour="408.3" departLane="random"/>
+    <flow id="r_thru_2400" route="ramp_thru" begin="2400" end="2700" vehsPerHour="800.0" departLane="random"/>
+    <flow id="r_exit_2400" route="ramp_exit" begin="2400" end="2700" vehsPerHour="200.0" departLane="random"/>
+    <flow id="m_thru_2700" route="main_thru" begin="2700" end="3000" vehsPerHour="1166.7" departLane="random"/>
+    <flow id="m_exit_2700" route="main_exit" begin="2700" end="3000" vehsPerHour="291.7" departLane="random"/>
+    <flow id="r_thru_2700" route="ramp_thru" begin="2700" end="3000" vehsPerHour="571.4" departLane="random"/>
+    <flow id="r_exit_2700" route="ramp_exit" begin="2700" end="3000" vehsPerHour="142.9" departLane="random"/>
+    <flow id="m_thru_3000" route="main_thru" begin="3000" end="3300" vehsPerHour="700.0" departLane="random"/>
+    <flow id="m_exit_3000" route="main_exit" begin="3000" end="3300" vehsPerHour="175.0" departLane="random"/>
+    <flow id="r_thru_3000" route="ramp_thru" begin="3000" end="3300" vehsPerHour="342.9" departLane="random"/>
+    <flow id="r_exit_3000" route="ramp_exit" begin="3000" end="3300" vehsPerHour="85.7" departLane="random"/>
+    <flow id="m_thru_3300" route="main_thru" begin="3300" end="3600" vehsPerHour="233.3" departLane="random"/>
+    <flow id="m_exit_3300" route="main_exit" begin="3300" end="3600" vehsPerHour="58.3" departLane="random"/>
+    <flow id="r_thru_3300" route="ramp_thru" begin="3300" end="3600" vehsPerHour="114.3" departLane="random"/>
+    <flow id="r_exit_3300" route="ramp_exit" begin="3300" end="3600" vehsPerHour="28.6" departLane="random"/>
 </routes>
