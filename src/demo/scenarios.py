@@ -58,9 +58,9 @@ def _build_ab_base() -> tuple[Network, dict]:
     Returns `(network, metadata)` where `metadata` contains ids and splits.
     """
 
-    # three motorway segments approximating the original 6 cells (0.5 km each)
+    # motorway segments: 1 km upstream, 3 km downstream (total 4 km)
     m1 = MotorwayLink(id="m1", length=1.0, lanes=3)
-    m2 = MotorwayLink(id="m2", length=2.0, lanes=3)
+    m2 = MotorwayLink(id="m2", length=3.0, lanes=3)
 
     # add origin, destination and onramp
     origin = Origin(id="origin")
@@ -73,13 +73,13 @@ def _build_ab_base() -> tuple[Network, dict]:
     n0.position = (0.0, 0.0)
 
     nonr = Node(id="nonr", incoming=[origin_onr], outgoing=[onr])
-    nonr.position = (0.8, 0.1)
+    nonr.position = (0.5, 0.1)
 
     n1 = Node(id="n2", incoming=[m1, onr], outgoing=[m2])
     n1.position = (1.0, 0.0)
 
     n2 = Node(id="n3", incoming=[m2], outgoing=[destination])
-    n2.position = (3.0, 0.0)
+    n2.position = (4.0, 0.0)
 
     net = Network(nodes=[n0, nonr, n1, n2])
 
@@ -128,11 +128,11 @@ def setup_network_c() -> tuple[Network, dict, dict]:
     that propagates upstream and interacts with the onramp / virtual input queue.
     """
 
-    # motorway segments with a lane drop downstream
+    # motorway segments with a lane drop downstream: 1+1+1+1 km (total 4 km)
     m1 = MotorwayLink(id="m1", length=1.0, lanes=3)
     m2 = MotorwayLink(id="m2", length=1.0, lanes=3)
-    m3 = MotorwayLink(id="m3", length=0.5, lanes=1)
-    m4 = MotorwayLink(id="m4", length=0.5, lanes=3)
+    m3 = MotorwayLink(id="m3", length=1.0, lanes=1)
+    m4 = MotorwayLink(id="m4", length=1.0, lanes=3)
 
     # add origin, destination and onramp
     origin = Origin(id="origin")
@@ -145,7 +145,7 @@ def setup_network_c() -> tuple[Network, dict, dict]:
     n0.position = (0.0, 0.0)
 
     nonr = Node(id="nonr", incoming=[origin_onr], outgoing=[onr])
-    nonr.position = (0.8, 0.1)
+    nonr.position = (0.5, 0.1)
 
     n1 = Node(id="n1", incoming=[m1, onr], outgoing=[m2])
     n1.position = (1.0, 0.0)
@@ -154,10 +154,10 @@ def setup_network_c() -> tuple[Network, dict, dict]:
     n2.position = (2.0, 0.0)
 
     n3 = Node(id="n3", incoming=[m3], outgoing=[m4])
-    n3.position = (2.5, 0.0)
+    n3.position = (3.0, 0.0)
 
     n4 = Node(id="n4", incoming=[m4], outgoing=[destination])
-    n4.position = (3.0, 0.0)
+    n4.position = (4.0, 0.0)
 
     net = Network(nodes=[n0, nonr, n1, n2, n3, n4])
 
@@ -345,10 +345,10 @@ def setup_network_d() -> tuple[Network, dict, dict]:
     recovery downstream) clearly visible in the results and plots.
     """
 
-    # create segments: upstream 2 cells, middle (onramp), downstream with offramp
+    # create segments: 1 km upstream, 2 km middle, 1 km downstream with offramp (total 4 km)
     m1 = MotorwayLink(id="m1", length=1.0, lanes=3)
-    m2 = MotorwayLink(id="m2", length=1.0, lanes=3)
-    m3 = MotorwayLink(id="m3", length=1.5, lanes=2)
+    m2 = MotorwayLink(id="m2", length=2.0, lanes=3)
+    m3 = MotorwayLink(id="m3", length=1.0, lanes=2)
 
     # add origin, destination, onramp and offramp
     origin = Origin(id="origin")
@@ -363,19 +363,19 @@ def setup_network_d() -> tuple[Network, dict, dict]:
     n0.position = (0.0, 0.0)
 
     nonr = Node(id="nonr", incoming=[origin_onr], outgoing=[onr])
-    nonr.position = (0.8, 0.1)
+    nonr.position = (0.5, 0.1)
 
     n1 = Node(id="n1", incoming=[m1, onr], outgoing=[m2])
     n1.position = (1.0, 0.0)
 
     n2 = Node(id="n2", incoming=[m2], outgoing=[m3, offr])
-    n2.position = (2.0, 0.0)
+    n2.position = (3.0, 0.0)
 
     noffr = Node(id="noffr", incoming=[offr], outgoing=[destination_offr])
-    noffr.position = (2.2, -0.1)
+    noffr.position = (3.0, -0.1)
 
     n3 = Node(id="n3", incoming=[m3], outgoing=[destination])
-    n3.position = (3.5, 0.0)
+    n3.position = (4.0, 0.0)
 
     net = Network(nodes=[n0, nonr, n1, n2, n3, noffr])
 
@@ -481,6 +481,66 @@ def setup_network_e() -> tuple[Network, dict, dict]:
         origin_onr3.id: onramp_demand_c,
     }
 
+    return net, metadata, origin_demands
+
+
+def mainline_demand_e(time: float) -> float:
+    """Demand profile for scenario E: bottleneck scenario."""
+    return demand(time, 450 / 3600, 3150 / 3600, 3600 / 3600, 3500)
+
+
+def setup_network_scenario_e_bottleneck() -> tuple[Network, dict, dict]:
+    """
+    Scenario E: simple bottleneck with lane drop and no onramps.
+
+    The motorway has an upstream section (2 km, 3 lanes), a bottleneck
+    section (1 km, 1 lane), and a downstream recovery section (1 km, 3 lanes).
+    Total highway length: 4 km.
+
+    Returns the network, metadata and origin demand mapping.
+    """
+
+    # motorway segments: 2 km upstream + 1 km bottleneck + 1 km downstream (total 4 km)
+    m1 = MotorwayLink(id="m1", length=2.0, lanes=3)
+    m3 = MotorwayLink(id="m3", length=1.0, lanes=1)
+    m4 = MotorwayLink(id="m4", length=1.0, lanes=3)
+
+    # add origin and destination
+    origin = Origin(id="origin")
+    destination = Destination(id="destination")
+
+    # connect the links through nodes and build the network structure
+    n0 = Node(id="n0", incoming=[origin], outgoing=[m1])
+    n0.position = (0.0, 0.0)
+
+    n2 = Node(id="n2", incoming=[m1], outgoing=[m3])
+    n2.position = (2.0, 0.0)
+
+    n3 = Node(id="n3", incoming=[m3], outgoing=[m4])
+    n3.position = (3.0, 0.0)
+
+    n4 = Node(id="n4", incoming=[m4], outgoing=[destination])
+    n4.position = (4.0, 0.0)
+
+    net = Network(nodes=[n0, n2, n3, n4])
+
+    splits = {
+        n0.id: {m1.id: 1.0},
+        n2.id: {m3.id: 1.0},
+        n3.id: {m4.id: 1.0},
+        n4.id: {destination.id: 1.0},
+    }
+
+    metadata = {
+        "origin_ids": [origin.id],
+        "onramp_ids": [],
+        "motorway_ids": [m1.id, m3.id, m4.id],
+        "offramp_ids": [],
+        "destination_ids": [destination.id],
+        "splits": splits,
+    }
+
+    origin_demands = {origin.id: mainline_demand_e}
     return net, metadata, origin_demands
 
 

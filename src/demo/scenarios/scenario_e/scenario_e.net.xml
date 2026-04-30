@@ -1,60 +1,72 @@
 <?xml version="1.0" encoding="UTF-8"?>
 
-<net version="1.20" junctionCornerDetail="5" limitTurnSpeed="5.50" avoidOverlap="0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://sumo.dlr.de/xsd/net_file.xsd">
+<net version="1.20" junctionCornerDetail="5" limitTurnSpeed="5.50" avoidOverlap="0"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:noNamespaceSchemaLocation="http://sumo.dlr.de/xsd/net_file.xsd">
 
-    <location netOffset="0.00,0.00" convBoundary="0.00,-9.60,3000.00,0.00" 
-    origBoundary="0.00,-9.60,3000.00,0.00" projParameter="!"/>
+    <location netOffset="0.00,0.00" convBoundary="0.00,-9.60,4000.00,0.00"
+        origBoundary="0.00,-9.60,4000.00,0.00" projParameter="!" />
 
     <edge id=":n2_0" function="internal">
-        <lane id=":n2_0_0" index="0" speed="27.78" length="9.22" shape="1996.00,-8.00 1998.71,-7.00 2000.05,-4.80 2001.36,-2.60 2004.00,-1.60"/>
-        <lane id=":n2_0_1" index="1" speed="27.78" length="9.22" shape="1996.00,-4.80 1998.46,-4.30 2000.00,-3.20 2001.54,-2.10 2004.00,-1.60"/>
-        <lane id=":n2_0_2" index="2" speed="27.78" length="9.22" shape="1996.00,-1.60 2004.00,-1.60"/>
+        <lane id=":n2_0_0" index="0" speed="27.78" length="9.22"
+            shape="2000.00,-8.00 2002.71,-7.00 2004.05,-4.80 2005.36,-2.60 2008.00,-1.60" />
+        <lane id=":n2_0_1" index="1" speed="27.78" length="9.22"
+            shape="2000.00,-4.80 2002.46,-4.30 2004.00,-3.20 2005.54,-2.10 2008.00,-1.60" />
+        <lane id=":n2_0_2" index="2" speed="27.78" length="9.22" shape="2000.00,-1.60 2008.00,-1.60" />
     </edge>
     <edge id=":n3_0" function="internal">
-        <lane id=":n3_0_0" index="0" speed="27.78" length="9.22" shape="2496.00,-1.60 2498.64,-2.60 2499.95,-4.80 2501.29,-7.00 2504.00,-8.00"/>
-        <lane id=":n3_0_1" index="1" speed="27.78" length="9.22" shape="2496.00,-1.60 2498.46,-2.10 2500.00,-3.20 2501.54,-4.30 2504.00,-4.80"/>
-        <lane id=":n3_0_2" index="2" speed="27.78" length="9.22" shape="2496.00,-1.60 2504.00,-1.60"/>
+        <lane id=":n3_0_0" index="0" speed="27.78" length="9.22"
+            shape="3000.00,-1.60 3002.64,-2.60 3003.95,-4.80 3005.29,-7.00 3008.00,-8.00" />
+        <lane id=":n3_0_1" index="1" speed="27.78" length="9.22"
+            shape="3000.00,-1.60 3002.46,-2.10 3004.00,-3.20 3005.54,-4.30 3008.00,-4.80" />
+        <lane id=":n3_0_2" index="2" speed="27.78" length="9.22" shape="3000.00,-1.60 3008.00,-1.60" />
     </edge>
 
     <edge id="m1" from="n0" to="n2" priority="-1" type="highway.motorway">
-        <lane id="m1_0" index="0" speed="27.78" length="1996.00" shape="0.00,-8.00 1996.00,-8.00"/>
-        <lane id="m1_1" index="1" speed="27.78" length="1996.00" shape="0.00,-4.80 1996.00,-4.80"/>
-        <lane id="m1_2" index="2" speed="27.78" length="1996.00" shape="0.00,-1.60 1996.00,-1.60"/>
+        <lane id="m1_0" index="0" speed="27.78" length="2000.00" shape="0.00,-8.00 1996.00,-8.00" />
+        <lane id="m1_1" index="1" speed="27.78" length="2000.00" shape="0.00,-4.80 1996.00,-4.80" />
+        <lane id="m1_2" index="2" speed="27.78" length="2000.00" shape="0.00,-1.60 1996.00,-1.60" />
     </edge>
     <edge id="m3" from="n2" to="n3" priority="-1" type="highway.motorway">
-        <lane id="m3_0" index="0" speed="27.78" length="522.00" shape="2004.00,-1.60 2496.00,-1.60"/>
+        <lane id="m3_0" index="0" speed="27.78" length="1000.00" shape="2008.00,-1.60 3000.00,-1.60" />
     </edge>
     <edge id="m4" from="n3" to="n4" priority="-1" type="highway.motorway">
-        <lane id="m4_0" index="0" speed="27.78" length="526.00" shape="2504.00,-8.00 3000.00,-8.00"/>
-        <lane id="m4_1" index="1" speed="27.78" length="526.00" shape="2504.00,-4.80 3000.00,-4.80"/>
-        <lane id="m4_2" index="2" speed="27.78" length="526.00" shape="2504.00,-1.60 3000.00,-1.60"/>
+        <lane id="m4_0" index="0" speed="27.78" length="1000.00" shape="3008.00,-8.00 4000.00,-8.00" />
+        <lane id="m4_1" index="1" speed="27.78" length="1000.00" shape="3008.00,-4.80 4000.00,-4.80" />
+        <lane id="m4_2" index="2" speed="27.78" length="1000.00" shape="3008.00,-1.60 4000.00,-1.60" />
     </edge>
 
-    <junction id="n0" type="dead_end" x="0.00" y="0.00" incLanes="" intLanes="" shape="0.00,0.00 0.00,-9.60"/>
-    <junction id="n2" type="zipper" x="2000.00" y="0.00" incLanes="m1_0 m1_1 m1_2" intLanes=":n2_0_0 :n2_0_1 :n2_0_2" shape="2004.00,0.00 2004.00,-3.20 2001.98,-3.67 2000.79,-4.86 1999.21,-7.94 1998.02,-9.13 1996.00,-9.60 1996.00,0.00">
-        <request index="0" response="110" foes="110" cont="0"/>
-        <request index="1" response="101" foes="101" cont="0"/>
-        <request index="2" response="011" foes="011" cont="0"/>
+    <junction id="n0" type="dead_end" x="0.00" y="0.00" incLanes="" intLanes=""
+        shape="0.00,0.00 0.00,-9.60" />
+    <junction id="n2" type="zipper" x="2004.00" y="0.00" incLanes="m1_0 m1_1 m1_2"
+        intLanes=":n2_0_0 :n2_0_1 :n2_0_2"
+        shape="2008.00,0.00 2008.00,-3.20 2005.98,-3.67 2004.79,-4.86 2003.21,-7.94 2002.02,-9.13 2000.00,-9.60 2000.00,0.00">
+        <request index="0" response="110" foes="110" cont="0" />
+        <request index="1" response="101" foes="101" cont="0" />
+        <request index="2" response="011" foes="011" cont="0" />
     </junction>
-    <junction id="n3" type="zipper" x="2500.00" y="0.00" incLanes="m3_0" intLanes=":n3_0_0 :n3_0_1 :n3_0_2" shape="2504.00,0.00 2504.00,-9.60 2501.98,-9.13 2500.79,-7.94 2499.21,-4.86 2498.02,-3.67 2496.00,-3.20 2496.00,0.00">
-        <request index="0" response="000" foes="000" cont="0"/>
-        <request index="1" response="000" foes="000" cont="0"/>
-        <request index="2" response="000" foes="000" cont="0"/>
+    <junction id="n3" type="zipper" x="3004.00" y="0.00" incLanes="m3_0"
+        intLanes=":n3_0_0 :n3_0_1 :n3_0_2"
+        shape="3008.00,0.00 3008.00,-9.60 3005.98,-9.13 3004.79,-7.94 3003.21,-4.86 3002.02,-3.67 3000.00,-3.20 3000.00,0.00">
+        <request index="0" response="000" foes="000" cont="0" />
+        <request index="1" response="000" foes="000" cont="0" />
+        <request index="2" response="000" foes="000" cont="0" />
     </junction>
-    <junction id="n4" type="dead_end" x="3000.00" y="0.00" incLanes="m4_0 m4_1 m4_2" intLanes="" shape="3000.00,-9.60 3000.00,0.00"/>
+    <junction id="n4" type="dead_end" x="4000.00" y="0.00" incLanes="m4_0 m4_1 m4_2" intLanes=""
+        shape="4000.00,-9.60 4000.00,0.00" />
 
-    <connection from="m1" to="m3" fromLane="0" toLane="0" via=":n2_0_0" dir="s" state="Z"/>
-    <connection from="m1" to="m3" fromLane="1" toLane="0" via=":n2_0_1" dir="s" state="Z"/>
-    <connection from="m1" to="m3" fromLane="2" toLane="0" via=":n2_0_2" dir="s" state="Z"/>
-    <connection from="m3" to="m4" fromLane="0" toLane="0" via=":n3_0_0" dir="s" state="Z"/>
-    <connection from="m3" to="m4" fromLane="0" toLane="1" via=":n3_0_1" dir="s" state="Z"/>
-    <connection from="m3" to="m4" fromLane="0" toLane="2" via=":n3_0_2" dir="s" state="Z"/>
+    <connection from="m1" to="m3" fromLane="0" toLane="0" via=":n2_0_0" dir="s" state="Z" />
+    <connection from="m1" to="m3" fromLane="1" toLane="0" via=":n2_0_1" dir="s" state="Z" />
+    <connection from="m1" to="m3" fromLane="2" toLane="0" via=":n2_0_2" dir="s" state="Z" />
+    <connection from="m3" to="m4" fromLane="0" toLane="0" via=":n3_0_0" dir="s" state="Z" />
+    <connection from="m3" to="m4" fromLane="0" toLane="1" via=":n3_0_1" dir="s" state="Z" />
+    <connection from="m3" to="m4" fromLane="0" toLane="2" via=":n3_0_2" dir="s" state="Z" />
 
-    <connection from=":n2_0" to="m3" fromLane="0" toLane="0" dir="s" state="M"/>
-    <connection from=":n2_0" to="m3" fromLane="1" toLane="0" dir="s" state="M"/>
-    <connection from=":n2_0" to="m3" fromLane="2" toLane="0" dir="s" state="M"/>
-    <connection from=":n3_0" to="m4" fromLane="0" toLane="0" dir="s" state="M"/>
-    <connection from=":n3_0" to="m4" fromLane="1" toLane="1" dir="s" state="M"/>
-    <connection from=":n3_0" to="m4" fromLane="2" toLane="2" dir="s" state="M"/>
+    <connection from=":n2_0" to="m3" fromLane="0" toLane="0" dir="s" state="M" />
+    <connection from=":n2_0" to="m3" fromLane="1" toLane="0" dir="s" state="M" />
+    <connection from=":n2_0" to="m3" fromLane="2" toLane="0" dir="s" state="M" />
+    <connection from=":n3_0" to="m4" fromLane="0" toLane="0" dir="s" state="M" />
+    <connection from=":n3_0" to="m4" fromLane="1" toLane="1" dir="s" state="M" />
+    <connection from=":n3_0" to="m4" fromLane="2" toLane="2" dir="s" state="M" />
 
 </net>
