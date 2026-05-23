@@ -8,6 +8,8 @@
 
 A Python library for simulating and analyzing macroscopic traffic flow on highway networks. This package implements two widely-used traffic flow models—**Cell Transmission Model (CTM)** and **METANET**—along with network infrastructure components, ramp metering controllers (ALINEA), and visualization tools.
 
+**Full documentation:** [https://sjschlapbach.github.io/traffic_flow_models](https://sjschlapbach.github.io/traffic_flow_models/)
+
 ## Features
 
 - **Traffic Flow Models**: CTM (first-order) and METANET (second-order) macroscopic models
@@ -15,8 +17,8 @@ A Python library for simulating and analyzing macroscopic traffic flow on highwa
 - **Control Strategies**: Generic control interfaces for local and coordinated ramp metering strategies, including implementations for ALINEA, METALINE, and fixed-rate metering
 - **Performance Metrics**: Extensive set of network performance metrics (VKT, VHT, average speed, density, flow, etc.) computed from simulation results
 - **Visualization**: Network topology plotting, simulation result visualization, and video export
-- **SUMO Integration**: Pipeline components for importing and benchmarking real-world highway networks
-- **Calibration & Parameter Estimation**: Tools for calibrating macroscopic model parameters from aggregated observation data. Includes regularized least-squares calibration, multi-start parameter search, parameter-correlation analysis, and plotting utilities.
+- **SUMO Integration** _(experimental)_: Pipeline components for importing and benchmarking real-world highway networks via SUMO microsimulation
+- **Calibration & Parameter Estimation** _(experimental)_: Tools for calibrating macroscopic model parameters from aggregated observation data. Includes regularized least-squares calibration, multi-start parameter search, parameter-correlation analysis, and plotting utilities.
 
 ## Installation
 
@@ -29,6 +31,12 @@ pip install traffic-flow-models
 If you plan to use the pipeline components involving SUMO (e.g. for benchmarking highway networks of a specific city), please refer to the [SUMO installation guide](https://sumo.dlr.de/docs/Installing/index.html) for instructions on how to install SUMO on your system (not included in the package).
 
 For the pipeline to be fully functional, auxiliary command line commands such as `netconvert` and `sumo` need to be accessible from your system PATH. For installations on macOS the SUMO installer might not set the SUMO_HOME environment variable automatically / correctly. We recommend checking manually that the variable is set to your library installation (something like `/Library/Frameworks/EclipseSUMO.framework/Versions/Current/EclipseSUMO/share/sumo`).
+
+## Documentation
+
+Full API reference, model descriptions, tutorials, and the calibration guide are available at:
+
+**[https://sjschlapbach.github.io/traffic_flow_models/](https://sjschlapbach.github.io/traffic_flow_models/)**
 
 ## Usage Examples
 
@@ -61,7 +69,7 @@ m3 = MotorwayLink(
     free_flow_speed=100, jam_density=180
 )
 r1 = Onramp(
-    id="r1", lanes=1, lane_capacity=1800,
+    id="r1", length=0.5, lanes=1, lane_capacity=1800,
     free_flow_speed=90, jam_density=170
 )
 f1 = Offramp(
@@ -230,6 +238,7 @@ from traffic_flow_models import Onramp, AlineaController
 
 onramp = Onramp(
     id="onramp",
+    length=0.5,
     lanes=1,
     lane_capacity=2000,
     free_flow_speed=100,
