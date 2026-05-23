@@ -1,3 +1,28 @@
+## [1.1.0] - 2026-05-23
+
+### Enhancements
+
+- Add microsimulation outputs for flow, density and speed to link-specific highway link plots (#91)
+- Introduce proper normalization of calibration data based on link-specific flow, density and speed mean values (#92)
+- Add additional demo scenario with bottleneck only (#95)
+
+### Features
+
+- *(docs)* Set up documentation with automated github actions deployment (#98)
+
+### Bug Fixes
+
+- Compute cell flow from loop detector density and speed measurements through fundamental relation (#88)
+- Remove unrequired default values to avoid undesired masking effects from backbone aggregator (#90)
+
+### Miscellaneous Tasks
+
+- *(release)* Update changelog for version 1.0.0
+- Update README
+- Change aggregation window for backbone state aggregator to one minute
+- Add failsafe for calibration with diverging state trajectories (#89)
+- Update docstrings of remaining package classes
+- *(release)* V1.1.0
 ## [1.0.0] - 2026-04-27
 
 ### Enhancements
