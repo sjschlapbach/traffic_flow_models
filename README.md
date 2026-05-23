@@ -261,7 +261,7 @@ source venv/bin/activate  # On Windows: venv\Scripts\activate
 # Install package
 pip install -e .
 
-# For development (includes pytest)
+# For development — includes pytest, linting tools, and MkDocs for documentation
 pip install -e ".[dev]"
 ```
 
@@ -279,6 +279,21 @@ Quickstart: Run one of the demo scripts to see the package in action:
 ```bash
 python -m src.demo.ctm_simulation
 python -m src.demo.metanet_simulation
+```
+
+### Documentation
+
+After installing with `.[dev]`, serve the documentation site locally with:
+
+```bash
+source venv/bin/activate
+mkdocs serve
+```
+
+The site is then available at `http://127.0.0.1:8000`. To build a static copy:
+
+```bash
+mkdocs build
 ```
 
 Contributions are welcome! Before opening a pull request, please ensure that:
