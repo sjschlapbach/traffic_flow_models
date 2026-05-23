@@ -2,11 +2,7 @@ import casadi
 import numpy as np
 
 from traffic_flow_models import (
-    Network,
-    Node,
-    Origin,
-    Destination,
-    MotorwayLink,
+    CTMSymbolicParams,
     FlowController,
     AlineaController,
     Onramp,
@@ -47,9 +43,6 @@ def test_flowcontroller_attributes_and_compute():
     onr = Onramp(
         length=0.5,
         lanes=1,
-        lane_capacity=1500,
-        free_flow_speed=80,
-        jam_density=140,
         id="r1",
     )
     c = FlowController(onramp=onr, flow=900.0)
@@ -67,7 +60,7 @@ def test_flowcontroller_attributes_and_compute():
 
 
 def test_store_and_forward_respects_metering_rate():
-    capacity = 100.0
+    params = CTMSymbolicParams(vf=80.0, qc_lane=100.0, rho_jam=200.0)
     jam_density = 200.0
     backward_wave_speed = 20.0
     density = casadi.SX(10.0)
@@ -77,14 +70,15 @@ def test_store_and_forward_respects_metering_rate():
     metering_rate = casadi.SX(30.0)
 
     inflow, updated_queue = store_and_forward_update(
-        capacity,
-        jam_density,
-        backward_wave_speed,
-        density,
-        demand,
-        queue,
-        dt,
-        metering_rate,
+        params=params,
+        lanes=1,
+        jam_density=jam_density,
+        backward_wave_speed=backward_wave_speed,
+        density=density,
+        demand=demand,
+        queue=queue,
+        dt=dt,
+        metering_rate=metering_rate,
     )
     inflow_val, queue_val = _eval([inflow, updated_queue])
     assert inflow_val == 30.0
@@ -92,7 +86,7 @@ def test_store_and_forward_respects_metering_rate():
 
 
 def test_store_and_forward_without_metering_rate():
-    capacity = 100.0
+    params = CTMSymbolicParams(vf=80.0, qc_lane=100.0, rho_jam=200.0)
     jam_density = 200.0
     backward_wave_speed = 20.0
     density = casadi.SX(10.0)
@@ -101,7 +95,14 @@ def test_store_and_forward_without_metering_rate():
     dt = 1.0
 
     inflow, updated_queue = store_and_forward_update(
-        capacity, jam_density, backward_wave_speed, density, demand, queue, dt
+        params=params,
+        lanes=1,
+        jam_density=jam_density,
+        backward_wave_speed=backward_wave_speed,
+        density=density,
+        demand=demand,
+        queue=queue,
+        dt=dt,
     )
     inflow_val, queue_val = _eval([inflow, updated_queue])
     # without metering, qin_demand = demand + queue/dt = 60 -> inflow = min(capacity,60)=60
@@ -113,9 +114,6 @@ def test_onramp_accepts_controllers_and_compute():
     onramp_fc = Onramp(
         length=0.5,
         lanes=1,
-        lane_capacity=1500,
-        free_flow_speed=80,
-        jam_density=140,
         id="r1",
     )
     fc = FlowController(onramp=onramp_fc, flow=500.0)
@@ -124,9 +122,6 @@ def test_onramp_accepts_controllers_and_compute():
     onramp_al = Onramp(
         length=0.5,
         lanes=1,
-        lane_capacity=1500,
-        free_flow_speed=80,
-        jam_density=140,
         id="r2",
     )
 
@@ -156,9 +151,6 @@ def test_alinea_attributes_and_compute():
     onr = Onramp(
         length=0.5,
         lanes=1,
-        lane_capacity=1500,
-        free_flow_speed=80,
-        jam_density=140,
         id="r1",
     )
 
@@ -214,9 +206,6 @@ def test_custom_controller_callable_and_numeric_conversion():
     onr2 = Onramp(
         length=0.5,
         lanes=1,
-        lane_capacity=1500,
-        free_flow_speed=80,
-        jam_density=140,
         id="r1",
     )
     cc = CustomController(onramp=onr2, controller_fn=fn_casadi)
@@ -254,9 +243,6 @@ def test_custom_controller_with_params():
     onr3 = Onramp(
         length=0.5,
         lanes=1,
-        lane_capacity=1500,
-        free_flow_speed=80,
-        jam_density=140,
         id="r1",
     )
     cc = CustomController(
@@ -276,9 +262,6 @@ def test_metaline_init_fail_cases():
     onr = Onramp(
         length=0.5,
         lanes=1,
-        lane_capacity=1500,
-        free_flow_speed=80,
-        jam_density=140,
         id="r1",
     )
 
@@ -323,25 +306,16 @@ def test_metaline_equivalent_to_alinea_for_diagonal_gains():
     onr1 = Onramp(
         length=0.5,
         lanes=1,
-        lane_capacity=1500,
-        free_flow_speed=80,
-        jam_density=140,
         id="r1",
     )
     onr2 = Onramp(
         length=0.5,
         lanes=1,
-        lane_capacity=1500,
-        free_flow_speed=80,
-        jam_density=140,
         id="r2",
     )
     onr3 = Onramp(
         length=0.5,
         lanes=1,
-        lane_capacity=1500,
-        free_flow_speed=80,
-        jam_density=140,
         id="r3",
     )
 

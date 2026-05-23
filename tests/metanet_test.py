@@ -22,14 +22,11 @@ class TestMETANET:
         # choose parameters that eliminate secondary effects so the
         # METANET speed update reduces to a no-op (stationary speed)
         model = METANET()
-        link = MotorwayLink(
-            length=0.5,
-            lanes=2,
-            lane_capacity=2000,
-            free_flow_speed=100,
-            jam_density=150,
-        )
+        link = MotorwayLink(length=0.5, lanes=2)
         model_params: METANETParams = {
+            "vf": 100.0,
+            "qc_lane": 2000.0,
+            "rho_jam": 150.0,
             "tau": 1.0,
             "nu": 0.0,
             "kappa": 0.0,
@@ -39,7 +36,9 @@ class TestMETANET:
         }
 
         # partition link into one cell using a small dt for CFL condition
-        link.partition_link(preferred_cell_size=0.5, dt=0.001)
+        link.partition_link(
+            max_vf=model_params["vf"], preferred_cell_size=0.5, dt=0.001
+        )
         cell = link.get_cell(0)
 
         previous_density = 20.0
@@ -49,8 +48,6 @@ class TestMETANET:
         previous_speed = model.stationary_velocity(
             params=model_params,
             link_id=link.id,
-            lane_capacity=link.Qc_lane,
-            free_flow_speed=link.vf,
             density=previous_density,
         )
 
@@ -139,21 +136,13 @@ class TestMETANET:
         # evaluating the first cell's downstream density. Test a small
         # two-cell motorway link without ramps to validate consistency between
         # step() and cell_update() for the first cell.
-        link = MotorwayLink(
-            length=2.0,
-            lanes=1,
-            lane_capacity=2000,
-            free_flow_speed=100,
-            jam_density=150,
-        )
+        link = MotorwayLink(length=2.0, lanes=1)
         dt = 0.005
-        link.partition_link(preferred_cell_size=1.5, dt=dt)
+        link.partition_link(max_vf=100.0, preferred_cell_size=1.5, dt=dt)
 
         origin = Origin()
         ramp_origin = Origin()
-        onramp = Onramp(
-            length=0.5, lanes=1, lane_capacity=1000, free_flow_speed=60, jam_density=100
-        )
+        onramp = Onramp(length=0.5, lanes=1)
         destination = Destination()
 
         node_main = Node(incoming=[origin], outgoing=[link])
@@ -163,6 +152,9 @@ class TestMETANET:
 
         model = METANET()
         model_params: METANETParams = {
+            "vf": 100.0,
+            "qc_lane": 2000.0,
+            "rho_jam": 150.0,
             "tau": 1.0,
             "nu": 0.0,
             "kappa": 0.1,
@@ -289,19 +281,16 @@ class TestMETANET:
         assert np.isclose(speed[link.id][0], next_speed_direct)
 
     def test_critical_density_and_backward_wave(self):
-        link = MotorwayLink(
-            length=1.0,
-            lanes=1,
-            lane_capacity=2000,
-            free_flow_speed=100,
-            jam_density=150,
-        )
-        link.partition_link(preferred_cell_size=1.0, dt=0.001)
+        link = MotorwayLink(length=1.0, lanes=1)
+        link.partition_link(max_vf=100.0, preferred_cell_size=1.0, dt=0.001)
 
         model = METANET()
 
         const_alpha = 2.0
         model_params: METANETParams = {
+            "vf": 100.0,
+            "qc_lane": 2000.0,
+            "rho_jam": 150.0,
             "tau": 1.0,
             "nu": 0.0,
             "kappa": 0.1,
@@ -310,23 +299,19 @@ class TestMETANET:
             "alpha": {link.id: const_alpha},
         }
 
-        expected_rho_cr = link.Qc_lane / (link.vf * np.exp(-1 / const_alpha))
-        computed_rho_cr = model.critical_density(
-            params=model_params,
-            link_id=link.id,
-            lane_capacity=link.Qc_lane,
-            free_flow_speed=link.vf,
+        expected_rho_cr = model_params["qc_lane"] / (
+            model_params["vf"] * np.exp(-1 / const_alpha)
         )
+        computed_rho_cr = model.critical_density(params=model_params, link_id=link.id)
         assert np.isclose(computed_rho_cr, expected_rho_cr)
 
-        expected_w = link.Qc / (link.rho_jam - expected_rho_cr)
+        expected_w = (
+            link.lanes
+            * model_params["qc_lane"]
+            / (model_params["rho_jam"] - expected_rho_cr)
+        )
         computed_w = model.backward_wave_speed(
-            params=model_params,
-            link_id=link.id,
-            capacity=link.Qc,
-            lane_capacity=link.Qc_lane,
-            jam_density=link.rho_jam,
-            free_flow_speed=link.vf,
+            params=model_params, link_id=link.id, lanes=link.lanes
         )
         assert np.isclose(computed_w, expected_w)
 
@@ -335,21 +320,9 @@ class TestMETANET:
         # (phi term should apply additional deceleration)
         # build a two-link motorway link with an upstream link having an upcoming drop
         dt = 0.001
-        link = MotorwayLink(
-            length=2.0,
-            lanes=2,
-            lane_capacity=2000,
-            free_flow_speed=100,
-            jam_density=150,
-        )
+        link = MotorwayLink(length=2.0, lanes=2)
 
-        link2 = MotorwayLink(
-            length=2.0,
-            lanes=1,
-            lane_capacity=2000,
-            free_flow_speed=100,
-            jam_density=150,
-        )
+        link2 = MotorwayLink(length=2.0, lanes=1)
 
         origin = Origin()
         destination = Destination()
@@ -363,6 +336,9 @@ class TestMETANET:
         model_no_phi = METANET()
         model_with_phi = METANET()
         model_no_phi_params: METANETParams = {
+            "vf": 100.0,
+            "qc_lane": 2000.0,
+            "rho_jam": 150.0,
             "tau": 1.0,
             "nu": 0.0,
             "kappa": 0.1,
@@ -430,16 +406,8 @@ class TestMETANET:
 
     def test_model_params_conversion_and_validation(self):
         # build a minimal network with one motorway link and one onramp
-        link = MotorwayLink(
-            length=1.0,
-            lanes=1,
-            lane_capacity=2000,
-            free_flow_speed=100,
-            jam_density=150,
-        )
-        onramp = Onramp(
-            length=0.5, lanes=1, lane_capacity=1000, free_flow_speed=60, jam_density=100
-        )
+        link = MotorwayLink(length=1.0, lanes=1)
+        onramp = Onramp(length=0.5, lanes=1)
         origin = Origin()
         destination = Destination()
 
@@ -451,6 +419,9 @@ class TestMETANET:
 
         # 1) scalar alpha -> vector and back
         scalar_params: METANETParams = {
+            "vf": 100.0,
+            "qc_lane": 2000.0,
+            "rho_jam": 150.0,
             "tau": 1.0,
             "nu": 0.2,
             "kappa": 0.1,
@@ -460,11 +431,11 @@ class TestMETANET:
         }
 
         vec = model.model_params_to_vec(network=network, model_params=scalar_params)
-        # we expect 5 scalars + 2 link-specific alphas (onramp + motorway link)
-        assert vec.shape[0] == 7
+        # we expect 8 scalars + 2 link-specific alphas (onramp + motorway link)
+        assert vec.shape[0] == 10
 
         unpacked = model.model_params_vec_to_dict(network=network, model_params_vec=vec)
-        assert unpacked["tau"] == vec[0]
+        assert unpacked["tau"] == vec[3]
         # alpha must be a dict mapping link ids -> values
         assert isinstance(unpacked["alpha"], dict)
         assert len(unpacked["alpha"]) == 2
@@ -524,23 +495,13 @@ class TestMETANET:
         # with offramp at node3 for traffic exit
         dt = 0.005
 
-        link1 = MotorwayLink(
-            length=1.0, lanes=2, lane_capacity=1500, free_flow_speed=80, jam_density=140
-        )
-        link2 = MotorwayLink(
-            length=1.0, lanes=2, lane_capacity=1500, free_flow_speed=80, jam_density=140
-        )
-        link3 = MotorwayLink(
-            length=1.0, lanes=2, lane_capacity=1500, free_flow_speed=80, jam_density=140
-        )
-        link4 = MotorwayLink(
-            length=1.0, lanes=2, lane_capacity=1500, free_flow_speed=80, jam_density=140
-        )
+        link1 = MotorwayLink(length=1.0, lanes=2)
+        link2 = MotorwayLink(length=1.0, lanes=2)
+        link3 = MotorwayLink(length=1.0, lanes=2)
+        link4 = MotorwayLink(length=1.0, lanes=2)
 
         origin = Origin()
-        offramp = Offramp(
-            lanes=1, lane_capacity=2000, free_flow_speed=100, jam_density=180
-        )
+        offramp = Offramp(lanes=1)
         dest = Destination()
 
         # create circular topology
@@ -553,13 +514,16 @@ class TestMETANET:
         network = Network(nodes=[node1, node2, node3, node4, node_off])
 
         # partition links
-        link1.partition_link(preferred_cell_size=0.5, dt=dt)
-        link2.partition_link(preferred_cell_size=0.5, dt=dt)
-        link3.partition_link(preferred_cell_size=0.5, dt=dt)
-        link4.partition_link(preferred_cell_size=0.5, dt=dt)
+        link1.partition_link(max_vf=80.0, preferred_cell_size=0.5, dt=dt)
+        link2.partition_link(max_vf=80.0, preferred_cell_size=0.5, dt=dt)
+        link3.partition_link(max_vf=80.0, preferred_cell_size=0.5, dt=dt)
+        link4.partition_link(max_vf=80.0, preferred_cell_size=0.5, dt=dt)
 
         model = METANET()
         model_params: METANETParams = {
+            "vf": 80.0,
+            "qc_lane": 1500.0,
+            "rho_jam": 140.0,
             "tau": 1.0,
             "nu": 0.1,
             "kappa": 0.1,

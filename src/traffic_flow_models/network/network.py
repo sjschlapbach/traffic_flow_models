@@ -1304,9 +1304,7 @@ class Network:
                                 f"      Length: {link.length} km, Lanes: {link.lanes}, Cells: {len(link)}\n"
                             )
                         elif isinstance(link, (Onramp)):
-                            f.write(
-                                f"      Lanes: {link.lanes}, Capacity: {link.Qc} veh/h\n"
-                            )
+                            f.write(f"      Lanes: {link.lanes}\n")
                 else:
                     f.write("  Incoming Links: None\n")
 
@@ -1329,9 +1327,7 @@ class Network:
                                 f"      Length: {link.length} km, Lanes: {link.lanes}, Cells: {len(link)}\n"
                             )
                         elif isinstance(link, Offramp):
-                            f.write(
-                                f"      Lanes: {link.lanes}, Capacity: {link.Qc} veh/h\n"
-                            )
+                            f.write(f"      Lanes: {link.lanes}\n")
                         elif isinstance(link, Destination):
                             f.write("      (Network exit point)\n")
                 else:
@@ -1365,9 +1361,6 @@ class Network:
                 "id": link.id,
                 "length": link.length,
                 "lanes": link.lanes,
-                "lane_capacity": link.Qc_lane,
-                "free_flow_speed": link.vf,
-                "jam_density": link.rho_jam,
                 "origin_node_id": link.origin_node_id,
                 "destination_node_id": link.destination_node_id,
             }
@@ -1389,9 +1382,6 @@ class Network:
                 "id": link.id,
                 "length": link.length,
                 "lanes": link.lanes,
-                "lane_capacity": link.Qc_lane,
-                "free_flow_speed": link.vf,
-                "jam_density": link.rho_jam,
                 "origin_node_id": link.origin_node_id,
                 "destination_node_id": link.destination_node_id,
             }
@@ -1400,9 +1390,6 @@ class Network:
                 "type": "Offramp",
                 "id": link.id,
                 "lanes": link.lanes,
-                "lane_capacity": link.Qc_lane,
-                "free_flow_speed": link.vf,
-                "jam_density": link.rho_jam,
                 "origin_node_id": link.origin_node_id,
                 "destination_node_id": link.destination_node_id,
             }
@@ -1478,30 +1465,22 @@ class Network:
                 link_obj = MotorwayLink(
                     length=entry["length"],
                     lanes=entry["lanes"],
-                    lane_capacity=entry["lane_capacity"],
-                    free_flow_speed=entry["free_flow_speed"],
-                    jam_density=entry["jam_density"],
                     id=entry["id"],
                     origin_node_id=entry["origin_node_id"],
                     destination_node_id=entry["destination_node_id"],
                 )
             elif l_type == "Origin":
                 link_obj = Origin(
-                    id=entry["id"],
-                    destination_node_id=entry["destination_node_id"],
+                    id=entry["id"], destination_node_id=entry["destination_node_id"]
                 )
             elif l_type == "Destination":
                 link_obj = Destination(
-                    id=entry["id"],
-                    origin_node_id=entry["origin_node_id"],
+                    id=entry["id"], origin_node_id=entry["origin_node_id"]
                 )
             elif l_type == "Onramp":
                 link_obj = Onramp(
                     length=entry["length"],
                     lanes=entry["lanes"],
-                    lane_capacity=entry["lane_capacity"],
-                    free_flow_speed=entry["free_flow_speed"],
-                    jam_density=entry["jam_density"],
                     id=entry["id"],
                     origin_node_id=entry["origin_node_id"],
                     destination_node_id=entry["destination_node_id"],
@@ -1509,9 +1488,6 @@ class Network:
             elif l_type == "Offramp":
                 link_obj = Offramp(
                     lanes=entry["lanes"],
-                    lane_capacity=entry["lane_capacity"],
-                    free_flow_speed=entry["free_flow_speed"],
-                    jam_density=entry["jam_density"],
                     id=entry["id"],
                     origin_node_id=entry["origin_node_id"],
                     destination_node_id=entry["destination_node_id"],

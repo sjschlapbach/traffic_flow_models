@@ -5,55 +5,13 @@ import pytest
 from traffic_flow_models import SUMOPipeline
 
 
-@pytest.fixture
-def road_params_config(tmp_path):
-    """Create a temporary road parameters config file for testing."""
-    config = {
-        "motorway": {
-            "lane_capacity": 2000.0,
-            "jam_density": 180.0,
-            "free_flow_speed": 120.0,
-        },
-        "trunk": {
-            "lane_capacity": 1800.0,
-            "jam_density": 180.0,
-            "free_flow_speed": 100.0,
-        },
-        "primary": {
-            "lane_capacity": 1600.0,
-            "jam_density": 180.0,
-            "free_flow_speed": 80.0,
-        },
-        "secondary": {
-            "lane_capacity": 1200.0,
-            "jam_density": 200.0,
-            "free_flow_speed": 50.0,
-        },
-        "tertiary": {
-            "lane_capacity": 1000.0,
-            "jam_density": 210.0,
-            "free_flow_speed": 30.0,
-        },
-        "default": {
-            "lane_capacity": 2000.0,
-            "jam_density": 180.0,
-            "free_flow_speed": 100.0,
-        },
-    }
-    config_path = tmp_path / "test_road_params.json"
-    with open(config_path, "w") as f:
-        json.dump(config, f)
-    return str(config_path)
-
-
 class TestSUMOPipeline:
-    def test_init_creates_output_dir(self, tmp_path, monkeypatch, road_params_config):
+    def test_init_creates_output_dir(self, tmp_path, monkeypatch):
         # run inside temporary working dir so results/ is created there
         monkeypatch.chdir(tmp_path)
         p = SUMOPipeline(
             "myloc",
             "Somewhere",
-            road_params_config,
             os.path.join("results", "myloc"),
         )
         assert os.path.isdir(os.path.join("results", "myloc"))
@@ -68,14 +26,11 @@ class TestSUMOPipeline:
         assert p.net_file.endswith(os.path.join("results", "myloc", "myloc.net.xml"))
         assert p.rou_file.endswith(os.path.join("results", "myloc", "myloc.rou.xml"))
 
-    def test_skip_if_exists_decorator_skips(
-        self, monkeypatch, tmp_path, capsys, road_params_config
-    ):
+    def test_skip_if_exists_decorator_skips(self, monkeypatch, tmp_path, capsys):
         monkeypatch.chdir(tmp_path)
         p = SUMOPipeline(
             "skiptest",
             "Nowhere",
-            road_params_config,
             os.path.join("results", "skiptest"),
         )
 
@@ -88,14 +43,11 @@ class TestSUMOPipeline:
         captured = capsys.readouterr()
         assert ".osm already exists" in captured.out
 
-    def test_convert_to_sumo_runs_netconvert(
-        self, monkeypatch, tmp_path, road_params_config
-    ):
+    def test_convert_to_sumo_runs_netconvert(self, monkeypatch, tmp_path):
         monkeypatch.chdir(tmp_path)
         p = SUMOPipeline(
             "convtest",
             "Loc",
-            road_params_config,
             os.path.join("results", "convtest"),
         )
 
@@ -122,13 +74,12 @@ class TestSUMOPipeline:
         assert called["cmd"][out_index] == p.net_file
 
     def test_generate_demand_handles_missing_sumo_home(
-        self, monkeypatch, tmp_path, capsys, road_params_config
+        self, monkeypatch, tmp_path, capsys
     ):
         monkeypatch.chdir(tmp_path)
         p = SUMOPipeline(
             "dtest",
             "Loc",
-            road_params_config,
             os.path.join("results", "dtest"),
         )
 
@@ -141,14 +92,11 @@ class TestSUMOPipeline:
             p.generate_demand(10, 3600.0)
         assert str(excinfo.value) == "Please set the 'SUMO_HOME' environment variable."
 
-    def test_generate_demand_invokes_randomTrips(
-        self, monkeypatch, tmp_path, road_params_config
-    ):
+    def test_generate_demand_invokes_randomTrips(self, monkeypatch, tmp_path):
         monkeypatch.chdir(tmp_path)
         p = SUMOPipeline(
             "dtest2",
             "Loc",
-            road_params_config,
             os.path.join("results", "dtest2"),
         )
 
@@ -194,14 +142,11 @@ class TestSUMOPipeline:
         # Assertions to ensure subprocess was called
         assert "cmd" in called
 
-    def test_convert_to_sumo_skips_when_net_exists(
-        self, monkeypatch, tmp_path, capsys, road_params_config
-    ):
+    def test_convert_to_sumo_skips_when_net_exists(self, monkeypatch, tmp_path, capsys):
         monkeypatch.chdir(tmp_path)
         p = SUMOPipeline(
             "convskip",
             "Place",
-            road_params_config,
             os.path.join("results", "convskip"),
         )
 

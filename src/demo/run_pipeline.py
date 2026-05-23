@@ -7,10 +7,12 @@ python src/demo/run_pipeline.py --location "Zurich, Switzerland" --vehicle-deman
 python src/demo/run_pipeline.py --sumo-cfg-dir "src/demo/scenarios/example" --no-plot
 """
 
-import argparse
 import os
+import argparse
+import numpy as np
+from numpy.typing import NDArray
 from datetime import datetime
-import warnings
+from typing import cast
 
 from traffic_flow_models import (
     CTM,
@@ -21,7 +23,6 @@ from traffic_flow_models import (
     Simulation,
     Calibrator,
     BackboneStateAggregator,
-    NetworkArbitrator,
 )
 
 if __name__ == "__main__":
@@ -41,6 +42,12 @@ if __name__ == "__main__":
         type=int,
         default=20000,
         help="Vehicle demand for the scenario (default: 20000)",
+    )
+    args.add_argument(
+        "--free-flow-speed",
+        type=float,
+        default=100.0,
+        help=f"Free-flow speed in km/h (default: 100.0 km/h)",
     )
     args.add_argument(
         "--highway-vehicle-demand",
@@ -150,16 +157,10 @@ if __name__ == "__main__":
         # set the name of the scenario for pipeline initialization
         name = parsed_args.location.split(",")[0].strip().lower().replace(" ", "_")
 
-    # path to road parameters configuration
-    road_params_config_path = os.path.join(
-        os.path.dirname(__file__), "road_params_config.json"
-    )
-
     # run the pipeline to generate files for the SUMO simulation
     pipeline = SUMOPipeline(
         name=name,
         location=parsed_args.location,
-        road_params_config_path=road_params_config_path,
         output_dir=(
             os.path.join("results", name) if location_mode else parsed_args.sumo_cfg_dir
         ),
@@ -191,14 +192,15 @@ if __name__ == "__main__":
 
     # compute minimum link length for CFL stability
     # must account for both CFL condition (vf * dt) and preferred cell size
-    max_free_flow_speed = 120.0  # km/h
-    cfl_minimum = max_free_flow_speed * dt  # CFL condition: cell_length >= vf * dt
+    cfl_minimum = (
+        parsed_args.free_flow_speed * dt
+    )  # CFL condition: cell_length >= vf * dt
     min_link_length = max(cfl_minimum, preferred_cell_size) + 0.01  # km
 
     # if the preferred cell size is smaller than the CFL minimum, notify the user
     if preferred_cell_size < cfl_minimum:
         raise ValueError(
-            f"Preferred cell size ({preferred_cell_size} km) is too small for CFL stability with the given timestep (dt={dt} h) and maximum free-flow speed ({max_free_flow_speed} km/h). Minimum cell size for stability is {cfl_minimum:.3f} km. Please increase the preferred cell size or adjust the timestep."
+            f"Preferred cell size ({preferred_cell_size} km) is too small for CFL stability with the given timestep (dt={dt} h) and maximum free-flow speed ({parsed_args.free_flow_speed} km/h). Minimum cell size for stability is {cfl_minimum:.3f} km. Please increase the preferred cell size or adjust the timestep."
         )
 
     # create an instance of the macroscopic traffic flow model network
@@ -229,7 +231,6 @@ if __name__ == "__main__":
         onramp_ids,
         offramp_ids,
         destination_ids,
-        road_params,
         diverge_node_info,
         backbone_node_ids,
     ) = pipeline.get_consolidated_network()
@@ -269,7 +270,9 @@ if __name__ == "__main__":
     # compute boundary conditions from microscopic simulation results
     edge_data_path = os.path.join(pipeline.output_dir, "edge_data_output.xml")
     destination_flow_bc, destination_density_bc = (
-        pipeline.build_destination_bc_from_sumo_edges(edge_data_path=edge_data_path)
+        pipeline.build_destination_bc_from_sumo_edges(
+            edge_data_path=edge_data_path, free_flow_speed=parsed_args.free_flow_speed
+        )
     )
 
     # compute splits (turning rates) from detector data
@@ -283,7 +286,6 @@ if __name__ == "__main__":
     os.makedirs(results_dir, exist_ok=True)
 
     # ── Backbone state estimation ──────────────────────────────────────────────
-    road_params = NetworkArbitrator._load_road_params_from_json(road_params_config_path)
     micro_results_path = os.path.join(results_dir, "micro_results.json")
     backbone_aggregator = BackboneStateAggregator(
         detector_output_path=detector_output_file, detector_spec_path=spec_file
@@ -292,8 +294,7 @@ if __name__ == "__main__":
         output_path=micro_results_path,
         urban_demands=urban_demands,
         time_step_minutes=1.0,
-        free_flow_speed=road_params["motorway"]["free_flow_speed"],
-        jam_density=road_params["motorway"]["jam_density"],
+        free_flow_speed=parsed_args.free_flow_speed,
         preferred_cell_size=preferred_cell_size,
         sumo_network_path=pipeline.net_file,
         origin_ids=origin_ids,
@@ -307,76 +308,64 @@ if __name__ == "__main__":
     print("Demand keys:", sorted(origin_demands.keys()))
     print("Missing:", [k for k in origin_ids if k not in origin_demands])
 
-    # run a simulation of the network using the selected model
+    # set up the model according to the user's selection
     if parsed_args.model.upper() == "CTM":
-        ctm = CTM()
-        sim = Simulation(network=network, model=ctm)
-        time, states, disturbances = sim.run(
-            duration=duration,
-            dt=dt,
-            preferred_cell_size=preferred_cell_size,
-            origin_demands=origin_demands,
-            turning_rates=splits,
-            destination_density_bc=destination_density_bc,
-            destination_flow_bc=destination_flow_bc,
-            plot_results=True,
-            plot_micro_results=True,
-            show_plots=plot_enabled,
-            results_dir=results_dir,
-        )
-
+        model = CTM()
     elif parsed_args.model.upper() == "METANET":
-        # Use the backbone state file for ground-truth states and forward the
-        # callable disturbance functions (origin_demands, splits) to the
-        # calibrator. The calibrator will build the disturbance history by
-        # sampling these callables on the simulation time grid.
-        print("Running METANET calibration using backbone aggregated states...")
-        calibrator = Calibrator(network=network)
-        metanet_model = METANET()
-        calibrated_params, result, _ = calibrator.calibrate_model_params(
-            ground_truth_filepath=micro_results_path,
-            model=metanet_model,
-            initial_params=None,
-            window_size=10,
-            stride=5,
-            model_options={"link_specific_alpha": False},
-            regularization_weight=parsed_args.regularization_weight,
-            verbose=True,
-            use_parameter_search=parsed_args.parameter_search,
-            correlation_title="METANET Calibration - Parameter Correlation Analysis",
-            plot_correlation="metanet_calibration_parameter_correlation.png",
-            plot_param_history="metanet_calibration_param_history.png",
-            save_dir=results_dir,
-            use_disturbance_from_file=False,  # we will provide disturbance callables instead of using the file-based disturbances
-            origin_demands_fn=origin_demands,
-            turning_rates_fn=splits,
-            flow_boundary_conditions_fn=destination_flow_bc,
-            density_boundary_conditions_fn=destination_density_bc,
-        )
-
-        print(
-            "Calibration complete — running METANET simulation with calibrated parameters"
-        )
-        metanet = METANET()
-        sim = Simulation(network=network, model=metanet, model_params=calibrated_params)
-        time, states, disturbances = sim.run(
-            duration=duration,
-            dt=dt,
-            preferred_cell_size=preferred_cell_size,
-            origin_demands=origin_demands,
-            turning_rates=splits,
-            destination_density_bc=destination_density_bc,
-            destination_flow_bc=destination_flow_bc,
-            plot_results=True,
-            plot_micro_results=True,
-            show_plots=plot_enabled,
-            results_dir=results_dir,
-        )
-
+        model = METANET()
     else:
         raise ValueError(
             f"Unknown MODEL: {parsed_args.model}. Choose 'CTM' or 'METANET'."
         )
+
+    # initialize the calibrator and run the calibration based on
+    # the microscopic simulation results, which will be treated
+    # as ground truth values for the optimization / fitting
+    # procedure of the FD and other model parameters.
+    calibrator = Calibrator(network=network)
+    calibrated_params, result, _ = calibrator.calibrate_model_params(
+        ground_truth_filepath=micro_results_path,
+        model=model,
+        initial_params=None,
+        window_size=3,
+        stride=3,
+        model_options=(
+            {"link_specific_alpha": False} if isinstance(model, METANET) else None
+        ),
+        fixed_speed=parsed_args.free_flow_speed,
+        regularization_weight=parsed_args.regularization_weight,
+        verbose=True,
+        use_parameter_search=parsed_args.parameter_search,
+        correlation_title="Model Calibration - Parameter Correlation Analysis",
+        plot_correlation="calibration_parameter_correlation.png",
+        plot_param_history="calibration_param_history.png",
+        save_dir=results_dir,
+        use_disturbance_from_file=False,  # we will provide disturbance callables instead of using the file-based disturbances
+        origin_demands_fn=origin_demands,
+        turning_rates_fn=splits,
+        flow_boundary_conditions_fn=destination_flow_bc,
+        density_boundary_conditions_fn=destination_density_bc,
+    )
+    print(
+        "Calibration complete. Calibrated parameters, running macroscopic simulation with",
+        parsed_args.model.upper(),
+    )
+
+    # run the simulation with the selected model and the calibrated parameters
+    sim = Simulation(network=network, model=model, model_params=calibrated_params)
+    time, states, disturbances = sim.run(
+        duration=duration,
+        dt=dt,
+        preferred_cell_size=preferred_cell_size,
+        origin_demands=origin_demands,
+        turning_rates=splits,
+        destination_density_bc=destination_density_bc,
+        destination_flow_bc=destination_flow_bc,
+        plot_results=True,
+        plot_micro_results=True,
+        show_plots=plot_enabled,
+        results_dir=results_dir,
+    )
 
     # compute performance metrics for microscopic network (mainline only)
     # microsimulation results are loaded from the corresponding file with mainline only flag
@@ -455,6 +444,21 @@ if __name__ == "__main__":
         f.write(f"Total VHT (Macroscopic Simulation): {macro_VHT:.2f} veh-h\n")
         f.write(f"Overall Average Speed: {avg_speed:.2f} km/h\n")
 
+    # generate a plot comparing the mainline density and flow (FD) between micro- and macroscopic simulations
+    # -> should include scatter points as well as FD curve corresponding to the calibrated parameters
+    micro_flows, micro_densities, _, _, _, _ = network.state_vec_to_network_dict(
+        micro_states
+    )
+    macro_flows, macro_densities, _, _, _, _ = network.state_vec_to_network_dict(states)
+    sim.plot_fd_comparison(
+        micro_flows=cast(dict[str, NDArray[np.float64]], micro_flows),
+        micro_densities=cast(dict[str, NDArray[np.float64]], micro_densities),
+        macro_flows=cast(dict[str, NDArray[np.float64]], macro_flows),
+        macro_densities=cast(dict[str, NDArray[np.float64]], macro_densities),
+        model_params=calibrated_params,
+        output_path=os.path.join(results_dir, "fd_comparison.png"),
+    )
+
     # generate video visualization if requested
     if generate_video:
         # generate a microsimulation video when available
@@ -465,6 +469,7 @@ if __name__ == "__main__":
             sim.visualize(
                 results_filepath=micro_results_path,
                 output_filepath=micro_video_path,
+                model_params=calibrated_params,
                 fps=30,
                 subsampling=1,
             )
@@ -478,6 +483,7 @@ if __name__ == "__main__":
         sim.visualize(
             results_filepath=os.path.join(results_dir, "simulation_results.json"),
             output_filepath=video_path,
+            model_params=calibrated_params,
             fps=30,
             subsampling=1,
         )
@@ -512,6 +518,7 @@ if __name__ == "__main__":
                 ],
                 labels=["Backbone (MICRO)", f"Macro {parsed_args.model.upper()}"],
                 output_filepath=comparison_video_path,
+                model_params=calibrated_params,
                 fps=30,
                 subsampling=1,
             )

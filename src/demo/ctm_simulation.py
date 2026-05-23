@@ -4,7 +4,7 @@ from typing import Callable
 from datetime import datetime
 
 
-from traffic_flow_models import CTM, Simulation
+from traffic_flow_models import CTM, CTMParams, Simulation
 from demo.scenarios import (
     setup_network_a,
     setup_network_b,
@@ -49,6 +49,9 @@ if __name__ == "__main__":
     plot_enabled = not args.no_plot
     generate_video = args.generate_video
     scenario = args.scenario
+
+    # set the fundamental diagram parameters
+    model_params = CTMParams(vf=100.0, qc_lane=2000.0, rho_jam=180.0)
 
     # select the appropriate scenario functions
     if scenario == "A":
@@ -100,7 +103,7 @@ if __name__ == "__main__":
 
     # run a simulation of the network using the CTM model
     ctm = CTM()
-    sim = Simulation(network=network, model=ctm)
+    sim = Simulation(network=network, model=ctm, model_params=model_params)
     time, states, disturbances = sim.run(
         duration=duration,
         dt=dt,
@@ -131,6 +134,7 @@ if __name__ == "__main__":
         sim.visualize(
             results_filepath=os.path.join(results_dir, "simulation_results.json"),
             output_filepath=video_path,
+            model_params=model_params,
             fps=30,
             subsampling=1,
         )

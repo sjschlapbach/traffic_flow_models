@@ -17,7 +17,7 @@ from scipy.stats import qmc
 from numpy.typing import NDArray
 from matplotlib.lines import Line2D
 from scipy.optimize import OptimizeResult
-from typing import TYPE_CHECKING, Tuple, Union, Callable
+from typing import cast, TYPE_CHECKING, Tuple, Union, Callable
 from traffic_flow_models.network import (
     Origin,
     Onramp,
@@ -28,7 +28,7 @@ from traffic_flow_models.network import (
 )
 
 if TYPE_CHECKING:
-    from traffic_flow_models import Network, CTM, METANET, METANETParams
+    from traffic_flow_models import Network, CTM, CTMParams, METANET, METANETParams
 
 
 class Calibrator:
@@ -661,7 +661,8 @@ class Calibrator:
         self,
         ground_truth_filepath: str,
         model: Union["CTM", "METANET"],
-        initial_params: METANETParams | None = None,
+        initial_params: CTMParams | METANETParams | None = None,
+        fixed_speed: float | None = None,
         window_size: int = 50,
         stride: int | None = None,
         param_bounds: Tuple[NDArray[np.float64], NDArray[np.float64]] | None = None,
@@ -688,7 +689,9 @@ class Calibrator:
         density_boundary_conditions_fn: (
             dict[str, Callable[[float], float]] | None
         ) = None,
-    ) -> Tuple["METANETParams", OptimizeResult, NDArray[np.float64]]:
+    ) -> Tuple[
+        Union["CTMParams", "METANETParams"], OptimizeResult, NDArray[np.float64]
+    ]:
         """Calibrate model parameters using ground truth simulation data.
 
         This method performs parameter estimation by minimizing the prediction error
@@ -729,6 +732,9 @@ class Calibrator:
             model: Macroscopic flow model instance. Must implement calibration interface.
             initial_params: Initial guess for model parameters. If None, uses model defaults.
                 Ignored when use_parameter_search=True.
+            fixed_speed: If provided, overrides the default bounds for free-flow speed
+                to be exactly this value (both lower and upper bounds set to fixed_speed).
+                -> avoid correlation issues after corresponding computation in SUMO data aggregation
             window_size: Number of timesteps per calibration window. Larger windows capture
                 more dynamics but increase computational cost. Default: 50.
             stride: Stride between consecutive calibration windows. Must be <= window_size to
@@ -811,7 +817,9 @@ class Calibrator:
             if param_bounds is None:
                 try:
                     lower_bounds, upper_bounds = model.get_calibration_bounds(
-                        network=self.network, model_options=model_options
+                        network=self.network,
+                        fixed_speed=fixed_speed,
+                        model_options=model_options,
                     )
                 except (AttributeError, NotImplementedError):
                     raise NotImplementedError(
@@ -1151,7 +1159,7 @@ class Calibrator:
 
         # convert to vector form using model method
         initial_param_vec = model.prepare_calibration_params(
-            params=initial_params,
+            params=initial_params,  # type: ignore
             network=self.network,
             model_options=model_options,
         )
@@ -1159,7 +1167,9 @@ class Calibrator:
         # set up parameter bounds using model method
         if param_bounds is None:
             lower_bounds, upper_bounds = model.get_calibration_bounds(
-                network=self.network, model_options=model_options
+                network=self.network,
+                fixed_speed=fixed_speed,
+                model_options=model_options,
             )
             if verbose:
                 print("  Using model default parameter bounds")
@@ -1405,7 +1415,7 @@ class Calibrator:
         param_history_noreg: NDArray[np.float64],
         param_history_reg: NDArray[np.float64],
         param_names: list[str],
-        true_params: "METANETParams",
+        true_params: Union["CTMParams", "METANETParams"],
         save_dir: str,
         filename: str = "convergence_comparison.png",
     ) -> None:
