@@ -444,6 +444,8 @@ class METANET:
         (length per time).
 
         Args:
+            params: METANET model parameters (numeric or symbolic).
+            link_id: Identifier of the link for which to compute the wave speed.
             capacity: Cell capacity (vehicles per time).
             lane_capacity: Capacity per lane (vehicles per time).
             jam_density: Jam density (vehicles per length per lane).
@@ -481,6 +483,8 @@ class METANET:
         cell's free-flow speed (fundamental diagram).
 
         Args:
+            params: METANET model parameters (numeric or symbolic).
+            link_id: Identifier of the link for which to evaluate the velocity.
             lane_capacity (float): Capacity per lane used to compute the
                 critical density.
             free_flow_speed (float): Free-flow speed for the link.

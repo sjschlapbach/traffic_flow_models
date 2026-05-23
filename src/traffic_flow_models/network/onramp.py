@@ -13,7 +13,8 @@ class Onramp:
     """A simple container for on-ramp physical parameters.
 
     Attributes:
-        id: Identifier for the origin link (for demand assignment).
+        id: Identifier for the onramp link (for demand assignment).
+        length: Length of the onramp link in km.
         lanes: Number of lanes on the onramp.
         Qc_lane: Capacity per lane in vehicles per hour.
         Qc: Total onramp capacity in vehicles per hour.
@@ -41,7 +42,8 @@ class Onramp:
         """Initialize the Onramp parameters.
 
         Args:
-            id: Identifier for the origin link (for demand assignment; optional).
+            length: Length of the onramp link in km.
+            id: Identifier for the onramp link (for demand assignment; optional).
             lanes: Number of lanes on the onramp.
             lane_capacity: Vehicles per hour per lane capacity.
             free_flow_speed: Free-flow speed in km/h.

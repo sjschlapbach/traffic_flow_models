@@ -32,6 +32,7 @@ class Offramp:
             lane_capacity: Vehicles per hour per lane capacity.
             free_flow_speed: Free-flow speed in km/h.
             jam_density: Jam density in vehicles per km per lane.
+            id: Optional identifier for the offramp link.
             origin_node_id: Optional identifier for the origin node
                 to which this offramp is connected.
             destination_node_id: Optional identifier for the destination node
