@@ -6,7 +6,8 @@
     without notice between releases. They are not subject to the same stability
     guarantees as the core traffic flow models.
 
-    These features require **SUMO** to be installed separately. See the
+    The SUMO Pipeline requires **SUMO** to be installed separately; other experimental
+    features (such as calibration with existing reference or sensor data) do not. See the
     [Eclipse SUMO installation guide](https://sumo.dlr.de/docs/Installing/index.html)
     for instructions.
 

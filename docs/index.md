@@ -7,7 +7,7 @@ metering control, and result visualisation.
 
 The library can be installed from [PyPI](https://pypi.org/project/traffic-flow-models/) through the following command, while the source code is available on [GitHub](https://github.com/sjschlapbach/traffic_flow_models):
 
-```
+```bash
 pip install traffic-flow-models
 ```
 

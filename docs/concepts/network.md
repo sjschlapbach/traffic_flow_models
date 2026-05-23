@@ -12,7 +12,7 @@ under identical network conditions.
 | `Onramp`       | Merging link from surface road | flow \(q\), virtual queue \(N\)                      |
 | `Offramp`      | Diverging link to surface road | flow \(q\), virtual queue \(N\)                      |
 | `Origin`       | Virtual demand source          | demand \(d(k)\), virtual queue \(N\)                 |
-| `Destination`  | Virtual flow sink              | boundary condition \(q*{bc}(k)\) or \(\rho*{bc}(k)\) |
+| `Destination`  | Virtual flow sink              | boundary condition \(q_{bc}(k)\) or \(\rho_{bc}(k)\) |
 
 `Origin`, `Onramp`, and `Offramp` are all modelled as **store-and-forward** links: they
 accept arbitrary inflow and store excess traffic in a virtual queue \(N(k)\), so highway
@@ -69,7 +69,7 @@ The following structural rules are enforced during `Network` validation:
   downstream `Destination`.
 
 These assumptions simplify the model equations and ensure a well-posed network
-topology for both CTM and METANET. The are validated during the construction of the non-linear model equation system and will raise an error if violated.
+topology for both CTM and METANET. They are validated during the construction of the non-linear model equation system and will raise an error if violated.
 
 ## Full network example
 

@@ -54,7 +54,7 @@ and upstream of a known bottleneck, so the controller can react before congestio
 propagates back to the ramp.
 
 ```python
-from traffic_flow_models import AlineaController
+from traffic_flow_models import AlineaController, Onramp
 
 # Create the onramp first, then attach the controller
 onramp = Onramp(id="r1", length=0.5, lanes=1,
@@ -84,7 +84,7 @@ gain matrix reduces to uncoordinated ALINEA-style control.
 
 ```python
 import numpy as np
-from traffic_flow_models import MetalineController
+from traffic_flow_models import MetalineController, Onramp
 
 onramp = Onramp(id="r1", length=0.5, lanes=1,
                 lane_capacity=1800, free_flow_speed=80, jam_density=180)

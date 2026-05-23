@@ -15,7 +15,7 @@ The SUMO pipeline automates the generation of macroscopic input data from
 
 ## Pipeline steps
 
-```
+```text
 Scenario definition
         │
         ▼

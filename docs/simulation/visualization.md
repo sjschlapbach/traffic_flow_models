@@ -50,4 +50,8 @@ sim.visualize(
 !!! note "Node coordinates required for video export"
 
     Node position coordinates must be set on each `Node` for the video to render
-    the network topology correctly: `node.position = (x, y)`.
+    the network topology correctly:
+
+    ```python
+    node.position = (x, y)
+    ```
