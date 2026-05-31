@@ -21,6 +21,23 @@ if TYPE_CHECKING:
 
 
 class METANETParams(TypedDict):
+    """Numerical parameter dictionary for the METANET second-order traffic flow model.
+
+    Attributes:
+        tau: Relaxation time constant (hours). Controls how quickly speed adjusts
+            toward the equilibrium speed.
+        nu: Speed diffusion coefficient (km^2/h). Governs the anticipation term.
+        kappa: Density smoothing coefficient (veh/km/lane). Reduces the anticipation
+            term as density increases toward jam density.
+        delta: Onramp demand parameter (dimensionless). Scales the capacity drop
+            induced by merging onramp flow.
+        phi: Lane-drop capacity-drop parameter (dimensionless). Scales the capacity
+            drop caused by lane reductions.
+        alpha: Fundamental-diagram shape parameter (dimensionless). Either a scalar
+            (global value applied to all links) or a dict mapping link id to a
+            per-link value.
+    """
+
     tau: float
     nu: float
     kappa: float
@@ -30,6 +47,22 @@ class METANETParams(TypedDict):
 
 
 class METANETSymbolicParams(TypedDict):
+    """Symbolic parameter dictionary for the METANET model, supporting CasADi SX expressions.
+
+    Identical in structure to :class:`METANETParams` but each value may be either a
+    plain Python float or a CasADi SX symbolic variable, enabling mixed
+    numerical/symbolic evaluation during CasADi function construction.
+
+    Attributes:
+        tau: Relaxation time constant (hours, float or CasADi SX).
+        nu: Speed diffusion coefficient (km^2/h, float or CasADi SX).
+        kappa: Density smoothing coefficient (veh/km/lane, float or CasADi SX).
+        delta: Onramp demand parameter (dimensionless, float or CasADi SX).
+        phi: Lane-drop capacity-drop parameter (dimensionless, float or CasADi SX).
+        alpha: Fundamental-diagram shape parameter; a dict mapping link id to float
+            or CasADi SX (always link-specific inside CasADi function construction).
+    """
+
     tau: float | casadi.SX
     nu: float | casadi.SX
     kappa: float | casadi.SX

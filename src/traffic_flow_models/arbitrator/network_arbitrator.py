@@ -32,10 +32,20 @@ class RoadTypeParams(TypedDict):
 
 
 class RoadParamsConfig(TypedDict):
-    """Configuration for road parameters by road type.
+    """Configuration for road parameters keyed by road type.
 
-    Must include the following road types: motorway, trunk, primary,
-    secondary, tertiary, default.
+    Each key maps to a :class:`RoadTypeParams` instance providing the physical
+    parameters (free-flow speed, jam density, number of lanes, etc.) for that
+    road category. The ``'default'`` key is used as a fallback when no more
+    specific type matches.
+
+    Attributes:
+        motorway: Parameters for motorway-class roads.
+        trunk: Parameters for trunk roads.
+        primary: Parameters for primary roads.
+        secondary: Parameters for secondary roads.
+        tertiary: Parameters for tertiary roads.
+        default: Fallback parameters applied when no specific type matches.
     """
 
     motorway: RoadTypeParams

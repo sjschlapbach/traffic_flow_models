@@ -164,6 +164,25 @@ class DemandAggregator:
         onramp_ids: list[str],
         sumo_network_path: str,
     ) -> dict[str, Callable[[float], float]]:
+        """Aggregate observed urban inflow demand into per-origin demand functions.
+
+        Traverses the SUMO network graph to find the upstream entry edges for
+        each origin ID that corresponds to a known onramp and integrates the
+        detector measurements into a time-varying callable.
+
+        Args:
+            origin_ids: List of origin identifiers (e.g. ``'origin_<junction>'``)
+                for which demand functions should be produced.
+            onramp_ids: List of onramp junction IDs used to filter which origins
+                are considered valid entry points.
+            sumo_network_path: Absolute path to the SUMO ``.net.xml`` network
+                file used to build the road graph.
+
+        Returns:
+            Dictionary mapping each matched origin ID to a callable
+            ``f(t: float) -> float`` that returns the demand (vehicles/hour) at
+            simulation time ``t`` in seconds.
+        """
 
         graph = self._build_network_graph(sumo_network_path)
         origin_demands: dict[str, Callable[[float], float]] = {}

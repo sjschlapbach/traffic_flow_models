@@ -25,6 +25,20 @@ from traffic_flow_models.arbitrator.network_arbitrator import (
 
 
 def skip_if_exists(attr_name):
+    """Return a decorator that skips a method when its output file already exists.
+
+    The decorator checks ``getattr(self, attr_name)`` on the instance at call
+    time. If the resulting path already exists on the filesystem, the wrapped
+    method is not called and the decorator returns ``None`` immediately.
+
+    Args:
+        attr_name: Name of the instance attribute holding the output file path
+            to check for existence.
+
+    Returns:
+        A decorator that wraps a bound method with the skip-if-exists guard.
+    """
+
     def decorator(func):
         @wraps(func)
         def wrapper(self, *args, **kwargs):
@@ -194,7 +208,26 @@ class SUMOPipeline:
         duration_seconds: float,
         demand_profile: list[tuple[float, float]],
     ) -> list[float]:
-        """Helper to scale relative profile percentages to absolute departure times."""
+        """Scale a relative demand profile to absolute departure times.
+
+        Given a list of ``(relative_time, fraction)`` tuples whose fractions sum
+        to 1.0, distributes ``count`` vehicle departure times uniformly within
+        each segment and returns them sorted in ascending order.
+
+        Args:
+            count: Total number of vehicles to distribute.
+            duration_seconds: Total simulation duration in seconds.
+            demand_profile: List of ``(t_percentage, fraction)`` tuples where
+                ``t_percentage`` is a normalised time in ``[0, 1)`` and
+                ``fraction`` is the share of vehicles departing in that segment.
+                Fractions must sum to 1.0.
+
+        Returns:
+            Sorted list of ``count`` departure times in seconds.
+
+        Raises:
+            ValueError: If the demand profile fractions do not sum to 1.0.
+        """
         # Scale relative times -> absolute seconds
         # Convert normalized demand profile fractions into actual departure times
         # and keep the matching fraction values for each segment.
@@ -234,7 +267,17 @@ class SUMOPipeline:
         return sorted(departures[:count])
 
     def strip_node_prefix(self, node_id: str) -> str:
-        """Return the raw SUMO junction ID by stripping any known role prefix."""
+        """Return the raw SUMO junction ID by stripping any known role prefix.
+
+        Args:
+            node_id: Node identifier string potentially prefixed with a role
+                label such as ``'origin_'``, ``'destination_'``, ``'onramp_'``,
+                or ``'offramp_'``.
+
+        Returns:
+            The node identifier with the matching prefix removed, or the
+            original string unchanged if no known prefix is present.
+        """
         NODE_ID_PREFIXES = ("origin_", "destination_", "dest_", "onramp_", "offramp_")
 
         for prefix in NODE_ID_PREFIXES:

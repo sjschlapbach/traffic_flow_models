@@ -59,6 +59,10 @@ class CTM:
     def get_calibration_bounds(self, network, **kwargs):
         """CTM has no calibratable parameters.
 
+        Args:
+            network: Network instance (unused; CTM has no calibratable parameters).
+            **kwargs: Additional keyword arguments (unused).
+
         Raises:
             NotImplementedError: CTM does not support parameter calibration.
         """
@@ -66,6 +70,11 @@ class CTM:
 
     def prepare_calibration_params(self, params, network, **kwargs):
         """CTM has no calibratable parameters.
+
+        Args:
+            params: Parameter dictionary (unused; CTM has no calibratable parameters).
+            network: Network instance (unused).
+            **kwargs: Additional keyword arguments (unused).
 
         Raises:
             NotImplementedError: CTM does not support parameter calibration.
@@ -75,6 +84,11 @@ class CTM:
     def parse_calibration_params(self, param_vec, network, **kwargs):
         """CTM has no calibratable parameters.
 
+        Args:
+            param_vec: Parameter vector (unused; CTM has no calibratable parameters).
+            network: Network instance (unused).
+            **kwargs: Additional keyword arguments (unused).
+
         Raises:
             NotImplementedError: CTM does not support parameter calibration.
         """
@@ -82,6 +96,11 @@ class CTM:
 
     def prepare_system_params(self, param_vec, network, **kwargs):
         """CTM has no calibratable parameters.
+
+        Args:
+            param_vec: Calibration parameter vector (unused; CTM has no calibratable parameters).
+            network: Network instance (unused).
+            **kwargs: Additional keyword arguments (unused).
 
         Raises:
             NotImplementedError: CTM does not support parameter calibration.
