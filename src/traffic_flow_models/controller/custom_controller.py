@@ -22,6 +22,19 @@ class CustomController:
         controller_fn: Callable[..., casadi.SX],
         params: dict[str, Any] | None = None,
     ) -> None:
+        """Create a custom ramp metering controller instance.
+
+        Args:
+            onramp: Onramp object to which the controller is attached.
+            controller_fn: Callable that computes the metering rate. Expected
+                signature is ``fn(onramp_queues, flows, densities)`` with an
+                optional fourth ``params`` argument (positional or keyword).
+            params: Optional dictionary of parameters forwarded to
+                ``controller_fn`` at each call. Defaults to an empty dict.
+
+        Raises:
+            TypeError: If ``controller_fn`` is not callable.
+        """
         if not callable(controller_fn):
             raise TypeError("controller_fn must be callable")
 
