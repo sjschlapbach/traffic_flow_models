@@ -1,0 +1,109 @@
+site_name: traffic-flow-models
+site_description: >-
+  A Python library for macroscopic traffic flow simulation on highway networks,
+  implementing CTM and METANET on a unified network representation.
+site_author: Julius Schlapbach
+site_url: https://sjschlapbach.github.io/traffic_flow_models/
+repo_url: https://github.com/sjschlapbach/traffic_flow_models
+repo_name: sjschlapbach/traffic_flow_models
+
+theme:
+  name: material
+  palette:
+    - scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.tabs
+    - navigation.tabs.sticky
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - content.code.annotate
+    - toc.follow
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets:
+      base_path: ["."]
+  - pymdownx.tabbed:
+      alternate_style: true
+  - attr_list
+  - md_in_html
+  - tables
+  - footnotes
+  - pymdownx.arithmatex:
+      generic: true
+
+copyright: >-
+  Copyright &copy; 2026 Julius Schlapbach, et al. (IVT ETH Zurich) &mdash;
+  Released under the <a href="https://github.com/sjschlapbach/traffic_flow_models/blob/master/LICENSE" target="_blank">MIT License</a>
+
+extra:
+  generator: false
+
+extra_javascript:
+  - javascripts/mathjax.js
+  - https://unpkg.com/mathjax@3/es5/tex-mml-chtml.js
+
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          paths: [src]
+          options:
+            docstring_style: google
+            show_source: true
+            show_root_heading: true
+            show_symbol_type_heading: true
+            members_order: source
+
+nav:
+  - Home: index.md
+  - Getting Started:
+      - Installation: getting-started/installation.md
+      - Quickstart: getting-started/quickstart.md
+  - Core Concepts:
+      - Network Structure: concepts/network.md
+      - State-Space Formulation: concepts/state-space.md
+  - Traffic Flow Models:
+      - Cell Transmission Model: models/ctm.md
+      - METANET: models/metanet.md
+      - CTM vs. METANET: models/comparison.md
+  - Control:
+      - Ramp Metering: control/ramp-metering.md
+  - Simulation:
+      - Running Simulations: simulation/running.md
+      - Performance Metrics: simulation/metrics.md
+      - Visualization: simulation/visualization.md
+  - API Reference:
+      - Network: api/network.md
+      - Models: api/models.md
+      - Simulation: api/simulation.md
+      - Controllers: api/controllers.md
+  - Experimental:
+      - Overview: experimental/index.md
+      - Calibration: experimental/calibration.md
+      - SUMO Integration: experimental/sumo-pipeline.md
+      - API (Experimental): api/experimental.md
+  - Development:
+      - Contributing: development/contributing.md
+      - Changelog: development/changelog.md

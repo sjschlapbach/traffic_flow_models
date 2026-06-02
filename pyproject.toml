@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "traffic_flow_models"
-version = "1.0.0"
+version = "1.1.0"
 license = "MIT"
 description = "Traffic flow models and simulator"
 readme = "README.md"
@@ -31,6 +31,14 @@ dev = [
   "pytest==9.0.0",
   "pylint==4.0.4",
   "git-cliff==2.11.0",
+  "mkdocs-material>=9.5.5",
+  "mkdocstrings[python]>=0.25",
+]
+
+# Documentation-only install (used by CI deploy job)
+docs = [
+  "mkdocs-material>=9.5.5",
+  "mkdocstrings[python]>=0.25",
 ]
 
 [tool.setuptools]

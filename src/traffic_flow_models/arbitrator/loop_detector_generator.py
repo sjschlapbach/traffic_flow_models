@@ -115,7 +115,20 @@ class LoopDetectorGenerator:
         } - set(self.onramp_ids)
 
     def _mark_lane_role(self, lane_id: str, role: str) -> bool:
-        """Return True if this (lane, role) is new and should be processed."""
+        """Return ``True`` if this ``(lane, role)`` pair is new and should be processed.
+
+        Marks the pair as seen so subsequent calls with the same arguments return
+        ``False``, preventing duplicate detector generation for the same lane/role.
+
+        Args:
+            lane_id: SUMO lane identifier string.
+            role: Detector role label (e.g. ``'backbone_segment'``,
+                ``'mainline_origin_interface'``).
+
+        Returns:
+            ``True`` if the pair had not been seen before and was just recorded;
+            ``False`` if it was already present in the processed set.
+        """
         key = (lane_id, role)
         if key in self.processed_lane_roles:
             return False

@@ -190,7 +190,13 @@ class MotorwayLink:
         return self._tail
 
     def enumerate_cells(self):
-        """Iterate over (index, cell) tuples from upstream to downstream."""
+        """Iterate over ``(index, cell)`` pairs from upstream to downstream.
+
+        Yields:
+            A tuple ``(index, cell)`` where ``index`` is the zero-based integer
+            position of the cell and ``cell`` is the corresponding :class:`Cell`
+            instance.
+        """
         for i, cell in enumerate(self):
             yield i, cell
 

@@ -53,14 +53,20 @@ class Node:
             self.add_outgoing_multiple(outgoing)
 
     def _allowed_incoming_types(self):
-        """
-        Return a tuple of allowed types for incoming links.
+        """Return a tuple of allowed types for incoming links.
+
+        Returns:
+            Tuple of link types that are permitted as incoming connections
+            to this node.
         """
         return (MotorwayLink, Onramp, Offramp, Origin)
 
     def _allowed_outgoing_types(self):
-        """
-        Return a tuple of allowed types for outgoing links.
+        """Return a tuple of allowed types for outgoing links.
+
+        Returns:
+            Tuple of link types that are permitted as outgoing connections
+            from this node.
         """
         return (MotorwayLink, Onramp, Offramp, Destination)
 

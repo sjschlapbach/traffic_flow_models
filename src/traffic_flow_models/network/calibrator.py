@@ -61,6 +61,10 @@ class Calibrator:
             model: Model instance implementing `get_calibration_param_names`.
             model_options: Optional model-specific options forwarded to the model.
 
+        Returns:
+            Ordered list of calibration parameter name strings as returned by
+            the model's ``get_calibration_param_names`` method.
+
         Raises:
             NotImplementedError: If the model does not implement
                 `get_calibration_param_names`.

@@ -94,6 +94,9 @@ class Network:
         """
         Add a `Node` instance to the network.
 
+        Args:
+            node: The :class:`Node` instance to add.
+
         Raises:
             TypeError: if `node` is not a Node instance.
             ValueError: if a node with the same `id` is already present.
@@ -132,7 +135,15 @@ class Network:
         raise ValueError(f"No node with id {node_id} found in network.")
 
     def get_node(self, id: str) -> Node | None:
-        """Return the node with the given id or None if absent."""
+        """Return the node with the given id, or ``None`` if not present.
+
+        Args:
+            id: Identifier of the node to retrieve.
+
+        Returns:
+            The matching :class:`Node` instance, or ``None`` if no node with
+            the given id exists in the network.
+        """
         for n in self.list_nodes():
             if getattr(n, "id", None) == id:
                 return n
@@ -142,7 +153,19 @@ class Network:
     def get_link(
         self, id: str
     ) -> MotorwayLink | Origin | Onramp | Offramp | Destination | None:
-        """Return the link with the given id or None if absent."""
+        """Return the link with the given id, or ``None`` if not present.
+
+        Searches all incoming and outgoing links of every node in the network.
+
+        Args:
+            id: Identifier of the link to retrieve.
+
+        Returns:
+            The matching link instance (one of :class:`MotorwayLink`,
+            :class:`Origin`, :class:`Onramp`, :class:`Offramp`, or
+            :class:`Destination`), or ``None`` if no link with the given id
+            exists in the network.
+        """
         for n in self.list_nodes():
             for link in n.incoming + n.outgoing:
                 if getattr(link, "id", None) == id:
@@ -151,13 +174,25 @@ class Network:
         return None
 
     def list_nodes(self) -> list[Node]:
-        """Return a shallow copy of the node list."""
+        """Return a shallow copy of the internal node list.
+
+        Returns:
+            List of all :class:`Node` instances currently in the network,
+            in insertion order.
+        """
         return self._nodes
 
     def list_links(
         self,
     ) -> list[MotorwayLink | Origin | Onramp | Offramp | Destination]:
-        """Return a list of all links in the network."""
+        """Return a deduplicated list of all links in the network.
+
+        Collects every incoming and outgoing link from all nodes and removes
+        duplicates while preserving first-encounter order.
+
+        Returns:
+            List of unique link instances across the entire network.
+        """
         links_list = []
         for n in self.list_nodes():
             links_list.extend(n.incoming)
@@ -200,7 +235,11 @@ class Network:
             offramp_queue_dict: Mapping offramp id -> scalar queue length (veh).
 
         Returns:
-            System state containing all network variables for simluation
+            A 9-tuple ``(x, num_flows, num_densities, num_speeds, num_origin,
+            num_onramp, num_offramp, num_splits, num_destinations)`` where ``x``
+            is the packed 1-D state vector (NumPy array or CasADi SX depending on
+            input types) and the remaining integers give the length of each
+            component sub-vector.
 
         Raises:
             ValueError: If required arrays/values are missing or have incorrect sizes.
@@ -472,13 +511,25 @@ class Network:
     def set_onramp_relations(
         self, target_onramp: Onramp, max_upstream: int = 5, max_downstream: int = 5
     ) -> tuple[list[Onramp], list[Onramp]]:
-        """Find upstream and downstream Onramp objects for a given onramp.
+        """Find upstream and downstream :class:`Onramp` objects for a given onramp.
 
         Traverses only motorway links upstream and downstream from the merge
-        node of the target onramp and collects encountered Onramp instances.
+        node of the target onramp and collects encountered :class:`Onramp`
+        instances.
 
-        Returns a tuple `(upstream_onramps, downstream_onramps)` with at most
-        `max_upstream` and `max_downstream` entries respectively.
+        Args:
+            target_onramp: The onramp for which neighbours are to be identified.
+            max_upstream: Maximum number of upstream onramps to return (default 5).
+            max_downstream: Maximum number of downstream onramps to return (default 5).
+
+        Returns:
+            A tuple ``(upstream_onramps, downstream_onramps)`` with at most
+            ``max_upstream`` and ``max_downstream`` entries respectively.
+
+        Raises:
+            ValueError: If ``target_onramp`` does not have a
+                ``destination_node_id`` set, or if the referenced node is not
+                found in the network.
         """
         # raise an error if the destination node id is not set for the target onramp
         if target_onramp.destination_node_id is None:
@@ -586,10 +637,17 @@ class Network:
     def update_all_onramp_neighbors(
         self, max_upstream: int = 5, max_downstream: int = 5
     ) -> None:
-        """Find and assign neighbor onramps for all onramps in the network.
+        """Find and assign neighbour onramps for every onramp in the network.
 
-        This populates each Onramp's `upstream_onramps` and `downstream_onramps`
-        attributes by calling `set_onramp_relations`.
+        Calls :meth:`set_onramp_relations` for each :class:`Onramp` found in
+        the network and writes the results directly to the onramp's
+        ``upstream_onramps`` and ``downstream_onramps`` attributes.
+
+        Args:
+            max_upstream: Maximum number of upstream neighbours to collect per
+                onramp (default 5).
+            max_downstream: Maximum number of downstream neighbours to collect
+                per onramp (default 5).
         """
         for node in self.list_nodes():
             for link in node.incoming:
@@ -821,6 +879,9 @@ class Network:
             - Each onramp needs to be connected to an origin through a node upstream
             - Each node needs to have at least one incoming and one outgoing link
             - All nodes in the network must be connected through links
+
+        Returns:
+            ``True`` when the network passes all validation checks.
 
         Raises:
             ValueError: if any of the requirements are violated.

@@ -13,11 +13,16 @@ from traffic_flow_models.arbitrator.aggregation_helpers import (
 
 
 class DetectorMetadata(TypedDict):
-    edge_id: str
-    cell_key: str
-    cell_index: int
-    type: str
-    position: float | None
+    """Metadata for a single loop detector mapped to the macroscopic network.
+
+    Attributes:
+        edge_id: SUMO edge identifier that hosts the detector.
+        cell_key: String key identifying the macroscopic cell the detector belongs to.
+        cell_index: Integer index of the cell within its motorway link.
+        type: Detector role/type label (e.g. ``'backbone_segment'``).
+        position: Detector position along the edge in metres, or ``None`` if
+            the position is not specified in the CSV specification.
+    """
 
 
 # (begin_sec, count, speed_kmh, occupancy_percent, sampled_seconds)
@@ -190,13 +195,14 @@ class BackboneStateAggregator:
             self.max_time = max(self.max_time, end)
 
     def reset_state(self) -> None:
+        """Reset all accumulated interval data and detector mappings to empty state."""
         self.detector_intervals = defaultdict[str, list[DetectorInterval]](list)
         self.detector_mapping = {}
         self.edge_intervals = defaultdict[str, list[EdgeInterval]](list)
         self.max_time = 0.0
 
     def classify_and_map(self) -> None:
-        """Map only backbone cell detectors from the specification CSV.
+        """Classify detectors from the specification CSV and map backbone cells.
 
         This class is intentionally backbone-only:
         - backbone_segment detectors are used for state aggregation
