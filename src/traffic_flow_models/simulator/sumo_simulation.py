@@ -111,6 +111,8 @@ class SUMOSimulation:
                 "true",
                 "--ignore-route-errors",
                 "true",
+                "--step-length",
+                "0.5",
             ],
             cwd=self.output_dir,
             check=True,
