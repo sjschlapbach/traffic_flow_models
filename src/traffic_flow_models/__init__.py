@@ -17,7 +17,7 @@ from .network.simulation import Simulation
 from .network.calibrator import Calibrator
 
 # re-export model components
-from .model.ctm import CTM
+from .model.ctm import CTM, CTMParams, CTMSymbolicParams
 from .model.metanet import METANET, METANETParams, METANETSymbolicParams
 
 # re-export controller components
@@ -51,6 +51,8 @@ __all__ = [
     "Simulation",
     "Calibrator",
     "CTM",
+    "CTMParams",
+    "CTMSymbolicParams",
     "METANET",
     "METANETParams",
     "METANETSymbolicParams",

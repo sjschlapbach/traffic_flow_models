@@ -1,0 +1,15 @@
+<routes>
+    <vType id="urban" length="5.0" maxSpeed="27.78" lcCooperative="1.0"/>
+    <route id="main_route" edges="m1 m3 m4"/>
+
+    <flow id="main_0"    route="main_route" type="urban" begin="0"    end="400"  vehsPerHour="681.8"  departLane="random"/>
+    <flow id="main_400"  route="main_route" type="urban" begin="400"  end="800"  vehsPerHour="1636.4" departLane="random"/>
+    <flow id="main_800"  route="main_route" type="urban" begin="800"  end="1200" vehsPerHour="2318.2" departLane="random"/>
+    <flow id="main_1200" route="main_route" type="urban" begin="1200" end="1600" vehsPerHour="2727.3" departLane="random"/>
+    <flow id="main_1600" route="main_route" type="urban" begin="1600" end="2000" vehsPerHour="3000.0" departLane="random"/>
+    <flow id="main_2000" route="main_route" type="urban" begin="2000" end="2400" vehsPerHour="2727.3" departLane="random"/>
+    <flow id="main_2400" route="main_route" type="urban" begin="2400" end="2800" vehsPerHour="2318.2" departLane="random"/>
+    <flow id="main_2800" route="main_route" type="urban" begin="2800" end="3200" vehsPerHour="1636.4" departLane="random"/>
+    <flow id="main_3200" route="main_route" type="urban" begin="3200" end="3600" vehsPerHour="681.8"  departLane="random"/>
+
+</routes>

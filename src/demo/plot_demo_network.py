@@ -21,36 +21,18 @@ from traffic_flow_models import (
 
 def build_and_plot_network():
     # create a compact network containing motorway, onramp and offramp
-    m1 = MotorwayLink(
-        length=1.0, lanes=3, lane_capacity=2000, free_flow_speed=100, jam_density=180
-    )
-    m2 = MotorwayLink(
-        length=1.0, lanes=2, lane_capacity=2000, free_flow_speed=100, jam_density=180
-    )
-    m3 = MotorwayLink(
-        length=0.5, lanes=1, lane_capacity=2000, free_flow_speed=100, jam_density=180
-    )
+    m1 = MotorwayLink(length=1.0, lanes=3)
+    m2 = MotorwayLink(length=1.0, lanes=2)
+    m3 = MotorwayLink(length=0.5, lanes=1)
 
     origin = Origin()
     origin_onramp = Origin()
     destination_main = Destination(id=None)
     destination_off = Destination(id=None)
 
-    onr = Onramp(
-        length=0.5,
-        lanes=1,
-        lane_capacity=2000,
-        free_flow_speed=100,
-        jam_density=180,
-        controller=None,
-    )
+    onr = Onramp(length=0.5, lanes=1, controller=None)
 
-    offr = Offramp(
-        lanes=1,
-        lane_capacity=2000,
-        free_flow_speed=100,
-        jam_density=180,
-    )
+    offr = Offramp(lanes=1)
 
     n0 = Node(incoming=[origin], outgoing=[m1])
     n0.position = (0.0, 0.0)

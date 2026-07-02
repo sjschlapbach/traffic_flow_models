@@ -3,6 +3,7 @@ import casadi
 
 from traffic_flow_models import (
     CTM,
+    CTMParams,
     Network,
     Node,
     MotorwayLink,
@@ -17,46 +18,31 @@ from traffic_flow_models import (
 class TestCTM:
     def test_critical_density_and_backward_wave(self):
         """Test the fundamental diagram helper functions for CTM."""
-        link = MotorwayLink(
-            length=1.0,
-            lanes=2,
-            lane_capacity=2000,
-            free_flow_speed=100,
-            jam_density=150,
-        )
-        link.partition_link(preferred_cell_size=1.0, dt=0.001)
+        link = MotorwayLink(length=1.5, lanes=2)
+        params = CTMParams(vf=100.0, qc_lane=2000.0, rho_jam=150.0)
+        link.partition_link(max_vf=params["vf"], preferred_cell_size=1.0, dt=0.001)
 
         model = CTM()
 
         # CTM critical density: Qc_lane / vf
-        expected_rho_cr = link.Qc_lane / link.vf
-        computed_rho_cr = model.critical_density(
-            lane_capacity=link.Qc_lane, free_flow_speed=link.vf
-        )
+        expected_rho_cr = params["qc_lane"] / params["vf"]
+        computed_rho_cr = model.critical_density(params=params, link_id=link.id)
         assert np.isclose(computed_rho_cr, expected_rho_cr)
 
         # CTM backward wave speed: Qc / (rho_jam - rho_cr)
-        expected_w = (link.Qc) / (link.rho_jam - expected_rho_cr)
-        computed_w = model.backward_wave_speed(
-            capacity=link.Qc,
-            lane_capacity=link.Qc_lane,
-            jam_density=link.rho_jam,
-            free_flow_speed=link.vf,
+        expected_w = (link.lanes * params["qc_lane"]) / (
+            params["rho_jam"] - expected_rho_cr
         )
+        computed_w = model.backward_wave_speed(params=params, lanes=link.lanes)
         assert np.isclose(computed_w, expected_w)
 
     def test_basic_network_simulation(self):
         """Test basic CTM simulation with a simple network (no onramps)."""
         # create a simple network: origin -> link -> destination
-        link = MotorwayLink(
-            length=2.0,
-            lanes=1,
-            lane_capacity=2000,
-            free_flow_speed=100,
-            jam_density=150,
-        )
+        link = MotorwayLink(length=2.0, lanes=1)
+        params = CTMParams(vf=100.0, qc_lane=2000.0, rho_jam=150.0)
         dt = 0.005
-        link.partition_link(preferred_cell_size=1.0, dt=dt)
+        link.partition_link(max_vf=params["vf"], preferred_cell_size=1.0, dt=dt)
 
         # get actual number of cells after partitioning
         num_cells = len(link)
@@ -78,7 +64,7 @@ class TestCTM:
         mainline_demand = lambda t: 500.0
 
         # run simulation for one timestep
-        sim = Simulation(network, model)
+        sim = Simulation(network, model, params)
         _, states, _ = sim.run(
             duration=dt,
             dt=dt,
@@ -107,11 +93,11 @@ class TestCTM:
 
         # verify that density is non-negative and within bounds
         assert np.all(density[link.id] >= 0)
-        assert np.all(density[link.id] <= link.rho_jam)
+        assert np.all(density[link.id] <= params["rho_jam"])
 
         # verify that speed is within bounds
         assert np.all(speed[link.id] >= 0)
-        assert np.all(speed[link.id] <= link.vf)
+        assert np.all(speed[link.id] <= params["vf"])
 
         # verify flow-density-speed relationship: q = rho * v * lanes
         for i in range(len(link)):
@@ -121,23 +107,16 @@ class TestCTM:
 
     def test_network_with_onramp(self):
         """Test CTM simulation with a network including an onramp."""
-        link = MotorwayLink(
-            length=2.0,
-            lanes=1,
-            lane_capacity=2000,
-            free_flow_speed=100,
-            jam_density=150,
-        )
+        link = MotorwayLink(length=2.0, lanes=1)
+        params = CTMParams(vf=100.0, qc_lane=2000.0, rho_jam=150.0)
         dt = 0.005
-        link.partition_link(preferred_cell_size=1.0, dt=dt)
+        link.partition_link(max_vf=params["vf"], preferred_cell_size=1.0, dt=dt)
 
         # get actual number of cells
         num_cells = len(link)
         origin = Origin()
         ramp_origin = Origin()
-        onramp = Onramp(
-            length=0.5, lanes=1, lane_capacity=1000, free_flow_speed=60, jam_density=100
-        )
+        onramp = Onramp(length=0.5, lanes=1)
         destination = Destination()
 
         node_main = Node(incoming=[origin], outgoing=[link])
@@ -156,7 +135,7 @@ class TestCTM:
         onramp_demand = lambda t: 200.0
 
         # run simulation
-        sim = Simulation(network, model)
+        sim = Simulation(network, model, params)
         _, states, _ = sim.run(
             duration=dt * 2,
             dt=dt,
@@ -189,31 +168,24 @@ class TestCTM:
         )
 
         # verify that onramp flow is within capacity
-        assert flow[onramp.id][0] <= onramp.Qc + 1e-6  # allow small numerical error
+        assert flow[onramp.id][0] <= onramp.lanes * params["qc_lane"] + 1e-6
 
         # verify conservation principles
         assert np.all(density[link.id] >= 0)
-        assert np.all(density[link.id] <= link.rho_jam)
+        assert np.all(density[link.id] <= params["rho_jam"])
 
     def test_network_with_offramp(self):
         """Test CTM simulation with a network including an offramp."""
-        link = MotorwayLink(
-            length=2.0,
-            lanes=2,
-            lane_capacity=2000,
-            free_flow_speed=100,
-            jam_density=150,
-        )
+        link = MotorwayLink(length=2.0, lanes=2)
+        params = CTMParams(vf=100.0, qc_lane=2000.0, rho_jam=150.0)
         dt = 0.005
-        link.partition_link(preferred_cell_size=1.0, dt=dt)
+        link.partition_link(max_vf=params["vf"], preferred_cell_size=1.0, dt=dt)
 
         # get actual number of cells
         num_cells = len(link)
 
         origin = Origin()
-        offramp = Offramp(
-            lanes=1, lane_capacity=500, free_flow_speed=50, jam_density=100
-        )
+        offramp = Offramp(lanes=1)
         destination_offramp = Destination()
         destination_mainline = Destination()
 
@@ -234,7 +206,7 @@ class TestCTM:
         mainline_split = 0.7  # remaining to mainline destination
 
         # run simulation
-        sim = Simulation(network, model)
+        sim = Simulation(network, model, params)
         _, states, _ = sim.run(
             duration=dt * 2,
             dt=dt,
@@ -276,14 +248,14 @@ class TestCTM:
         )
 
         # verify that offramp flow is within capacity
-        assert flow[offramp.id][0] <= offramp.Qc + 1e-6
+        assert flow[offramp.id][0] <= offramp.lanes * params["qc_lane"] + 1e-6
 
         # verify that offramp queue is non-negative
         assert offramp_queue[offramp.id] >= 0
 
         # verify conservation principles
         assert np.all(density[link.id] >= 0)
-        assert np.all(density[link.id] <= link.rho_jam)
+        assert np.all(density[link.id] <= params["rho_jam"])
 
         # verify that the split ratios are respected
         total_outflow = flow[link.id][-1]
@@ -297,20 +269,8 @@ class TestCTM:
     def test_helper_function_normalized_splits(self):
         """Test the split ratio normalization helper function."""
         # create a node with multiple outgoing links
-        link1 = MotorwayLink(
-            length=1.0,
-            lanes=1,
-            lane_capacity=2000,
-            free_flow_speed=100,
-            jam_density=150,
-        )
-        link2 = MotorwayLink(
-            length=1.0,
-            lanes=1,
-            lane_capacity=2000,
-            free_flow_speed=100,
-            jam_density=150,
-        )
+        link1 = MotorwayLink(length=1.0, lanes=1)
+        link2 = MotorwayLink(length=1.0, lanes=1)
         origin = Origin()
 
         node = Node(incoming=[origin], outgoing=[link1, link2])
@@ -341,15 +301,10 @@ class TestCTM:
 
     def test_flow_capacity_constraints(self):
         """Test that CTM respects capacity constraints."""
-        link = MotorwayLink(
-            length=2.0,
-            lanes=1,
-            lane_capacity=2000,
-            free_flow_speed=100,
-            jam_density=150,
-        )
+        link = MotorwayLink(length=2.0, lanes=1)
+        params = CTMParams(vf=100.0, qc_lane=2000.0, rho_jam=150.0)
         dt = 0.005  # Smaller dt to satisfy CFL condition
-        link.partition_link(preferred_cell_size=0.5, dt=dt)
+        link.partition_link(max_vf=params["vf"], preferred_cell_size=0.5, dt=dt)
 
         origin = Origin()
         destination = Destination()
@@ -372,7 +327,7 @@ class TestCTM:
         high_demand = lambda t: 5000.0
 
         # run simulation
-        sim = Simulation(network, model)
+        sim = Simulation(network, model, params)
         _, states, _ = sim.run(
             duration=dt * 5,
             dt=dt,
@@ -396,7 +351,7 @@ class TestCTM:
             flow, _, _, _, _, _ = network.state_vec_to_network_dict(states[:, t])
 
             # verify that flow never exceeds capacity
-            capacity = link.Qc
+            capacity = link.lanes * params["qc_lane"]
             assert np.all(
                 flow[link.id] <= capacity + 1e-6
             )  # allow small numerical error

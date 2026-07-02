@@ -3,15 +3,18 @@ import numpy as np
 import tempfile
 import os
 
-from traffic_flow_models.network.network import Network
-from traffic_flow_models.network.node import Node
-from traffic_flow_models.network.origin import Origin
-from traffic_flow_models.network.destination import Destination
-from traffic_flow_models.network.motorway_link import MotorwayLink
-from traffic_flow_models.network.onramp import Onramp
-from traffic_flow_models.network.offramp import Offramp
-from traffic_flow_models.network.simulation import Simulation
-from traffic_flow_models import CTM
+from traffic_flow_models import (
+    CTM,
+    CTMParams,
+    Simulation,
+    Network,
+    Node,
+    Origin,
+    Destination,
+    MotorwayLink,
+    Onramp,
+    Offramp,
+)
 
 
 class TestVisualization:
@@ -133,14 +136,7 @@ class TestVisualization:
     def test_visualize_simulation_creates_video_file(self):
         """Test that visualization creates a valid video file."""
         # create minimal network
-        main = MotorwayLink(
-            id="m1",
-            length=2.0,
-            lanes=3,
-            lane_capacity=2000.0,
-            free_flow_speed=100.0,
-            jam_density=180.0,
-        )
+        main = MotorwayLink(id="m1", length=2.0, lanes=3)
         origin = Origin(id="o1")
         dest = Destination(id="d1")
 
@@ -155,11 +151,12 @@ class TestVisualization:
         net.validate()
 
         # partition link
-        main.partition_link(preferred_cell_size=0.5, dt=0.01)
+        params = CTMParams(vf=100.0, qc_lane=2000.0, rho_jam=180.0)
+        main.partition_link(max_vf=params["vf"], preferred_cell_size=0.5, dt=0.01)
 
         # create simulation with very short duration
         model = CTM()
-        sim = Simulation(net, model)
+        sim = Simulation(net, model, params)
         sim.run(
             duration=0.03,  # very short
             dt=0.01,
@@ -175,7 +172,7 @@ class TestVisualization:
             results_path = os.path.join(tmpdir, "results.json")
             video_path = os.path.join(tmpdir, "output.avi")
 
-            sim.save_results(filepath=results_path)
+            sim.save_results(filepath=results_path, model_params=params)
 
             # generate visualization
             sim.visualize(
@@ -184,6 +181,7 @@ class TestVisualization:
                 fps=1,  # Low fps for fast test
                 figsize=(6, 4),
                 dpi=50,  # Low dpi for fast test
+                model_params=params,
             )
 
             # check video file exists and has non-zero size
@@ -193,14 +191,7 @@ class TestVisualization:
     def test_visualize_simulation_with_subsampling(self):
         """Test that subsampling increases frame count."""
         # create minimal network
-        main = MotorwayLink(
-            id="m1",
-            length=2.0,
-            lanes=3,
-            lane_capacity=2000.0,
-            free_flow_speed=100.0,
-            jam_density=180.0,
-        )
+        main = MotorwayLink(id="m1", length=2.0, lanes=3)
         origin = Origin(id="o1")
         dest = Destination(id="d1")
 
@@ -213,10 +204,11 @@ class TestVisualization:
         net = Network(nodes=[node1, node2])
         net.validate()
 
-        main.partition_link(preferred_cell_size=0.5, dt=0.01)
+        params = CTMParams(vf=100.0, qc_lane=2000.0, rho_jam=180.0)
+        main.partition_link(max_vf=params["vf"], preferred_cell_size=0.5, dt=0.01)
 
         model = CTM()
-        sim = Simulation(net, model)
+        sim = Simulation(net, model, params)
         sim.run(
             duration=0.03,
             dt=0.01,
@@ -231,7 +223,7 @@ class TestVisualization:
             results_path = os.path.join(tmpdir, "results.json")
             video_path = os.path.join(tmpdir, "output_subsampled.avi")
 
-            sim.save_results(filepath=results_path)
+            sim.save_results(filepath=results_path, model_params=params)
 
             # generate with subsampling
             sim.visualize(
@@ -241,6 +233,7 @@ class TestVisualization:
                 subsampling=2,  # double frames
                 figsize=(6, 4),
                 dpi=50,
+                model_params=params,
             )
 
             # video should be created
@@ -249,14 +242,7 @@ class TestVisualization:
 
     def test_visualize_simulation_missing_positions_raises(self):
         """Test that missing node positions raises ValueError."""
-        main = MotorwayLink(
-            id="m1",
-            length=2.0,
-            lanes=3,
-            lane_capacity=2000.0,
-            free_flow_speed=100.0,
-            jam_density=180.0,
-        )
+        main = MotorwayLink(id="m1", length=2.0, lanes=3)
         origin = Origin(id="o1")
         dest = Destination(id="d1")
 
@@ -267,10 +253,11 @@ class TestVisualization:
         net = Network(nodes=[node1, node2])
         net.validate()
 
-        main.partition_link(preferred_cell_size=0.5, dt=0.01)
+        params = CTMParams(vf=100.0, qc_lane=2000.0, rho_jam=180.0)
+        main.partition_link(max_vf=params["vf"], preferred_cell_size=0.5, dt=0.01)
 
         model = CTM()
-        sim = Simulation(net, model)
+        sim = Simulation(net, model, params)
         sim.run(
             duration=0.03,
             dt=0.01,
@@ -285,7 +272,7 @@ class TestVisualization:
             results_path = os.path.join(tmpdir, "results.json")
             video_path = os.path.join(tmpdir, "output.avi")
 
-            sim.save_results(filepath=results_path)
+            sim.save_results(filepath=results_path, model_params=params)
 
             # should raise ValueError
             with pytest.raises(ValueError, match="lacks position information"):
@@ -293,55 +280,22 @@ class TestVisualization:
                     results_filepath=results_path,
                     output_filepath=video_path,
                     fps=1,
+                    model_params=params,
                 )
 
     def test_visualize_simulation_with_ramps(self):
         """Test visualization with onramps and offramps."""
         # create network with ramps - separate nodes for onramp and offramp
-        main1 = MotorwayLink(
-            id="m1",
-            length=2.0,  # increased from 1.0
-            lanes=3,
-            lane_capacity=2000.0,
-            free_flow_speed=100.0,
-            jam_density=180.0,
-        )
-        main2 = MotorwayLink(
-            id="m2",
-            length=2.0,  # increased from 1.0
-            lanes=3,
-            lane_capacity=2000.0,
-            free_flow_speed=100.0,
-            jam_density=180.0,
-        )
-        main3 = MotorwayLink(
-            id="m3",
-            length=2.0,  # increased from 1.0
-            lanes=3,
-            lane_capacity=2000.0,
-            free_flow_speed=100.0,
-            jam_density=180.0,
-        )
+        main1 = MotorwayLink(id="m1", length=2.0, lanes=3)
+        main2 = MotorwayLink(id="m2", length=2.0, lanes=3)
+        main3 = MotorwayLink(id="m3", length=2.0, lanes=3)
 
         origin = Origin(id="o1")
         ramp_origin = Origin(id="o_on")
         dest = Destination(id="d1")
         dest_off = Destination(id="d_off")
-        onramp = Onramp(
-            id="on1",
-            length=0.5,
-            lanes=1,
-            lane_capacity=1500.0,
-            free_flow_speed=80.0,
-            jam_density=160.0,
-        )
-        offramp = Offramp(
-            id="off1",
-            lanes=1,
-            lane_capacity=1500.0,
-            free_flow_speed=80.0,
-            jam_density=160.0,
-        )
+        onramp = Onramp(id="on1", length=0.5, lanes=1)
+        offramp = Offramp(id="off1", lanes=1)
 
         # separate nodes for onramp and offramp to satisfy validation rules
         node1 = Node(id="n1", incoming=[origin], outgoing=[main1])
@@ -363,13 +317,16 @@ class TestVisualization:
         net.validate()
 
         # partition links
+        params = CTMParams(vf=100.0, qc_lane=2000.0, rho_jam=180.0)
         for node in net.list_nodes():
             for link in node.incoming + node.outgoing:
                 if isinstance(link, MotorwayLink):
-                    link.partition_link(preferred_cell_size=0.5, dt=0.01)
+                    link.partition_link(
+                        max_vf=params["vf"], preferred_cell_size=0.5, dt=0.01
+                    )
 
         model = CTM()
-        sim = Simulation(net, model)
+        sim = Simulation(net, model, params)
         sim.run(
             duration=0.03,
             dt=0.01,
@@ -396,7 +353,7 @@ class TestVisualization:
             results_path = os.path.join(tmpdir, "results.json")
             video_path = os.path.join(tmpdir, "output_ramps.avi")
 
-            sim.save_results(filepath=results_path)
+            sim.save_results(filepath=results_path, model_params=params)
 
             # should complete without error
             sim.visualize(
@@ -405,6 +362,7 @@ class TestVisualization:
                 fps=1,
                 figsize=(6, 4),
                 dpi=50,
+                model_params=params,
             )
 
             assert os.path.exists(video_path)

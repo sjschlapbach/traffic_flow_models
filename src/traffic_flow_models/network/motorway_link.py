@@ -36,9 +36,6 @@ class MotorwayLink:
         self,
         length: float,
         lanes: int,
-        lane_capacity: float,
-        free_flow_speed: float,
-        jam_density: float,
         id: str | None = None,
         origin_node_id: str | None = None,
         destination_node_id: str | None = None,
@@ -58,24 +55,9 @@ class MotorwayLink:
         if lanes <= 0:
             raise ValueError("Number of lanes must be positive.")
 
-        if lane_capacity <= 0:
-            raise ValueError("Lane capacity must be positive.")
-
-        if free_flow_speed <= 0:
-            raise ValueError("Free-flow speed must be positive.")
-
-        if jam_density <= 0:
-            raise ValueError("Jam density must be positive.")
-
         # set link parameters
         self.length: float = length  # in kilometers
         self.lanes: int = lanes  # number of lanes
-        self.Qc_lane: float = lane_capacity  # in vehicles per hour per lane
-        self.Qc: float = (
-            lane_capacity * lanes
-        )  # total link capacity in vehicles per hour
-        self.vf: float = free_flow_speed  # in kilometers per hour
-        self.rho_jam: float = jam_density  # in vehicles per kilometer per lane
 
         # identifier
         self.id: str = id if id is not None else str(uuid.uuid4())
@@ -135,7 +117,11 @@ class MotorwayLink:
         return new_cell
 
     def partition_link(
-        self, preferred_cell_size: float, dt: float, upcoming_lane_drop: int = 0
+        self,
+        max_vf: float,
+        preferred_cell_size: float,
+        dt: float,
+        upcoming_lane_drop: int = 0,
     ) -> None:
         """Partition the motorway link into a sequence of `Cell` objects.
 
@@ -146,6 +132,7 @@ class MotorwayLink:
         the same time units as `vf` (e.g. hours if `vf` is km/h).
 
         Args:
+            max_vf (float): Maximum free-flow speed in kilometers per hour.
             preferred_cell_size (float): Preferred cell length in kilometers.
             dt (float): Simulation timestep (same time units as `vf`).
             upcoming_lane_drop (int): Number of lanes dropping downstream of
@@ -160,8 +147,9 @@ class MotorwayLink:
         self._tail = None
         self._cell_count = 0
 
-        # determine maximum allowable cell size from CFL condition
-        min_cell_length = self.vf * dt
+        # determine maximum allowable cell size from CFL condition based on the
+        # maximum possible free-flow speed obtained from calibration of model
+        min_cell_length = max_vf * dt
         valid_cell_size = max(preferred_cell_size, min_cell_length + 0.001)
         num_cells = int(self.length // valid_cell_size)
 
