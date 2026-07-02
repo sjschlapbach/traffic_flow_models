@@ -1220,6 +1220,147 @@ class Simulation:
         with open(filepath, "w") as f:
             json.dump(out, f, indent=2)
 
+    @staticmethod
+    def _sanitize_cell_lengths(
+        cell_lengths: list | tuple | None,
+    ) -> list[float] | None:
+        """Validate and normalize a candidate sequence of cell lengths.
+
+        Args:
+            cell_lengths: Candidate sequence of per-cell lengths, or None.
+
+        Returns:
+            List of cell lengths as floats, or None if `cell_lengths` is
+            missing, not a list/tuple, or contains non-numeric entries.
+        """
+        if cell_lengths is None or not isinstance(cell_lengths, (list, tuple)):
+            return None
+
+        return [float(x) for x in cell_lengths]
+
+    @staticmethod
+    def _resample_spatial_array(
+        arr: NDArray[np.float64] | list[float],
+        src_cell_lengths: list | tuple | None,
+        dst_cell_lengths: list[float],
+    ) -> NDArray[np.float64]:
+        """Resample a per-cell array onto a different spatial cell layout.
+
+        Interpolates values defined at the centers of source cells (spaced
+        according to `src_cell_lengths`, or uniformly if unavailable) onto
+        the centers of destination cells (spaced according to
+        `dst_cell_lengths`). Used to align microsimulation per-cell results
+        with the macroscopic network partitioning when their cell counts
+        differ.
+
+        Args:
+            arr: 1-D array of per-cell values on the source layout.
+            src_cell_lengths: Source cell lengths (km), or None/invalid to
+                assume uniform spacing.
+            dst_cell_lengths: Destination cell lengths (km).
+
+        Returns:
+            1-D array of values resampled onto `len(dst_cell_lengths)` cells.
+        """
+        arr = np.asarray(arr, dtype=np.float64)
+        src_n = arr.shape[0]
+        dst_n = len(dst_cell_lengths)
+        if src_n == dst_n:
+            return arr
+
+        # validate source cell lengths
+        src_cell_lengths = Simulation._sanitize_cell_lengths(src_cell_lengths)
+
+        # compute source cell center positions
+        if src_cell_lengths is not None and len(src_cell_lengths) == src_n:
+            src_bounds = np.concatenate(([0.0], np.cumsum(src_cell_lengths)))
+            src_centers = (src_bounds[:-1] + src_bounds[1:]) / 2.0
+        else:
+            src_centers = (np.arange(src_n) + 0.5) / float(src_n)
+
+        # compute destination cell center positions
+        if dst_cell_lengths is not None and len(dst_cell_lengths) == dst_n:
+            dst_bounds = np.concatenate(([0.0], np.cumsum(dst_cell_lengths)))
+            dst_centers = (dst_bounds[:-1] + dst_bounds[1:]) / 2.0
+        else:
+            dst_centers = (np.arange(dst_n) + 0.5) / float(dst_n)
+
+        # normalize to [0,1] to make interpolation robust across scales
+        if src_centers.size > 1 and not np.isclose(src_centers[-1], src_centers[0]):
+            src_x = (src_centers - src_centers[0]) / (src_centers[-1] - src_centers[0])
+        else:
+            src_x = np.linspace(0.0, 1.0, src_n)
+
+        if dst_centers.size > 1 and not np.isclose(dst_centers[-1], dst_centers[0]):
+            dst_x = (dst_centers - dst_centers[0]) / (dst_centers[-1] - dst_centers[0])
+        else:
+            dst_x = np.linspace(0.0, 1.0, dst_n)
+
+        # handle degenerate cases by repeating first value
+        if src_x.size == 1 or np.allclose(src_x, src_x[0]):
+            return np.full(dst_n, arr[0], dtype=np.float64)
+
+        return np.interp(dst_x, src_x, arr)
+
+    @staticmethod
+    def _resample_mainline_timestep_to_network(
+        network: "Network",
+        flows_t: dict[str, NDArray[np.float64]],
+        densities_t: dict[str, NDArray[np.float64]],
+        speeds_t: dict[str, NDArray[np.float64]],
+        micro_link_props: dict,
+    ) -> tuple[
+        dict[str, NDArray[np.float64]],
+        dict[str, NDArray[np.float64]],
+        dict[str, NDArray[np.float64]],
+    ]:
+        """Resample one timestep of mainline arrays onto the network's cells.
+
+        For every motorway link in `network`, checks whether the flow,
+        density, and speed arrays in the provided per-timestep dictionaries
+        match the link's current number of cells. If not, resamples them
+        spatially via `_resample_spatial_array`, using source cell lengths
+        from `micro_link_props` when available. This allows microsimulation
+        results saved at a different spatial resolution to be loaded against
+        a network partitioned differently than at save time.
+
+        Args:
+            network: Network instance providing the target cell partitioning.
+            flows_t: Mapping link id -> per-cell flow array for one timestep.
+            densities_t: Mapping link id -> per-cell density array for one timestep.
+            speeds_t: Mapping link id -> per-cell speed array for one timestep.
+            micro_link_props: Mapping link id -> saved link metadata
+                (including "cell_lengths") from the source results file.
+
+        Returns:
+            Tuple `(flows_t, densities_t, speeds_t)` with motorway link
+            entries resampled onto the network's current cell layout where
+            needed.
+        """
+        for node in network.list_nodes():
+            for link in node.outgoing:
+                if not isinstance(link, MotorwayLink):
+                    continue
+
+                target_cell_lengths = [float(cell.length) for cell in link]
+                src_props = micro_link_props.get(link.id, {})
+                src_cell_lengths = (
+                    src_props.get("cell_lengths")
+                    if isinstance(src_props, dict)
+                    else None
+                )
+
+                for series in (flows_t, densities_t, speeds_t):
+                    if link.id not in series:
+                        continue
+
+                    if len(np.asarray(series[link.id])) != len(target_cell_lengths):
+                        series[link.id] = Simulation._resample_spatial_array(
+                            series[link.id], src_cell_lengths, target_cell_lengths
+                        )
+
+        return flows_t, densities_t, speeds_t
+
     @classmethod
     def load_results(
         cls,
@@ -1380,6 +1521,13 @@ class Simulation:
                             f"Flow data for destination '{link.id}' not found in saved results."
                         )
 
+        # cell-length metadata for the saved (micro) links, used below to spatially
+        # resample mainline arrays when the saved and target cell counts differ
+        meta = data.get("metadata", {}) if isinstance(data, dict) else {}
+        micro_link_props = (
+            meta.get("link_properties", {}) if isinstance(meta, dict) else {}
+        )
+
         # Reconstruct state history timestep-by-timestep. We iterate over the
         # network topology so missing non-mainline fields can be populated with
         # defaults when ``load_mainline_only`` is True.
@@ -1503,6 +1651,19 @@ class Simulation:
                                 raise ValueError(
                                     f"Flow data for destination '{link.id}' not found in saved results."
                                 )
+
+            # if the spatial resolution of the saved (micro) time series does not
+            # match the current network partitioning, resample the per-cell arrays
+            # spatially so they match the number and locations of the macro cells.
+            flows_t, densities_t, speeds_t = (
+                Simulation._resample_mainline_timestep_to_network(
+                    network=network,
+                    flows_t=flows_t,
+                    densities_t=densities_t,
+                    speeds_t=speeds_t,
+                    micro_link_props=micro_link_props,
+                )
+            )
 
             # validate numerical data using existing validation (for first timestep)
             if t == 0:
