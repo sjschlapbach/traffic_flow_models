@@ -1353,14 +1353,11 @@ class Simulation:
                 for series in (flows_t, densities_t, speeds_t):
                     if link.id not in series:
                         continue
-                    try:
-                        if len(np.asarray(series[link.id])) != len(target_cell_lengths):
-                            series[link.id] = Simulation._resample_spatial_array(
-                                series[link.id], src_cell_lengths, target_cell_lengths
-                            )
-                    except Exception:
-                        # leave as-is and let downstream validation catch errors
-                        pass
+
+                    if len(np.asarray(series[link.id])) != len(target_cell_lengths):
+                        series[link.id] = Simulation._resample_spatial_array(
+                            series[link.id], src_cell_lengths, target_cell_lengths
+                        )
 
         return flows_t, densities_t, speeds_t
 
