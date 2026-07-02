@@ -122,7 +122,7 @@ dmypy.json
 # GitHub Copilot Settings
 .github/copilot-instructions.md
 .github/mcp-config.json
-scratchpad.md
+/scratchpad.md
 
 # Mac System Files
 .DS_Store
@@ -141,6 +141,9 @@ cache/
 
 # VS code settings (relevant settings covered by GitHub CI actions)
 .vscode/settings.json
+
+# LLM settings
+.claude
 
 # Ignore all files under the demo scenarios directory except certain files needed for the demo
 src/demo/scenarios/**
