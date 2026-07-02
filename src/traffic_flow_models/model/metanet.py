@@ -538,32 +538,23 @@ class METANET:
         lanes: float,
     ) -> float | casadi.SX:
         """
-                Return the backward (congestion) wave speed for given fundamental parameters.
+        Return the backward (congestion) wave speed for given fundamental parameters.
 
-                The backward wave speed is computed as capacity / (jam_density - rho_crit)
-                where rho_crit is the critical density computed from lane_capacity and
-                free_flow_speed. This speed describes how congestion propagates upstream
-                (length per time).
+        The backward wave speed is computed as capacity / (jam_density - rho_crit)
+        where rho_crit is the critical density computed from lane_capacity and
+        free_flow_speed. This speed describes how congestion propagates upstream
+        (length per time).
 
-                Args:
-        <<<<<<< HEAD
-                    params: METANET model parameters (may be numeric or symbolic).
-                    link_id: Identifier of the link for which to compute the backward wave speed.
-                    lanes: Number of lanes on the link (used to compute total capacity).
-        =======
-                    params: METANET model parameters (numeric or symbolic).
-                    link_id: Identifier of the link for which to compute the wave speed.
-                    capacity: Cell capacity (vehicles per time).
-                    lane_capacity: Capacity per lane (vehicles per time).
-                    jam_density: Jam density (vehicles per length per lane).
-                    free_flow_speed: Free-flow speed (length per time).
-        >>>>>>> d008ff386019d08441b8a2c1812f5a39a22fbbb5
+        Args:
+            params: METANET model parameters (may be numeric or symbolic).
+            link_id: Identifier of the link for which to compute the backward wave speed.
+            lanes: Number of lanes on the link (used to compute total capacity).
 
-                Returns:
-                    Backward wave speed (length per time).
+        Returns:
+            Backward wave speed (length per time).
 
-                Raises:
-                    ValueError: If jam_density is less than or equal to the critical density.
+        Raises:
+            ValueError: If jam_density is less than or equal to the critical density.
         """
 
         rho_crit = self.critical_density(
@@ -581,27 +572,19 @@ class METANET:
     ) -> float | casadi.SX:
         """Compute the stationary (equilibrium) velocity for a cell.
 
-                The stationary velocity is the speed that the traffic on the cell would
-                adopt in the absence of dynamics, given the current density. METANET
-                uses an exponential functional form parameterized by ``alpha`` and the
-                cell's free-flow speed (fundamental diagram).
+        The stationary velocity is the speed that the traffic on the cell would
+        adopt in the absence of dynamics, given the current density. METANET
+        uses an exponential functional form parameterized by ``alpha`` and the
+        cell's free-flow speed (fundamental diagram).
 
-                Args:
-        <<<<<<< HEAD
-                    params (METANETParams | METANETSymbolicParams): METANET model parameters.
-                    link_id (str): Identifier of the link for which to compute the stationary velocity.
-        =======
-                    params: METANET model parameters (numeric or symbolic).
-                    link_id: Identifier of the link for which to evaluate the velocity.
-                    lane_capacity (float): Capacity per lane used to compute the
-                        critical density.
-                    free_flow_speed (float): Free-flow speed for the link.
-        >>>>>>> d008ff386019d08441b8a2c1812f5a39a22fbbb5
-                    density (float | casadi.SX): The density at which to evaluate the
-                        stationary velocity (vehicles per length per lane).
+        Args:
+            params (METANETParams | METANETSymbolicParams): METANET model parameters.
+            link_id (str): Identifier of the link for which to compute the stationary velocity.
+            density (float | casadi.SX): The density at which to evaluate the
+                stationary velocity (vehicles per length per lane).
 
-                Returns:
-                    The stationary velocity (length per time unit).
+        Returns:
+            The stationary velocity (length per time unit).
         """
 
         alpha = (
