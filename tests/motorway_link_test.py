@@ -4,6 +4,45 @@ from traffic_flow_models import MotorwayLink, Cell, Node
 
 
 class TestMotorwayLink:
+    def test_init_rejects_non_positive_parameters(self):
+        valid_kwargs = dict(
+            length=1.0, lanes=1, lane_capacity=1500, free_flow_speed=80, jam_density=140
+        )
+        for field in (
+            "length",
+            "lanes",
+            "lane_capacity",
+            "free_flow_speed",
+            "jam_density",
+        ):
+            for bad_value in (0, -1):
+                kwargs = {**valid_kwargs, field: bad_value}
+                with pytest.raises(ValueError):
+                    MotorwayLink(**kwargs)
+
+    def test_partition_link_rejects_non_positive_preferred_cell_size(self):
+        link = MotorwayLink(
+            length=1.0, lanes=1, lane_capacity=1500, free_flow_speed=80, jam_density=140
+        )
+        with pytest.raises(ValueError):
+            link.partition_link(preferred_cell_size=0, dt=0.001)
+
+        with pytest.raises(ValueError):
+            link.partition_link(preferred_cell_size=-1.0, dt=0.001)
+
+    def test_partition_link_raises_when_link_too_short(self):
+        # free_flow_speed * dt (CFL-driven minimum cell size) exceeds the
+        # entire link length, so no cell can fit.
+        link = MotorwayLink(
+            length=0.1,
+            lanes=1,
+            lane_capacity=1500,
+            free_flow_speed=100,
+            jam_density=140,
+        )
+        with pytest.raises(ValueError):
+            link.partition_link(preferred_cell_size=0.05, dt=1.0)
+
     def test_add_cell_single(self):
         link = MotorwayLink(
             length=2.0,

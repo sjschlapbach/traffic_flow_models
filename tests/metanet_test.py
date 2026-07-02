@@ -1,6 +1,7 @@
 from typing import cast
 import casadi
 import numpy as np
+import pytest
 
 from traffic_flow_models import (
     METANET,
@@ -659,3 +660,126 @@ class TestMETANET:
         # verify offramp receives some flow
         assert offramp.id in flows
         assert flows[offramp.id][-1] >= 0
+
+    def test_calibration_interface_global_and_link_specific_alpha(self):
+        """Exercise the calibration-support interface Calibrator relies on
+        (get_default_calibration_params, get_calibration_param_names,
+        get_calibration_bounds, prepare/parse_calibration_params,
+        prepare_system_params) for both the global-alpha and link-specific
+        alpha `model_options` configurations."""
+        link = MotorwayLink(
+            length=1.0,
+            lanes=1,
+            lane_capacity=2000,
+            free_flow_speed=100,
+            jam_density=150,
+        )
+        onramp = Onramp(
+            length=0.5, lanes=1, lane_capacity=1000, free_flow_speed=60, jam_density=100
+        )
+        origin = Origin()
+        destination = Destination()
+
+        node1 = Node(incoming=[origin, onramp], outgoing=[link])
+        node2 = Node(incoming=[link], outgoing=[destination])
+        network = Network(nodes=[node1, node2])
+
+        model = METANET()
+
+        # get_default_calibration_params: documented defaults
+        defaults = model.get_default_calibration_params()
+        assert defaults == {
+            "tau": 10 / 3600,
+            "nu": 20.0,
+            "kappa": 20.0,
+            "delta": 1.0,
+            "phi": 1.0,
+            "alpha": 1.0,
+        }
+
+        # get_calibration_param_names: global alpha -> single "alpha" name
+        names_global = model.get_calibration_param_names(network)
+        assert names_global == ["tau", "nu", "kappa", "delta", "phi", "alpha"]
+
+        # get_calibration_param_names: link-specific -> one name per link
+        names_link = model.get_calibration_param_names(
+            network, model_options={"link_specific_alpha": True}
+        )
+        assert names_link[:5] == ["tau", "nu", "kappa", "delta", "phi"]
+        assert set(names_link[5:]) == {f"alpha_{onramp.id}", f"alpha_{link.id}"}
+
+        # get_calibration_bounds: shapes match the parameter count for each mode
+        lb_global, ub_global = model.get_calibration_bounds(network)
+        assert lb_global.shape == (6,)
+        assert ub_global.shape == (6,)
+        assert np.all(lb_global <= ub_global)
+
+        lb_link, ub_link = model.get_calibration_bounds(
+            network, model_options={"link_specific_alpha": True}
+        )
+        assert lb_link.shape == (7,)  # 5 scalars + 2 link-specific alphas
+        assert ub_link.shape == (7,)
+
+        # prepare_calibration_params / parse_calibration_params round-trip: global alpha
+        params: METANETParams = {
+            "tau": 8 / 3600,
+            "nu": 25.0,
+            "kappa": 15.0,
+            "delta": 0.8,
+            "phi": 0.5,
+            "alpha": 1.3,
+        }
+        vec_global = model.prepare_calibration_params(params, network)
+        assert vec_global.shape == (6,)
+        parsed_global = model.parse_calibration_params(vec_global, network)
+        assert np.isclose(parsed_global["tau"], params["tau"])
+        assert np.isclose(parsed_global["alpha"], params["alpha"])  # type: ignore
+
+        # prepare_calibration_params / parse_calibration_params round-trip: link-specific alpha
+        params_link: METANETParams = {
+            **params,
+            "alpha": {onramp.id: 1.1, link.id: 0.9},
+        }
+        vec_link = model.prepare_calibration_params(
+            params_link, network, model_options={"link_specific_alpha": True}
+        )
+        assert vec_link.shape == (7,)
+        parsed_link = model.parse_calibration_params(
+            vec_link, network, model_options={"link_specific_alpha": True}
+        )
+        assert isinstance(parsed_link["alpha"], dict)
+        assert np.isclose(parsed_link["alpha"][onramp.id], 1.1)
+        assert np.isclose(parsed_link["alpha"][link.id], 0.9)
+
+        # prepare_system_params: global alpha is expanded to one value per link
+        system_vec = model.prepare_system_params(vec_global, network)
+        assert system_vec.shape == (7,)
+        assert np.all(system_vec[5:] == vec_global[5])
+
+        # prepare_system_params: link-specific alpha passes through unchanged
+        system_vec_link = model.prepare_system_params(
+            vec_link, network, model_options={"link_specific_alpha": True}
+        )
+        assert np.array_equal(system_vec_link, vec_link)
+
+        # prepare_system_params: a vector of unexpected length under global-alpha
+        # options falls back to returning it unchanged, with a warning
+        with pytest.warns(UserWarning):
+            fallback_vec = model.prepare_system_params(vec_link, network)
+        assert np.array_equal(fallback_vec, vec_link)
+
+    def test_validate_model_options_rejects_invalid(self):
+        """`_validate_model_options` is the single gate Calibrator/model-
+        interface methods rely on to reject malformed `model_options`."""
+        model = METANET()
+
+        # None is allowed and normalizes to an empty dict
+        assert model._validate_model_options(None) == {}
+
+        # unknown option keys should raise
+        with pytest.raises(ValueError):
+            model._validate_model_options({"unknown_key": True})
+
+        # non-bool link_specific_alpha should raise
+        with pytest.raises(ValueError):
+            model._validate_model_options({"link_specific_alpha": "yes"})

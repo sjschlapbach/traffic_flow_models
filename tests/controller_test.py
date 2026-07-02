@@ -43,6 +43,56 @@ def _eval(exprs):
     return res
 
 
+def test_flowcontroller_rejects_negative_flow():
+    onr = Onramp(
+        length=0.5,
+        lanes=1,
+        lane_capacity=1500,
+        free_flow_speed=80,
+        jam_density=140,
+        id="r1",
+    )
+    with pytest.raises(ValueError):
+        FlowController(onramp=onr, flow=-1.0)
+
+
+def test_alinea_rejects_invalid_parameters():
+    onr = Onramp(
+        length=0.5,
+        lanes=1,
+        lane_capacity=1500,
+        free_flow_speed=80,
+        jam_density=140,
+        id="r1",
+    )
+    with pytest.raises(ValueError):
+        AlineaController(
+            onramp=onr,
+            measurement_link_id="m1",
+            measurement_cell_idx=0,
+            gain=2.0,
+            density_setpoint=-1.0,
+        )
+
+    with pytest.raises(ValueError):
+        AlineaController(
+            onramp=onr,
+            measurement_link_id="m1",
+            measurement_cell_idx=0,
+            gain=0.0,
+            density_setpoint=10.0,
+        )
+
+    with pytest.raises(ValueError):
+        AlineaController(
+            onramp=onr,
+            measurement_link_id="m1",
+            measurement_cell_idx=-1,
+            gain=2.0,
+            density_setpoint=10.0,
+        )
+
+
 def test_flowcontroller_attributes_and_compute():
     onr = Onramp(
         length=0.5,

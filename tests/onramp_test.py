@@ -11,6 +11,22 @@ from traffic_flow_models import (
 
 
 class TestOnramp:
+    def test_init_rejects_non_positive_parameters(self):
+        valid_kwargs = dict(
+            length=0.5, lanes=1, lane_capacity=1000, free_flow_speed=60, jam_density=100
+        )
+        for field in (
+            "length",
+            "lanes",
+            "lane_capacity",
+            "free_flow_speed",
+            "jam_density",
+        ):
+            for bad_value in (0, -1):
+                kwargs = {**valid_kwargs, field: bad_value}
+                with pytest.raises(ValueError):
+                    Onramp(**kwargs)
+
     def test_init_assigns_attributes(self):
         link = MotorwayLink(
             length=2.0,

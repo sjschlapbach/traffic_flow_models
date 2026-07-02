@@ -1,7 +1,19 @@
+import pytest
+
 from traffic_flow_models import Offramp, Destination, Node, MotorwayLink
 
 
 class TestOfframp:
+    def test_init_rejects_non_positive_parameters(self):
+        valid_kwargs: dict[str, float] = dict(
+            lanes=1, lane_capacity=1400, free_flow_speed=60, jam_density=120
+        )
+        for field in ("lanes", "lane_capacity", "free_flow_speed", "jam_density"):
+            for bad_value in (0, -1):
+                kwargs = {**valid_kwargs, field: bad_value}
+                with pytest.raises(ValueError):
+                    Offramp(**kwargs)
+
     def test_init_assigns_attributes(self):
         link = MotorwayLink(
             length=2.0,

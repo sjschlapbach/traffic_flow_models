@@ -1,5 +1,6 @@
 import numpy as np
 import casadi
+import pytest
 
 from traffic_flow_models import (
     CTM,
@@ -400,3 +401,39 @@ class TestCTM:
             assert np.all(
                 flow[link.id] <= capacity + 1e-6
             )  # allow small numerical error
+
+    def test_calibration_interface_raises_not_implemented(self):
+        """CTM has no calibratable parameters; every calibration-interface
+        method must raise NotImplementedError rather than silently no-op,
+        since `Calibrator` dispatches to these methods for any model."""
+        model = CTM()
+        origin = Origin()
+        destination = Destination()
+        link = MotorwayLink(
+            length=1.0,
+            lanes=1,
+            lane_capacity=2000,
+            free_flow_speed=100,
+            jam_density=150,
+        )
+        node1 = Node(incoming=[origin], outgoing=[link])
+        node2 = Node(incoming=[link], outgoing=[destination])
+        network = Network(nodes=[node1, node2])
+
+        with pytest.raises(NotImplementedError):
+            model.get_default_calibration_params()
+
+        with pytest.raises(NotImplementedError):
+            model.get_calibration_bounds(network)
+
+        with pytest.raises(NotImplementedError):
+            model.prepare_calibration_params({}, network)
+
+        with pytest.raises(NotImplementedError):
+            model.parse_calibration_params(np.array([]), network)
+
+        with pytest.raises(NotImplementedError):
+            model.prepare_system_params(np.array([]), network)
+
+        with pytest.raises(NotImplementedError):
+            model.get_calibration_param_names(network)

@@ -1,9 +1,16 @@
 import pytest
 
-from traffic_flow_models import MotorwayLink
+from traffic_flow_models import MotorwayLink, Cell
 
 
 class TestCell:
+    def test_init_rejects_non_positive_length(self):
+        with pytest.raises(ValueError):
+            Cell(length=0)
+
+        with pytest.raises(ValueError):
+            Cell(length=-1.0)
+
     def test_init_assigns_attributes(self):
         # create a link that holds the physical parameters and a cell
         link = MotorwayLink(

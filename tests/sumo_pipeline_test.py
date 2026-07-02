@@ -1,8 +1,10 @@
 import os
+import sys
 import json
 import pytest
 
 from traffic_flow_models import SUMOPipeline
+from traffic_flow_models.arbitrator.network_arbitrator import RoadTypeParams
 
 
 @pytest.fixture
@@ -191,8 +193,15 @@ class TestSUMOPipeline:
 
         p.generate_demand(20, 3600.0)
 
-        # Assertions to ensure subprocess was called
+        # Assertions to ensure randomTrips.py was invoked with the expected inputs
+        # (highway_count defaults to 0, so this is the only subprocess.run call)
         assert "cmd" in called
+        assert called["cmd"][0] == sys.executable
+        assert called["cmd"][1] == str(random_trips)
+        assert "-n" in called["cmd"]
+        assert called["cmd"][called["cmd"].index("-n") + 1] == p.net_file
+        assert "--seed" in called["cmd"]
+        assert called["cmd"][called["cmd"].index("--seed") + 1] == "42"
 
     def test_convert_to_sumo_skips_when_net_exists(
         self, monkeypatch, tmp_path, capsys, road_params_config
@@ -218,3 +227,73 @@ class TestSUMOPipeline:
         p.convert_to_sumo()
         captured = capsys.readouterr()
         assert ".net.xml already exists." in captured.out
+
+    def test_parse_demand_profile(self):
+        assert SUMOPipeline.parse_demand_profile(None) is None
+
+        parsed = SUMOPipeline.parse_demand_profile(
+            "[[0.0, 0.3], [0.3, 0.5], [0.8, 0.2]]"
+        )
+        assert parsed == [(0.0, 0.3), (0.3, 0.5), (0.8, 0.2)]
+
+        # not valid JSON
+        with pytest.raises(ValueError):
+            SUMOPipeline.parse_demand_profile("not json")
+
+        # fractions do not sum to 1.0
+        with pytest.raises(ValueError):
+            SUMOPipeline.parse_demand_profile("[[0.0, 0.3], [0.3, 0.3]]")
+
+    def test_bc_flow_from_density_free_flow_and_congestion(self):
+        road_params = RoadTypeParams(
+            {
+                "lane_capacity": 2000.0,
+                "jam_density": 180.0,
+                "free_flow_speed": 120.0,
+            }
+        )
+        q_max_lane = road_params["lane_capacity"]
+        rho_jam_lane = road_params["jam_density"]
+        v_f = road_params["free_flow_speed"]
+        rho_c = q_max_lane / v_f
+        w = q_max_lane / (rho_jam_lane - rho_c)
+
+        # free-flow regime (density below critical density): boundary is
+        # wide open at capacity, scaled by the number of lanes
+        free_flow_density = rho_c / 2
+        result = SUMOPipeline.bc_flow_from_density(
+            free_flow_density, n_lanes=2, road_params=road_params
+        )
+        assert result == pytest.approx(q_max_lane * 2)
+
+        # congested regime (density above critical density): flow drops
+        # linearly along the fundamental-diagram slope
+        congested_density = (rho_c + rho_jam_lane) / 2
+        expected_q_lane = q_max_lane - w * (congested_density - rho_c)
+        result = SUMOPipeline.bc_flow_from_density(
+            congested_density, n_lanes=2, road_params=road_params
+        )
+        assert result == pytest.approx(expected_q_lane * 2)
+
+    def test_bc_flow_from_density_clips_out_of_bounds_and_warns(self):
+        road_params = RoadTypeParams(
+            {
+                "lane_capacity": 2000.0,
+                "jam_density": 180.0,
+                "free_flow_speed": 120.0,
+            }
+        )
+
+        # negative density should be clipped to 0.0 (free flow) and warn
+        with pytest.warns(UserWarning):
+            result = SUMOPipeline.bc_flow_from_density(
+                -5.0, n_lanes=1, road_params=road_params
+            )
+        assert result == pytest.approx(road_params["lane_capacity"])
+
+        # density above jam density should be clipped to jam density and warn
+        with pytest.warns(UserWarning):
+            result = SUMOPipeline.bc_flow_from_density(
+                300.0, n_lanes=1, road_params=road_params
+            )
+        assert result >= 0.0
