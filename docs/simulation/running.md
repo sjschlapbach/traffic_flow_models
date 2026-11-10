@@ -45,6 +45,7 @@ time_arr, states, disturbances = sim.run(
     preferred_cell_size=0.5,            # target cell length [km]; default 0.5
     plot_results=False,                 # set True to auto-save plots + JSON
     results_dir="results/my_scenario",  # used when plot_results=True
+    reference_results_path=None,        # optional results JSON overlaid on link plots
 )
 ```
 

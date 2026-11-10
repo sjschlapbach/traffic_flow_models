@@ -36,7 +36,7 @@ updating the documentation.
    - `.agent_docs/DECISIONS.md` — After any non-trivial architectural choice
    - `.agent_docs/scratchpad.md` — Session progress and learnings (mandatory)
    - `docs/` — User-facing MkDocs pages (deployed to GitHub Pages); update when models, network
-     components, controllers, calibration, or the SUMO pipeline change
+     components, controllers, or calibration change
 
 3. **Update `.memory-bank/` at session end:**
    - `.memory-bank/activeContext.md` — Current focus and recent changes
@@ -67,9 +67,7 @@ traffic_flow_models/
 │   │   ├── __init__.py         – Public API re-exports
 │   │   ├── model/               – CTM and METANET model implementations
 │   │   ├── network/             – Network topology, simulation, calibration
-│   │   ├── controller/          – Ramp metering controllers (ALINEA, METALINE, custom)
-│   │   ├── simulator/           – SUMO microsimulation integration (experimental)
-│   │   └── arbitrator/          – Demand/turning-rate aggregation, loop detectors
+│   │   └── controller/          – Ramp metering controllers (ALINEA, METALINE, custom)
 │   └── demo/                   – Demo scripts and example scenarios
 ├── tests/                      – pytest test suite (flat, root level)
 ├── docs/                       – User-facing MkDocs documentation (GitHub Pages)
@@ -119,10 +117,8 @@ traffic_flow_models/
 - **Python 3.13** — Required version
 - **numpy / scipy** — Numerical computing for CTM/METANET state updates
 - **casadi** — Optimization backend for model calibration
-- **networkx / osmnx** — Graph structures and real-world network import
+- **networkx** — Graph layout for network topology plots
 - **matplotlib / opencv-python** — Visualization and video export
-- **SUMO** — Microsimulation traffic simulator (external, via `sumolib`/`traci`-style integration
-  in `simulator/`; experimental, requires separate install)
 - **pytest** — Testing framework
 - **black / pylint** — Formatting and linting
 - **git-cliff** — Automated changelog generation for releases

@@ -102,8 +102,6 @@ nav:
   - Experimental:
       - Overview: experimental/index.md
       - Calibration: experimental/calibration.md
-      - SUMO Integration: experimental/sumo-pipeline.md
-      - API (Experimental): api/experimental.md
   - Development:
       - Contributing: development/contributing.md
       - Changelog: development/changelog.md

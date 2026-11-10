@@ -1,4 +1,5 @@
 import numpy as np
+import pytest
 
 from traffic_flow_models import (
     CTM,
@@ -117,3 +118,53 @@ class TestSimulationComputeMetrics:
         assert VHT == 0.0
         # avg_speed falls back to 0.0 instead of dividing by zero when VHT == 0
         assert avg_speed == 0.0
+
+
+class TestSimulationReferenceOverlay:
+    @staticmethod
+    def _make_simulation() -> tuple[Simulation, Origin, Destination]:
+        # fixed ids so the reference file matches the network of a later run
+        link = MotorwayLink(
+            id="m1",
+            length=1.0,
+            lanes=2,
+            lane_capacity=2000,
+            free_flow_speed=100,
+            jam_density=150,
+        )
+        origin = Origin(id="o1")
+        destination = Destination(id="d1")
+        node1 = Node(id="n1", incoming=[origin], outgoing=[link])
+        node2 = Node(id="n2", incoming=[link], outgoing=[destination])
+        node1.set_position(0.0, 0.0)
+        node2.set_position(1.0, 0.0)
+        return Simulation(Network(nodes=[node1, node2]), CTM()), origin, destination
+
+    def _run(self, results_dir, reference_results_path=None) -> None:
+        sim, origin, destination = self._make_simulation()
+        sim.run(
+            duration=0.02,
+            dt=0.005,
+            origin_demands={origin.id: lambda t: 1000.0},
+            turning_rates={},
+            destination_flow_bc={destination.id: lambda t: 4000.0},
+            destination_density_bc={destination.id: lambda t: 0.0},
+            plot_results=True,
+            show_plots=False,
+            reference_results_path=reference_results_path,
+            results_dir=str(results_dir),
+        )
+
+    def test_reference_results_are_resampled_and_plotted(self, tmp_path):
+        self._run(tmp_path / "ground_truth")
+        reference_path = tmp_path / "ground_truth" / "simulation_results.json"
+        assert reference_path.is_file()
+
+        self._run(tmp_path / "with_reference", str(reference_path))
+        assert (
+            tmp_path / "with_reference" / "subsampled_reference_data.json"
+        ).is_file()
+
+    def test_missing_reference_results_raises(self, tmp_path):
+        with pytest.raises(FileNotFoundError):
+            self._run(tmp_path, str(tmp_path / "missing.json"))

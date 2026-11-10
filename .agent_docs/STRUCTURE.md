@@ -68,14 +68,17 @@
   `save_to_txt`/`save_to_json`/`load_from_json`. `plot(figsize, show, save_path)`.
 - **`simulation.py`** — `Simulation(network, model, model_params=None)` (largest file, ~3800
   lines). Main entry `run(duration, dt, origin_demands, turning_rates, destination_flow_bc,
-  destination_density_bc, ..., preferred_cell_size=0.5, plot_results=True, results_dir=None) ->
-  (time_array, state_history, disturbance_history)`. Also: `save_results`/`load_results` (JSON,
-  with a `load_mainline_only` mode for SUMO-derived ground truth),
+  destination_density_bc, ..., preferred_cell_size=0.5, plot_results=True,
+  reference_results_path=None, results_dir=None) -> (time_array, state_history,
+  disturbance_history)`; `reference_results_path` overlays a mainline-only reference file on the
+  link plots. Also: `save_results`/`load_results` (JSON, with a `load_mainline_only` mode for
+  externally provided ground truth; files marked `metadata.model_type == "MICRO"` are
+  auto-loaded that way by the visualizers),
   `resample_results_file(source_filepath, dest_filepath, target_time_array)` (classmethod, linear
   interpolation onto a new time grid), `compute_metrics(states, dt, timesteps, ignore_queues=False)
   -> (VKT, VHT, overall_avg_speed)`, `plot_results(...)`, `visualize(results_filepath,
   output_filepath, fps=25, subsampling=1, ...)` (AVI export via OpenCV, color-coded by density),
-  `visualize_comparison(...)` (macro vs. micro side-by-side).
+  `visualize_comparison(...)` (side-by-side comparison of several results files).
 - **`calibrator.py`** — `Calibrator(network)` (~1500 lines). `calibrate_model_params(
   ground_truth_filepath, model, window_size=50, stride=None, regularization_weight=0.0,
   use_parameter_search=False, ..., use_disturbance_from_file=True, origin_demands_fn=None,
@@ -99,56 +102,7 @@
 All expose `compute_regulated_flow(onramp_queues, flows, densities) -> casadi.SX`, called from
 inside the model's `network_update_function` when `onramp.controller is not None`.
 
-### `simulator/` — SUMO microsimulation integration (experimental)
-
-- **`sumo_simulation.py`** — `SUMOSimulation(name, net_file, rou_file, cfg_file, output_dir,
-  simulation_end_time, ...)`: thin wrapper around a single SUMO run. `write_config()` writes
-  `.sumocfg` + an `edgeData` additional file. `run_simulation()` shells out to headless `sumo`.
-  `print_summary()` parses `vehicleTripStatistics` from the stats XML.
-- **`sumo_pipeline.py`** — `SUMOPipeline(name, location, road_params_config_path, output_dir, ...)`
-  (~1000 lines): end-to-end pipeline from OSM/SUMO raw data to a calibration-ready `Network` +
-  demand/turning-rate/boundary-condition functions. Pipeline stages: `fetch_OSM()` →
-  `convert_to_sumo()` (via `netconvert`) → `generate_demand(...)` (via `randomTrips.py` +
-  `duarouter` validation) → `create_consolidated_network(...)` (via `NetworkArbitrator`) →
-  `generate_detectors(...)` (via `LoopDetectorGenerator`) → `compute_splits(...)` (via
-  `TurningRateAggregator`) → `build_destination_bc_from_sumo_edges(...)`. Uses a
-  `skip_if_exists(attr_name)` decorator so expensive steps (OSM download, netconvert) are skipped
-  if their output already exists. Full detail in `.agent_docs/INTEGRATIONS.md`.
-
-### `arbitrator/` — SUMO → macroscopic network conversion & data aggregation
-
-Bridges the SUMO microsimulation world and the macroscopic CTM/METANET world. See the pipeline
-diagram in `systemPatterns.md`.
-
-- **`network_arbitrator.py`** — `NetworkArbitrator(net_xml_path, road_params_config_path,
-  target_cell_length=0.3, min_link_length=None)` (~1200 lines). `run()` orchestrates:
-  `parse_sumo_xml()` → `eliminate_roundabouts()` → `filter()` → `prune_orphan_ramps()` →
-  `merge_serial_edges(...)` (invents synthetic `merged_<A>_<B>` link IDs, tracked in
-  `sumo_ids`) → `handle_short_links()` (CFL-stability fuse/stretch) → `instantiate_network()`
-  (builds actual `Node`/`MotorwayLink`/`Onramp`/`Offramp`/`Origin`/`Destination` objects). Returns
-  a 9-tuple including `sumo_edge_id_map` (see the gotcha in `systemPatterns.md`). Known dead-code
-  block inside `instantiate_network` around lines 884–921 — see `systemPatterns.md`.
-  `compute_lane_based_splits(network)` — fallback turning-rate estimator when detector data is
-  missing.
-- **`loop_detector_generator.py`** — `LoopDetectorGenerator(sumo_network_path, origin_ids,
-  onramp_ids, offramp_ids, destination_ids, output_dir, diverge_node_info, backbone_node_ids,
-  target_cell_length_km, ...)` (~680 lines). Places point `inductionLoop`s (interface/diverge
-  points) and `laneAreaDetector`s (backbone cells). `generate() -> (detector_file,
-  detector_output_file, detector_spec_path)`.
-- **`aggregation_helpers.py`** — `make_rolling_window_aggregator(intervals, window_size_sec,
-  max_time, aggregation_type)`, `make_single_stream_rolling_window_aggregator(...)`: shared
-  rolling-window aggregation logic used by all three aggregators below.
-- **`demand_aggregator.py`** — `DemandAggregator(detector_output_path, detector_spec_path,
-  window_size_minutes=2.0)`: `.run(origin_ids, onramp_ids, sumo_network_path) ->
-  dict[origin_id, Callable[[float], float]]`.
-- **`turning_rate_aggregator.py`** — `TurningRateAggregator(...)`: `.run() -> dict[node_id,
-  Callable[[float], dict[edge_id, float]]]`. Deliberately mirrors `DemandAggregator`'s pattern.
-- **`backbone_aggregator.py`** — `BackboneStateAggregator(...)` (~960 lines, largest arbitrator
-  file). Derives macroscopic flow/speed/density state functions per backbone edge from SUMO
-  detector output; `.run(...) -> (json_path, highway_demands)` writes the "ground truth" JSON
-  consumed by `Calibrator.calibrate_model_params(ground_truth_filepath=...)`.
-
-## `src/demo/` — demo scripts and example scenarios (not part of the installed package)
+## `src/demo/` — demo scripts and example networks (not part of the installed package)
 
 - **`ctm_simulation.py` / `metanet_simulation.py`** — CLI demos (`--scenario A..E2`, `--no-plot`,
   `--generate-video`) using prebuilt networks/demand from `scenarios.py`.
@@ -156,12 +110,8 @@ diagram in `systemPatterns.md`.
   through `_e2`); canonical example of manual topology construction and all 4 controller types
   attached post-hoc.
 - **`plot_demo_network.py`** — minimal topology-only example (no simulation).
-- **`run_pipeline.py`** (~520 lines) — the full end-to-end SUMO→macroscopic pipeline CLI; the
-  canonical worked example tying the entire package together.
 - **`metanet_calibration.py`** (~1049 lines) — dedicated METANET calibration demo, exercising
   `Calibrator.calibrate_model_params` with diagnostic plotting.
-- **`scenarios/`** — named pre-built SUMO scenario config dirs (`scenario_a`..`scenario_e`,
-  `example`) used by CI's `scripts_scenarios_pipeline.yml`.
 
 ## `tests/` — flat pytest suite at repo root
 
@@ -178,22 +128,20 @@ diagram in `systemPatterns.md`.
 | `offramp_test.py` | `Offramp` | 4 |
 | `onramp_test.py` | `Onramp` + neighbor discovery | 5 |
 | `origin_test.py` | `Origin` | 1 |
-| `sumo_pipeline_test.py` | `SUMOPipeline` (subprocess mocked) | 6 |
-| `sumo_simulation_test.py` | `SUMOSimulation` (subprocess mocked) | 3 |
+| `simulation_test.py` | `Simulation` metrics + reference-data overlay | 4 |
 | `visualization_test.py` | `Simulation` visualization/video export | 9 |
 
-No `conftest.py`. No tests are skipped/xfail — SUMO-touching tests mock `subprocess.run`, so the
-full suite needs no SUMO install (see `techContext.md`).
+No `conftest.py`. No tests are skipped/xfail and none need external tools.
 
 ## Other top-level directories
 
 - **`docs/`** — user-facing MkDocs documentation (deployed to GitHub Pages):
   `getting-started/` (installation, quickstart), `concepts/` (network, state-space),
   `models/` (ctm, metanet, comparison), `control/` (ramp-metering), `simulation/` (running,
-  metrics, visualization), `experimental/` (index/stability tiers, calibration, sumo-pipeline),
+  metrics, visualization), `experimental/` (index/stability tiers, calibration),
   `api/` (mkdocstrings reference), `development/` (contributing, changelog).
-- **`results/`** — generated simulation outputs (not authoritative source; contains both
-  macroscopic JSON/PNG output and raw SUMO XML artifacts up to hundreds of MB per run).
+- **`results/`** — generated simulation outputs (not authoritative source; macroscopic
+  JSON/PNG/AVI output; gitignored).
 - **`.github/workflows/`** — CI; see `techContext.md` for the full table.
 - **`pyproject.toml`** — package metadata, runtime/dev/docs dependencies.
 - **`cliff.toml`** — git-cliff changelog generation config; see `.agent_docs/INTEGRATIONS.md`.

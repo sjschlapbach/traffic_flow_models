@@ -4,8 +4,9 @@
 
     Calibration tooling is experimental. The API may change in future releases.
 
-Parameter calibration fits METANET model parameters to data from a reference
-simulation (e.g. from SUMO microsimulation or a real-world reference run) using
+Parameter calibration fits METANET model parameters to reference data (e.g. measured
+traffic data or the output of another simulator, converted to the
+[ground-truth file format](#ground-truth-file-format)) using
 **sliding-window nonlinear least-squares** optimisation via SciPy's Trust-Region
 Reflective algorithm. Only METANET supports calibration; CTM has no calibratable
 parameters (its characteristics are entirely determined by link geometry).
@@ -19,7 +20,8 @@ For a detailed algorithmic description, see
 
 The calibration workflow:
 
-1. **Run a reference simulation** and save the results to a JSON file.
+1. **Provide ground-truth data** as a results JSON file (e.g. saved from a reference
+   simulation with `Simulation.save_results`, or converted from measurements).
 2. **Instantiate a `Calibrator`** with the same `Network` object.
 3. **Call `calibrate_model_params()`** with the path to the saved JSON.
 4. Optionally run **multi-start search** (Latin Hypercube Sampling) to escape local
@@ -49,7 +51,7 @@ calibrator = Calibrator(network=net)
 
 # Calibrate — returns (params_dict, scipy_result, param_history_array)
 calibrated_params, result, param_history = calibrator.calibrate_model_params(
-    # ground truth file (can be generated from microsimulation through pipeline)
+    # ground truth file in the results JSON format (see below)
     ground_truth_filepath="results/ground_truth/simulation_results.json",
     model=metanet,
     initial_params=initial_params,
@@ -82,6 +84,48 @@ The calibration targets the six `METANETParams` fields: `tau`, `nu`, `kappa`,
 | `calibrated_params` | `METANETParams`        | Calibrated parameter dict                                                               |
 | `result`            | `scipy.OptimizeResult` | Full optimizer state (`result.cost`, `result.success`, `result.nfev`, `result.message`) |
 | `param_history`     | `NDArray[float]`       | 2-D array `(n_evals × n_params)` — parameter vector at each function evaluation         |
+
+---
+
+## Ground-truth file format
+
+The ground truth is a JSON file with the same layout that `Simulation.save_results`
+writes and `Simulation.load_results` reads. Link, node, origin and destination IDs
+must match the `Network` passed to the `Calibrator`.
+
+```json
+{
+  "metadata": { "model_type": "METANET", "link_properties": { "...": {} } },
+  "time_array": [0.0, 0.0028, 0.0056],
+  "state_time_series": {
+    "flows":     { "<link_id>": [[q_cell0, q_cell1], [q_cell0, q_cell1], ...] },
+    "densities": { "<link_id>": [[...], ...] },
+    "speeds":    { "<link_id>": [[...], ...] },
+    "origin_queues": {}, "onramp_queues": {}, "offramp_queues": {}
+  },
+  "disturbance_time_series": {
+    "origin_demands": {}, "turning_rates": {},
+    "flow_boundary_conditions": {}, "density_boundary_conditions": {}
+  }
+}
+```
+
+- `time_array` is in hours. State series hold one entry per time step (per-cell lists
+  for motorway links). Disturbance series hold one entry fewer, since they apply between
+  steps.
+- **Full files** (`use_disturbance_from_file=True`, the default) must contain all state
+  fields (including the queue fields) and all four disturbance fields.
+- **Mainline-only files** (`use_disturbance_from_file=False`) only need `flows`,
+  `densities` and `speeds` for the mainline motorway links, plus the two boundary-condition
+  fields. Queues, demands and turning rates are not read from the file. Instead, all four
+  disturbance callables (`origin_demands_fn`, `turning_rates_fn`,
+  `flow_boundary_conditions_fn`, `density_boundary_conditions_fn`) must be passed.
+  Set `metadata.model_type` to `"MICRO"` so that `Simulation.visualize` and
+  `visualize_comparison` also load the file in mainline-only mode.
+- If the number of cells per link in the file differs from the network partitioning,
+  the per-cell arrays are resampled spatially, using `metadata.link_properties[<id>].cell_lengths`
+  when present (uniform cells otherwise). Use `Simulation.resample_results_file` to
+  resample a file to a different time grid.
 
 ---
 

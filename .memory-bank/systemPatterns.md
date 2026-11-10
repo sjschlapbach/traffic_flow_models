@@ -76,26 +76,6 @@ model-specific packing/bounds/param-name logic to methods each model class must 
   passing model-specific calibration knobs through `Calibrator` without leaking them into the
   generic `Network`/`Calibrator` API surface. Follow this pattern for any new calibratable model.
 
-## SUMO ↔ macroscopic bridge pipeline (`arbitrator/` subpackage)
-
-One-directional pipeline turning a raw SUMO network + microsimulation output into the inputs
-`Simulation.run`/`Calibrator.calibrate_model_params` need:
-
-```
-NetworkArbitrator            SUMO .net.xml → macroscopic Network object
-   (merges serial edges into synthetic "merged_<A>_<B>" link IDs)
-        ↓
-LoopDetectorGenerator        places SUMO detectors at macro/micro interface + backbone points
-        ↓
-DemandAggregator / TurningRateAggregator / BackboneStateAggregator
-   (SUMO detector output → origin_demands / turning_rates / ground-truth state callables)
-```
-
-**Critical gotcha**: `NetworkArbitrator` produces `sumo_edge_id_map`, the mandatory bridge from
-synthetic merged macroscopic link IDs back to real SUMO edge IDs. Anything touching detector
-placement or aggregation (`LoopDetectorGenerator`, the three aggregators) must use this map —
-several docstrings in the codebase explicitly flag this as an easy correctness pitfall.
-
 ## Known incomplete scaffolding — not a bug
 
 `Onramp.control_status` (`Literal["unset", "hero_master", "hero_slave"]`) and
@@ -105,16 +85,9 @@ This is preparation for a coordinated ramp-metering scheme (HERO — see the `he
 branch in `activeContext.md`), not finished functionality. Don't assume it's wired up; don't
 "clean it up" as dead code without checking that branch first.
 
-## Known cleanup candidate
-
-`arbitrator/network_arbitrator.py`, inside `instantiate_network` (roughly lines 884–921), contains
-a block of dead/commented-out code duplicating onramp/offramp classification logic that was
-re-implemented, uncommented, just below it — looks like an abandoned refactor. Minor cleanup
-candidate, not a functional bug.
-
 ## See also
 
 - `projectbrief.md` — what this project is
 - `techContext.md` — dependencies and CI
 - `.agent_docs/STRUCTURE.md` — per-file class/function catalog
-- `.agent_docs/INTEGRATIONS.md` — SUMO/OSM integration detail
+- `.agent_docs/INTEGRATIONS.md` — git-cliff/MkDocs integration detail

@@ -1,45 +1,41 @@
 # Active Context — traffic_flow_models
 
 > Living document. Overwrite (don't indefinitely accumulate) each session with the current
-> focus and recent changes. Last updated: 2026-07-02.
+> focus and recent changes. Last updated: 2026-11-10.
 
 ## Current branch state
 
-- Branch: `dev-js`, clean working tree.
-- 4 commits ahead of `master`, none yet released:
-  - `7a3ae22` — fix: add spatial resampling to microscopic simulation results if necessary (#100)
-  - `d008ff3` — fix(SumoPipeline): update microsimulation step length
-  - `690bd77` — chore: update docstrings to follow consistent structure across codebase (#99)
-  - `798b0ef` — chore: update README
-- Latest published release: **v1.1.0** (2026-05-23). Everything on `dev-js` is unreleased delta
-  on top of it.
+- Branch: `pipeline-removal` (branched from `dev-js`). Changes are uncommitted; the maintainer
+  commits manually.
+- Latest published release: **v1.1.0**. This branch is a **breaking** change and should ship as a
+  major version (`feat!`/`BREAKING CHANGE:` footer so git-cliff bumps correctly).
 
 ## This session's work
 
-Rewrote `AGENTS.md`/`CLAUDE.md` (which had been copy-pasted from an unrelated "FEDORA Platform"
-project template) to reflect this repo's actual architecture, tooling, and conventions. Then
-populated `.agent_docs/` and `.memory-bank/` for the first time — both directories previously
-existed but were empty scaffolding.
+Removed the whole SUMO/OSM data-generation pipeline (ADR-0001 in `.agent_docs/DECISIONS.md`):
+- deleted `simulator/`, `arbitrator/`, `src/demo/run_pipeline.py`,
+  `src/demo/road_params_config.json` and `src/demo/scenarios/`;
+- deleted the SUMO tests, the two SUMO CI workflows, the SUMO docs pages and the `osmnx` dependency.
 
-## Known parallel branches (not merged into `dev-js`/`master`)
+The package now covers CTM/METANET, network components, controllers and (experimental)
+calibration against user-provided results-JSON files. The ground-truth format is documented in
+`docs/experimental/calibration.md`.
 
-Noted briefly so future agents don't assume `dev-js` is the only active thread — not deep-dived:
+`Simulation.run(plot_micro_results=True)` became `run(reference_results_path=...)`. The legend
+label is now "Reference" and the `micro_*` names became `reference_*`. The `"MICRO"` metadata
+marker is kept for backward compatibility.
 
-- `dev-fd-calibration` — fundamental-diagram parameter fitting from microsimulation data (#87).
-- `hero-ramp-metering` — coordinated ramp-metering scaffold (see `Onramp.control_status` in
-  `systemPatterns.md`).
-- `paper-macro-run-figures` — figure/results generation for the STRC 2026 paper (see
-  `projectbrief.md`).
-- Also present: local branch `dev`, remotes `demand` and `stepwise`.
+## Known parallel branches (not merged)
 
-## Things worth double-checking before relying on them
+- `dev-fd-calibration` — FD fitting from microsimulation data (#87). It **depends on the removed
+  pipeline**, so it needs rework before merging.
+- `hero-ramp-metering` — coordinated ramp-metering scaffold.
+- `paper-macro-run-figures` — STRC 2026 paper figures. May use `plot_micro_results`, so check
+  before rebasing.
 
-- `docs/development/contributing.md` states PRs should target `dev`, but the actual current work
-  is happening on `dev-js` (branched off `master`). Worth clarifying with the maintainer rather
-  than assuming one or the other is stale/wrong.
-- The MkDocs `docs/` site is very recent (introduced in v1.1.0, #98) — verify it's still in sync
-  before treating it as ground truth for anything changed on `dev-js` or the other branches above
-  since.
+## Things worth double-checking
+
+- `docs/development/contributing.md` says PRs target `dev`, but work happens on `dev-js`.
 
 ## See also
 
