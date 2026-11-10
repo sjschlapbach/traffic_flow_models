@@ -426,8 +426,8 @@ class Calibrator:
         """Extract measurable quantities (flows, densities, speeds) from state history.
 
         This helper method extracts only the measurable state components from the
-        full state history, excluding queue states which are not properly observable in
-        microsimulation. The extracted states include per-cell flows, densities,
+        full state history, excluding queue states which are not observable in measured or
+        reference data. The extracted states include per-cell flows, densities,
         and speeds for all motorway links.
 
         Args:
@@ -696,7 +696,7 @@ class Calibrator:
         """Calibrate model parameters using ground truth simulation data.
 
         This method performs parameter estimation by minimizing the prediction error
-        between the model and provided ground truth data (e.g. microsimulation). It uses a
+        between the model and provided ground truth data (e.g. measured or reference data). It uses a
         sliding window approach to balance computational efficiency with capturing
         multi-step dynamics. Only measurable quantities (flows, densities, speeds)
         are used for calibration, excluding queue states.

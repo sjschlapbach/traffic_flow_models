@@ -17,9 +17,8 @@
 | `numpy` | `2.3.4` | Array operations |
 | `scipy` | `1.16.3` | Calibration: `least_squares` (Trust-Region-Reflective) solver, `stats.qmc.LatinHypercube` for multi-start search |
 | `matplotlib` | `3.10.7` | Network/result plotting |
-| `osmnx` | `2.0.7` | Real-world OSM network fetch for the SUMO pipeline |
 | `casadi` | `3.7.2` | **Core numerical engine.** All CTM/METANET state updates are built as symbolic `SX` computation graphs, compiled once per network topology into a `casadi.Function`, then evaluated numerically each timestep. See `systemPatterns.md`. |
-| `networkx` | `3.5` | Graph algorithms in the `arbitrator/` subpackage (e.g. upstream-node tracing for demand aggregation) |
+| `networkx` | `3.5` | Graph layout for `Network.plot` topology plots |
 | `opencv-python` | `4.13.0.92` | AVI video export of simulation results (`cv2.VideoWriter`) |
 | `tqdm` | `4.67.1` | Progress bars |
 
@@ -36,35 +35,12 @@
   it is *not* listed in `pyproject.toml`'s dev extras — install it separately
   (`pip install black`) if formatting locally.
 
-## SUMO (external, non-pip dependency)
-
-Required only for `src/traffic_flow_models/simulator/` and `arbitrator/` work — not for the core
-CTM/METANET/Network/Simulation stack.
-
-- Needs the `netconvert`, `duarouter`, and `sumo` CLI binaries on `PATH`, plus the `SUMO_HOME`
-  env var (used to locate `$SUMO_HOME/tools/randomTrips.py`).
-- **No `traci`/`sumolib` Python bindings are used anywhere** — all SUMO interaction is via
-  `subprocess.run` calls to the CLI tools plus manual `xml.etree.ElementTree` parsing of SUMO's
-  XML file formats.
-- CI installs SUMO via `sudo add-apt-repository -y ppa:sumo/stable && sudo apt-get install -y sumo
-  sumo-tools`, then sets `SUMO_HOME=/usr/share/sumo` (see
-  `.github/workflows/scripts_sumo_pipeline.yml`). This is the canonical recipe for a working SUMO
-  environment.
-- On macOS, `SUMO_HOME` may not be set automatically by the SUMO installer — see the caveat
-  already documented in `README.md` (something like
-  `/Library/Frameworks/EclipseSUMO.framework/Versions/Current/EclipseSUMO/share/sumo`).
-- Full file-format and pipeline-step detail lives in `.agent_docs/INTEGRATIONS.md`.
-
 ## Testing conventions
 
 - Flat `tests/` directory at repo root (no co-location with `src/`), no `conftest.py`, no shared
   fixtures beyond pytest's own built-ins.
 - File naming: `<module>_test.py` (e.g. `ctm_test.py`, `network_test.py`).
-- All SUMO-touching tests (`sumo_pipeline_test.py`, `sumo_simulation_test.py`) mock
-  `subprocess.run` via `monkeypatch` — **the full `pytest` suite requires no SUMO installation at
-  all.** Only the CI *script* workflows (`scripts_sumo_pipeline.yml`,
-  `scripts_scenarios_pipeline.yml`) exercise real SUMO binaries end-to-end, and they do so outside
-  of pytest (by running the demo scripts directly).
+- The suite needs no external tools. Tests that write results use pytest's `tmp_path`.
 - Run: `pytest` (no markers/flags needed; no coverage reporting configured).
 
 ## CI workflows (`.github/workflows/`)
@@ -82,7 +58,6 @@ All trigger on push/PR to `master`/`dev`, except the two tag-triggered release w
 | `scripts_basics.yml` | Smoke-tests `src.demo.plot_demo_network` |
 | `scripts_ctm_simulation.yml` / `scripts_metanet_simulation.yml` | Smoke-test demo scenarios A, B, C, C1–C4, D for CTM/METANET respectively |
 | `scripts_metanet_calibration.yml` | Smoke-tests `src.demo.metanet_calibration` |
-| `scripts_scenarios_pipeline.yml` / `scripts_sumo_pipeline.yml` | Install real SUMO (apt PPA), run the full SUMO pipeline demo end-to-end for CTM and METANET |
 
 ## Release mechanics
 
@@ -97,4 +72,4 @@ All trigger on push/PR to `master`/`dev`, except the two tag-triggered release w
 ## See also
 
 - `projectbrief.md` — what this project is and why
-- `.agent_docs/INTEGRATIONS.md` — SUMO/OSM/git-cliff/MkDocs config-pattern detail
+- `.agent_docs/INTEGRATIONS.md` — git-cliff/MkDocs config-pattern detail

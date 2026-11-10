@@ -50,7 +50,6 @@ their outputs directly comparable under the same conditions.
 **Experimental components**
 
 - `Calibrator` — sliding-window least-squares parameter estimation
-- `SUMOPipeline` _(requires SUMO installation)_ — end-to-end micro-to-macro benchmarking pipeline
 
 ---
 

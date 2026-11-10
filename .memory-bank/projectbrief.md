@@ -9,9 +9,9 @@ simulation on highway networks**. It implements two widely-used macroscopic mode
 **Cell Transmission Model (CTM)**, a first-order model, and **METANET**, a second-order model —
 on a unified network representation (`Network`, `MotorwayLink`, `Onramp`, `Offramp`, `Origin`,
 `Destination`, `Cell`) with consistent, model-agnostic simulation, calibration, and visualization
-interfaces. It also includes an experimental SUMO microsimulation integration used to derive
-real-world network topologies, demand, and "ground truth" states for calibrating the macroscopic
-models.
+interfaces. Calibration (experimental) fits METANET parameters to user-provided ground-truth
+files in the results-JSON format. Since 2026-11-10 the package no longer ships tooling to
+*generate* such data (the former SUMO/OSM pipeline was removed, see ADR-0001).
 
 Published to PyPI as `traffic-flow-models`, MIT licensed. Docs:
 `https://sjschlapbach.github.io/traffic_flow_models/`.
@@ -37,17 +37,14 @@ Per `docs/experimental/index.md`, components fall into two explicit tiers:
 
 - **Stable**: `CTM`, `METANET`, `Network`, `Simulation`, controllers (`AlineaController`,
   `MetalineController`, `FlowController`, `CustomController`).
-- **Experimental — API may change without notice**: `Calibrator`, `NetworkArbitrator`, and the
-  SUMO pipeline tooling (`SUMOPipeline`, `SUMOSimulation`, and the rest of the `arbitrator/`
-  subpackage).
+- **Experimental — API may change without notice**: `Calibrator`.
 
 ## Scope boundary
 
-This is a *macroscopic* modeling library. The SUMO microsimulation integration exists solely to
-(a) import real-world highway topologies and demand, and (b) generate ground-truth aggregated
-states to calibrate macroscopic model parameters against — it is not intended to be a general
-microsimulation platform in its own right, and its API is explicitly experimental/volatile
-compared to the core CTM/METANET/Network/Simulation stack.
+This is a *macroscopic* modeling library: models, network components, ramp-metering controllers
+and calibration. Importing real-world topologies (OSM), running microsimulations (SUMO) and
+aggregating detector data into ground truth are **out of scope**. Users supply networks in code
+(or via `Network.load_from_json`) and ground-truth data as results-JSON files.
 
 ## See also
 

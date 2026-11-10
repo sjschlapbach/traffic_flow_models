@@ -23,7 +23,7 @@ Generate the same plots explicitly from the arrays returned by `run()`:
 sim.plot_results(
     time_array=time_arr,
     state_history=states,
-    micro_state_history=None,       # None unless co-simulating with SUMO
+    reference_state_history=None,   # optional mainline-only reference states to overlay
     disturbance_history=disturbances,
     save_dir="results/my_run",
 )

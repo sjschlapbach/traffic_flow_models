@@ -1,23 +1,22 @@
 # Progress — traffic_flow_models
 
 > Living document. Update every session with what works and what's broken/fragile.
-> Last updated: 2026-07-02.
+> Last updated: 2026-11-10.
 
 ## Works / stable
 
 CTM, METANET, `Network` topology + validation, `Simulation.run` + save/load JSON round-trip,
 VKT/VHT metrics, plotting, video visualization, and all four controllers (`AlineaController`,
 `MetalineController`, `FlowController`, `CustomController`) — all covered by the test suite under
-`tests/` (122 test functions across 14 files as of this audit). CI is green on
+`tests/` (see `.agent_docs/STRUCTURE.md` for the per-file table). CI is green on
 `python_testing.yml`/`lint.yml` for `master`/`dev`.
 
 ## Experimental / actively evolving — treat with extra care
 
 - `Calibrator` — introduced #45, generalized to be model-agnostic #85, normalization added #92,
   divergence failsafe added #89. Still evolving on the `dev-fd-calibration` branch.
-- `NetworkArbitrator` / SUMO pipeline — continuous stream of fixes through v1.1.0 and into
-  `dev-js`: cell-flow-from-detector fix #88, backbone-aggregator default-masking fix #90,
-  microsimulation step-length fix, spatial resampling fix #100.
+- `Simulation.run(reference_results_path=...)` reference-data overlay — new on
+  `pipeline-removal` (replaces `plot_micro_results`), covered by `tests/simulation_test.py`.
 
 ## Known fragile/sensitive areas — be cautious editing
 
@@ -35,11 +34,14 @@ VKT/VHT metrics, plotting, video visualization, and all four controllers (`Aline
 
 ## Recently fixed (v1.1.0 → dev-js)
 
-- Cell flow is now computed from loop-detector density/speed via the fundamental relation, instead
-  of a previously incorrect method (#88).
-- Removed backbone-aggregator default values that caused "undesired masking effects" (#90).
-- SUMO microsimulation results now get spatial resampling when needed (#100) and a corrected
-  step length.
+- Saved results whose per-link cell count differs from the network are spatially resampled on
+  load (#100). This still applies to user-provided reference data.
+- (#88, #90 and the SUMO step-length fix concerned the removed SUMO pipeline.)
+
+## Removed (pipeline-removal branch, unreleased)
+
+- SUMO/OSM pipeline (`simulator/`, `arbitrator/`, `run_pipeline.py`, SUMO scenario configs, SUMO
+  CI workflows, `osmnx`). See ADR-0001 in `.agent_docs/DECISIONS.md`.
 
 ## Not yet implemented / scaffolding only
 

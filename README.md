@@ -3,7 +3,6 @@
 [![PyPI version](https://img.shields.io/pypi/v/traffic-flow-models)](https://pypi.org/project/traffic-flow-models/)
 [![Python Testing](https://github.com/sjschlapbach/traffic_flow_models/actions/workflows/python_testing.yml/badge.svg)](https://github.com/sjschlapbach/traffic_flow_models/actions/workflows/python_testing.yml)
 [![Package Build](https://github.com/sjschlapbach/traffic_flow_models/actions/workflows/build.yml/badge.svg)](https://github.com/sjschlapbach/traffic_flow_models/actions/workflows/build.yml)
-[![Pipeline](https://github.com/sjschlapbach/traffic_flow_models/actions/workflows/scripts_sumo_pipeline.yml/badge.svg)](https://github.com/sjschlapbach/traffic_flow_models/actions/workflows/scripts_sumo_pipeline.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 A Python library for simulating and analyzing macroscopic traffic flow on highway networks. This package implements two widely-used traffic flow models—**Cell Transmission Model (CTM)** and **METANET**—along with network infrastructure components, ramp metering controllers (ALINEA), and visualization tools.
@@ -17,7 +16,6 @@ A Python library for simulating and analyzing macroscopic traffic flow on highwa
 - **Control Strategies**: Generic control interfaces for local and coordinated ramp metering strategies, including implementations for ALINEA, METALINE, and fixed-rate metering
 - **Performance Metrics**: Extensive set of network performance metrics (VKT, VHT, average speed, density, flow, etc.) computed from simulation results
 - **Visualization**: Network topology plotting, simulation result visualization, and video export
-- **SUMO Integration** _(experimental)_: Pipeline components for importing and benchmarking real-world highway networks via SUMO microsimulation
 - **Calibration & Parameter Estimation** _(experimental)_: Tools for calibrating macroscopic model parameters from aggregated observation data. Includes regularized least-squares calibration, multi-start parameter search, parameter-correlation analysis, and plotting utilities.
 
 ## Installation
@@ -27,10 +25,6 @@ The latest [stable version of the package](https://pypi.org/project/traffic-flow
 ```bash
 pip install traffic-flow-models
 ```
-
-If you plan to use the pipeline components involving SUMO (e.g. for benchmarking highway networks of a specific city), please refer to the [SUMO installation guide](https://sumo.dlr.de/docs/Installing/index.html) for instructions on how to install SUMO on your system (not included in the package).
-
-For the pipeline to be fully functional, auxiliary command line commands such as `netconvert` and `sumo` need to be accessible from your system PATH. For installations on macOS the SUMO installer might not set the SUMO_HOME environment variable automatically / correctly. We recommend checking manually that the variable is set to your library installation (something like `/Library/Frameworks/EclipseSUMO.framework/Versions/Current/EclipseSUMO/share/sumo`).
 
 ## Documentation
 
@@ -184,11 +178,12 @@ time, states, disturbances = sim.run(
 ```python
 from traffic_flow_models import Calibrator, METANET, Simulation
 
-# Calibrate METANET using aggregated microscopic simulation results
+# Calibrate METANET against mainline-only reference data (e.g. measurements) in the
+# results JSON format; disturbances are supplied as callables instead of from the file
 calibrator = Calibrator(network)
 metanet = METANET()
 calibrated_params, opt_result, _ = calibrator.calibrate_model_params(
-    ground_truth_filepath="results/micro_results.json",
+    ground_truth_filepath="results/reference_data.json",
     model=metanet,
     window_size=30,
     stride=15,
@@ -196,6 +191,8 @@ calibrated_params, opt_result, _ = calibrator.calibrate_model_params(
     use_disturbance_from_file=False,
     origin_demands_fn=origin_demands,
     turning_rates_fn=turning_rates,
+    flow_boundary_conditions_fn=destination_flow_bc,
+    density_boundary_conditions_fn=destination_density_bc,
 )
 
 # Run macroscopic simulation with calibrated parameters
@@ -319,10 +316,8 @@ traffic_flow_models/
 │   ├── traffic_flow_models/     # Main package
 │   │   ├── model/               # Traffic flow models (CTM, METANET)
 │   │   ├── network/             # Network components (links, nodes, cells)
-│   │   ├── controller/          # Control strategies (ALINEA)
-│   │   ├── simulator/           # SUMO simulation and pipeline
-│   │   └── arbitrator/          # Demand aggregation and loop detectors
-│   └── demo/                    # Demo scripts and scenarios
+│   │   └── controller/          # Control strategies (ALINEA, METALINE, custom)
+│   └── demo/                    # Demo scripts and example networks
 └── tests/                       # Unit tests
 ```
 

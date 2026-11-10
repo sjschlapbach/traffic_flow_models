@@ -12,14 +12,15 @@ analyzing macroscopic traffic flow on highway networks. It implements two widely
 flow models, the **Cell Transmission Model (CTM)** and **METANET**, along with network
 infrastructure components (motorway links, nodes, onramps, offramps, origins, destinations),
 ramp metering controllers (ALINEA, METALINE, fixed-rate), performance metrics, and visualization
-tools. It also includes experimental SUMO microsimulation pipeline components and macroscopic
-model calibration tools.
+tools. It also includes experimental macroscopic model calibration tools that fit METANET
+parameters to user-provided ground-truth files. Generating such data (e.g. via microsimulation or
+OSM import) is out of scope for this package.
 
 The package is published to PyPI as `traffic-flow-models` and documented via MkDocs at
 `https://sjschlapbach.github.io/traffic_flow_models/`.
 
 **Primary language:** Python 3.13
-**Key runtime dependencies:** numpy, scipy, matplotlib, osmnx, casadi, networkx, opencv-python,
+**Key runtime dependencies:** numpy, scipy, matplotlib, casadi, networkx, opencv-python,
 tqdm (see `pyproject.toml`)
 **Key dev dependencies:** pytest, pylint, black, git-cliff, mkdocs-material, mkdocstrings
 
@@ -37,7 +38,7 @@ Every agent **MUST** keep them up to date. Failure to do so is treated as an inc
 | `.agent_docs/DECISIONS.md`    | Architectural Decision Records (ADRs)                    | Any non-trivial tech or design choice    |
 | `.agent_docs/INTEGRATIONS.md` | External tools, simulators, and their config patterns    | When external dependency changes         |
 | `.agent_docs/scratchpad.md`   | Per-session working memory (tasks, learnings, dead ends) | Continuously during every session        |
-| `docs/`                       | **User-facing MkDocs documentation** (deployed to GitHub Pages) | When models, network components, controllers, calibration, or the pipeline change |
+| `docs/`                       | **User-facing MkDocs documentation** (deployed to GitHub Pages) | When models, network components, controllers, or calibration change    |
 | `CHANGELOG.md`                | Generated automatically via `git-cliff` from conventional commits | Never edit by hand — see Release Process section below |
 
 > `.agent_docs/` and `.memory-bank/` are populated — start every session by reading
@@ -93,29 +94,17 @@ traffic_flow_models/
 │   │   │   ├── node.py             – Junction connecting incoming/outgoing links
 │   │   │   ├── origin.py / destination.py – Network boundary conditions
 │   │   │   └── calibrator.py       – Parameter calibration against ground-truth data
-│   │   ├── controller/             – Ramp metering control strategies
-│   │   │   ├── flow_controller.py  – Base controller interface
-│   │   │   ├── alinea.py           – ALINEA local feedback ramp metering
-│   │   │   ├── metaline.py         – METALINE coordinated ramp metering
-│   │   │   └── custom_controller.py – Template/interface for user-defined controllers
-│   │   ├── simulator/              – SUMO microsimulation integration (experimental)
-│   │   │   ├── sumo_simulation.py  – SUMO microsimulation runner
-│   │   │   └── sumo_pipeline.py    – Pipeline for importing/benchmarking real-world networks
-│   │   └── arbitrator/             – Demand/turning-rate aggregation and loop detector tooling
-│   │       ├── network_arbitrator.py
-│   │       ├── demand_aggregator.py
-│   │       ├── turning_rate_aggregator.py
-│   │       ├── backbone_aggregator.py
-│   │       ├── loop_detector_generator.py
-│   │       └── aggregation_helpers.py
-│   └── demo/                       – Demo scripts and example scenarios
+│   │   └── controller/             – Ramp metering control strategies
+│   │       ├── flow_controller.py  – Base controller interface
+│   │       ├── alinea.py           – ALINEA local feedback ramp metering
+│   │       ├── metaline.py         – METALINE coordinated ramp metering
+│   │       └── custom_controller.py – Template/interface for user-defined controllers
+│   └── demo/                       – Demo scripts and example networks
 │       ├── ctm_simulation.py       – CTM usage example
 │       ├── metanet_simulation.py   – METANET usage example
 │       ├── metanet_calibration.py  – Calibration workflow example
 │       ├── plot_demo_network.py    – Network topology visualization example
-│       ├── scenarios.py            – Scenario definitions
-│       ├── scenarios/              – Named scenario configs (scenario_a .. scenario_e, example)
-│       └── run_pipeline.py         – SUMO pipeline usage example
+│       └── scenarios.py            – Demo network definitions (scenarios A–E2)
 ├── tests/                          – pytest test suite (flat, one file per module/feature)
 ├── docs/                           – User-facing MkDocs documentation (deployed to GitHub Pages)
 │   ├── getting-started/            – Installation, quickstart
@@ -123,7 +112,7 @@ traffic_flow_models/
 │   ├── models/                     – CTM, METANET, model comparison
 │   ├── control/                    – Ramp metering strategies
 │   ├── simulation/                 – Running simulations, metrics, visualization
-│   ├── experimental/               – Calibration, SUMO pipeline
+│   ├── experimental/               – Calibration
 │   ├── api/                        – API reference pages (mkdocstrings)
 │   └── development/                – Contributing guide, changelog
 ├── results/                        – Generated simulation outputs (not authoritative source)
@@ -184,13 +173,6 @@ Always check for a virtual environment before running any Python command.
   and `[project.optional-dependencies]`. If you add a new dependency, add it there with a pinned
   version, matching the existing style (`package==x.y.z`).
 
-### SUMO (only relevant for `simulator/` and pipeline work)
-
-The experimental SUMO integration (`src/traffic_flow_models/simulator/`) requires SUMO to be
-installed separately (not a Python dependency) with `netconvert` and `sumo` available on `PATH`.
-Do not assume SUMO is available in every environment — guard SUMO-dependent tests/scripts
-accordingly and consult existing patterns in `sumo_simulation.py` / `sumo_pipeline.py`.
-
 ---
 
 ## Memory Bank — MANDATORY
@@ -245,7 +227,7 @@ persistent working memory across sessions.
 - Never hardcode absolute file paths — use `pathlib.Path` and relative paths.
 - Never commit generated output files (plots, videos, result JSON/CSV under `results/`) — verify
   they are covered by `.gitignore` before adding new output locations.
-- Sanitize all external inputs (scenario/config files, CLI arguments, imported SUMO network data)
+- Sanitize all external inputs (ground-truth/results files, config files, CLI arguments)
   before passing them to model or calibration algorithms.
 
 ---
@@ -262,7 +244,7 @@ persistent working memory across sessions.
   violations in CTM, METANET solver divergence), degenerate network geometry, or calibration
   optimizer (`casadi`/`scipy`) failures to converge.
 - At the end of each task, summarize what was changed and why.
-- Do not hallucinate APIs for `numpy`, `scipy`, `casadi`, `networkx`, `osmnx`, or `matplotlib` —
+- Do not hallucinate APIs for `numpy`, `scipy`, `casadi`, `networkx`, or `matplotlib` —
   verify method signatures before using.
 
 ---

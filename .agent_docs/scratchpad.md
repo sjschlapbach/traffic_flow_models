@@ -74,3 +74,37 @@ open items were pulled forward.
 ---
 
 <!-- New session entries go below this line. -->
+
+## Task: Remove SUMO/OSM pipeline and arbitrator (2026-11-10)
+
+### Plan
+
+- [x] Delete `simulator/`, `arbitrator/`, pipeline demo + SUMO scenario configs, SUMO tests, SUMO CI workflows, SUMO docs pages
+- [x] Drop `osmnx`; drop SUMO exports from `__init__`; drop `.gitignore` scenarios whitelist
+- [x] Generalize `Simulation.run(plot_micro_results)` → `reference_results_path` + tests
+- [x] Update docs/, README, AGENTS/CLAUDE, `.agent_docs/`, `.memory-bank/`
+
+### Learnings
+
+- 2026-11-10: `arbitrator/` was 100% pipeline-only (every class reads SUMO XML or the detector
+  spec CSV); the core never imported it. The only real coupling was the results-JSON file format.
+- 2026-11-10: `networkx` (`Network.plot`), `opencv-python` (video export) and `tqdm` (frame loops)
+  are still core deps; only `osmnx` became unused.
+- 2026-11-10: Tests that run `Simulation.run` twice against one reference file need fixed
+  component ids. Default ids are random UUIDs, so a second network won't match the saved file.
+
+### Decisions
+
+- Generalize rather than delete the micro overlay: user-provided reference data (e.g. loop
+  detectors) is still a valid use case. See ADR-0001.
+- Keep the `"MICRO"` `model_type` marker for backward compatibility with existing files.
+- Keep calibration under "Experimental" (maintainer's call).
+
+### Dead Ends
+
+- None.
+
+### Open Questions
+
+- The `dev-fd-calibration` branch builds on microsimulation data and the removed pipeline. It
+  needs rebasing or separate handling before it is merged.
