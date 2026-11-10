@@ -1,6 +1,7 @@
 import pytest
 
 from traffic_flow_models import (
+    FlowController,
     Onramp,
     Node,
     MotorwayLink,
@@ -53,6 +54,33 @@ class TestOnramp:
         assert onramp.Qc_lane == 1800
         assert onramp.vf == 90
         assert onramp.rho_jam == 160
+
+    def test_init_keeps_released_positional_order(self):
+        # v1.x positional order: (..., jam_density, id, controller, ...)
+        controller = FlowController(
+            onramp=Onramp(
+                length=0.5,
+                lanes=1,
+                lane_capacity=1000,
+                free_flow_speed=60,
+                jam_density=100,
+            ),
+            flow=500.0,
+        )
+        onramp = Onramp(
+            0.5,
+            1,
+            1000,
+            60,
+            100,
+            "r1",
+            controller,
+            origin_node_id="n0",
+            destination_node_id="n1",
+        )
+        assert onramp.controller is controller
+        assert onramp.origin_node_id == "n0"
+        assert onramp.destination_node_id == "n1"
 
     def test_network_cell_assignment_via_constructor(self):
         link = MotorwayLink(

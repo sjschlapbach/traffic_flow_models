@@ -92,6 +92,10 @@ open items were pulled forward.
   are still core deps; only `osmnx` became unused.
 - 2026-11-10: Tests that run `Simulation.run` twice against one reference file need fixed
   component ids. Default ids are random UUIDs, so a second network won't match the saved file.
+- 2026-11-10: `Onramp.__init__` positional order is public API since v1.0
+  (`..., id, controller, origin_node_id, destination_node_id`). Commit 6c95e3a had moved
+  `controller` to the end, which silently rebinds positional calls. It is now restored and pinned
+  by `test_init_keeps_released_positional_order`.
 
 ### Decisions
 

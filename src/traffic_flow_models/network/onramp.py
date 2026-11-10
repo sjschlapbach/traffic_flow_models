@@ -30,14 +30,14 @@ class Onramp:
         free_flow_speed: float,
         jam_density: float,
         id: str | None = None,
-        origin_node_id: str | None = None,
-        destination_node_id: str | None = None,
         controller: (
             Union[
                 FlowController, AlineaController, MetalineController, CustomController
             ]
             | None
         ) = None,
+        origin_node_id: str | None = None,
+        destination_node_id: str | None = None,
     ) -> None:
         """Initialize the Onramp parameters.
 
@@ -48,9 +48,9 @@ class Onramp:
             lane_capacity: Vehicles per hour per lane capacity.
             free_flow_speed: Free-flow speed in km/h.
             jam_density: Jam density in vehicles per km per lane.
+            controller: Optional ramp metering controller.
             origin_node_id: Optional ID of the upstream node.
             destination_node_id: Optional ID of the downstream node.
-            controller: Optional ramp metering controller.
         """
 
         if lanes <= 0:
