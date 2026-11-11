@@ -11,7 +11,7 @@ from traffic_flow_models.network import (
     Offramp,
     Destination,
 )
-from traffic_flow_models.types import ModelOptions
+from traffic_flow_models.types import DynamicsFormulation, ModelOptions
 
 if TYPE_CHECKING:
     from traffic_flow_models.network import Network, Node
@@ -614,6 +614,7 @@ class CTM:
         num_splits: int,
         num_destinations: int,
         dt: float,
+        dynamics: DynamicsFormulation = "closed_form",
     ) -> casadi.Function:
         """Build a CasADi function implementing one CTM network step.
 
@@ -642,9 +643,14 @@ class CTM:
             num_splits (int): Number of split-ratio disturbance entries.
             num_destinations (int): Number of boundary-condition disturbance entries.
             dt (float): Simulation timestep.
+            dynamics (DynamicsFormulation): ``"closed_form"`` (default) evaluates the onramp
+                controllers inside the step. ``"exogenous_control"`` ignores them and takes the
+                metering rates as an extra input ``u`` (one entry per onramp, in the order of
+                the onramp queues in the state vector; ``inf`` means unmetered).
 
         Returns:
             casadi.Function: A CasADi function `f(params, x, d) -> x_next`
+            (`f(params, x, d, u) -> x_next` for ``"exogenous_control"``)
             implementing the network update for one timestep. The first
             argument to the function is the symbolic model parameter vector
             produced by `set_up_symbolic_model_params`.
@@ -696,6 +702,10 @@ class CTM:
         density_boundary_conditions = {
             k: casadi.SX(v) for k, v in density_boundary_conditions.items()
         }
+
+        # exogenous metering rates ("exogenous_control" only), in onramp state order
+        u = casadi.SX.sym("u", num_onramps, 1)  # type: ignore
+        metering_rates = {k: u[i] for i, k in enumerate(onramp_queues)}
 
         # initialize next-step state dictionaries
         next_flows: dict[str, casadi.SX] = {}
@@ -761,9 +771,11 @@ class CTM:
                         flows=flows,
                     )
 
-                    # if a controller is defined for the on-ramp, compute the maximum flow according to ramp
-                    # metering (i.e. the controller output) and include it in the minimum
-                    if inc.controller is not None:
+                    # the maximum flow according to ramp metering (the exogenous metering rate, or
+                    # the output of the controller defined for the on-ramp) is included in the minimum
+                    if dynamics == "exogenous_control":
+                        r_k = metering_rates[inc.id]
+                    elif inc.controller is not None:
                         r_k = inc.controller.compute_regulated_flow(
                             onramp_queues=onramp_queues,
                             flows=flows,
@@ -986,4 +998,9 @@ class CTM:
 
         # wrap the state update in a nonlinear casadi function (with dummy parameters for CTM)
         sym_params = casadi.SX.sym("ctm_params", 0)  # type: ignore
-        return casadi.Function("ctm_network_step", [sym_params, x, d], [x_next])
+        inputs = (
+            [sym_params, x, d, u]
+            if dynamics == "exogenous_control"
+            else [sym_params, x, d]
+        )
+        return casadi.Function("ctm_network_step", inputs, [x_next])

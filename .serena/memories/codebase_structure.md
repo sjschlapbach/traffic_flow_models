@@ -41,16 +41,21 @@ function is re-exported from `src/traffic_flow_models/__init__.py` and added to 
 `Link` (any node link), `RampController` (union of the four controllers), `PackedVector`
 (numeric or symbolic state/disturbance vector), `TimeProfile` (time -> value: demands, boundary
 conditions), `TurningRateProfile` (time -> split per outgoing link), `TimeSeriesById`,
-`JSONDict` (raw results JSON), `ModelOptions` (calibration options TypedDict),
+`JSONDict` (raw results JSON), `DynamicsFormulation` (`Literal["closed_form",
+"exogenous_control"]`, the model-step formulation), `ModelOptions` (calibration options TypedDict),
 `ParameterSearchRun` (one multi-start calibration run). The aliases are lazy PEP 695 `type`
 statements, so the network/controller classes are imported only under `TYPE_CHECKING` (no
 import cycle).
 
 ## `model/`: models built as CasADi symbolic graphs
 
+- **Step formulations (both models)**: `network_update_function(..., dt, dynamics="closed_form")`
+  returns `f(params, x, d)` with the onramp controllers baked in. With
+  `dynamics="exogenous_control"` the controllers are ignored and it returns `f(params, x, d, u)`,
+  `u` = one metering rate per onramp in the state order of the onramp queues (`inf` = unmetered).
 - **`ctm.py`**, `CTM` (stateless). `network_update_function(network, num_flows, num_densities,
-  num_speeds, num_origins, num_onramps, num_offramps, num_splits, num_destinations, dt) ->
-  casadi.Function("ctm_network_step")`. FD helpers `critical_density`, `backward_wave_speed`.
+  num_speeds, num_origins, num_onramps, num_offramps, num_splits, num_destinations, dt,
+  dynamics="closed_form") -> casadi.Function("ctm_network_step")`. FD helpers `critical_density`, `backward_wave_speed`.
   Internals: `_update_motorway_link` (Godunov demand/supply), `_compute_normalized_splits`,
   `_compute_node_maximum_outflows`, `_compute_offramp_outflows`. Known causality caveat: the
   first-cell supply uses the outgoing link's *previous-step* density. All six calibration-interface
@@ -97,7 +102,12 @@ import cycle).
   `run(duration, dt, origin_demands, turning_rates, destination_flow_bc, destination_density_bc,
   ..., preferred_cell_size=0.5, plot_results=True, reference_results_path=None,
   results_dir=None)`. `_run_simulation_loop` evaluates the model's compiled
-  `casadi.Function` step by step and contains no physics itself. Also: `save_results` /
+  `casadi.Function` step by step and contains no physics itself. If any controller sets
+  `control_dt`, `run` builds the `"exogenous_control"` step and the module-level
+  `_held_metering(network, system, dt)` (controllers as `x -> u`, update interval per onramp,
+  raises if `control_dt` is no integer multiple of `dt`); the loop then recomputes each rate
+  every `control_dt / dt` steps and holds it in between. Otherwise the `"closed_form"` step runs
+  unchanged. Also: `save_results` /
   `load_results` (JSON; `load_mainline_only` for external ground truth, auto-used for
   `metadata.model_type == "MICRO"` files; results whose cell count differs from the network are
   spatially resampled on load), `resample_results_file` (classmethod, time-grid interpolation),
@@ -116,7 +126,9 @@ import cycle).
 
 ## `controller/`: duck-typed
 
-Each controller exposes `compute_regulated_flow(onramp_queues, flows, densities) -> casadi.SX`.
+Each controller exposes `compute_regulated_flow(onramp_queues, flows, densities) -> casadi.SX`;
+every constructor ends with `control_dt: float | None = None` (controller update interval in the
+unit of `dt`, validated by `Simulation`).
 The model update functions call it when `onramp.controller is not None` and clamp the result
 with `casadi.fmin`.
 - `flow_controller.py`, `FlowController(onramp, flow)`: fixed rate.
@@ -140,7 +152,7 @@ cover scenarios A–D.
 
 One file per module: `cell`, `controller`, `ctm`, `destination`, `metanet`, `motorway_link`,
 `node`, `network` (largest), `offramp`, `onramp`, `origin`, `simulation`, `visualization`
-(`*_test.py`, 135 tests). No `conftest.py`, no skips, no external tools; tests that write files
+(`*_test.py`, 138 tests). No `conftest.py`, no skips, no external tools; tests that write files
 use `tmp_path`. Default
 component ids are random UUIDs, so tests that compare two networks against one saved file need
 fixed ids.

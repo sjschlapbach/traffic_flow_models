@@ -54,6 +54,70 @@ class _StoredRun(TypedDict):
     metadata: JSONDict
 
 
+def _metering_evaluation(
+    network: "Network", system: casadi.Function, dt: float
+) -> tuple[casadi.Function, NDArray[np.int64]]:
+    """Evaluate the onramp controllers outside an ``"exogenous_control"`` model step.
+
+    Args:
+        network: Network whose onramp controllers are evaluated.
+        system: Model step built with ``dynamics="exogenous_control"``.
+        dt: Simulation time step.
+
+    Returns:
+        Tuple ``(metering_fn, update_intervals)``: ``metering_fn(x) -> u`` gives the metering
+        rate of every onramp in state order (``inf`` without controller), and
+        ``update_intervals`` (same length as ``u``) the number of simulation steps between two
+        updates of each entry (``control_dt / dt``, 1 = every step).
+
+    Raises:
+        ValueError: If a controller's `control_dt` is not an integer multiple of `dt`.
+    """
+    x = system.sx_in(1)
+    flows, densities, _, _, onramp_queues, _ = network.state_vec_to_network_dict(x=x)
+    flows = {k: casadi.SX(v) for k, v in flows.items()}
+    densities = {k: casadi.SX(v) for k, v in densities.items()}
+    onramp_queues = {k: casadi.SX(v) for k, v in onramp_queues.items()}
+
+    rates: list[casadi.SX] = []
+    update_intervals: list[int] = []
+    for onramp_id in onramp_queues:
+        # get the onramp and its controller (if any)
+        onramp = network.get_link(onramp_id)
+        controller = onramp.controller if isinstance(onramp, Onramp) else None
+
+        # if no controller, return infinite metering rate (no control) and update every step
+        if controller is None:
+            rates.append(casadi.SX(casadi.inf))
+            update_intervals.append(1)
+            continue
+
+        # compute the metering rate from the controller
+        rates.append(
+            controller.compute_regulated_flow(
+                onramp_queues=onramp_queues, flows=flows, densities=densities
+            )
+        )
+
+        # determine how often the controller updates its metering rate
+        if controller.control_dt is None:
+            update_intervals.append(1)
+            continue
+
+        n = round(controller.control_dt / dt)
+        if n < 1 or not math.isclose(controller.control_dt / dt, n, rel_tol=1e-9):
+            raise ValueError(
+                f"control_dt={controller.control_dt} of the controller on onramp {onramp_id} "
+                f"is not an integer multiple of the simulation dt={dt}."
+            )
+        update_intervals.append(n)
+
+    return (
+        casadi.Function("metering_rates", [x], [casadi.vertcat(*rates)]),
+        np.array(update_intervals, dtype=np.int64),
+    )
+
+
 class Simulation:
     """
     Simulation class for executing and visualizing traffic flow simulations.
@@ -624,6 +688,8 @@ class Simulation:
     def _run_simulation_loop(
         self,
         system: casadi.Function,
+        metering_fn: casadi.Function | None,
+        update_intervals: NDArray[np.int64],
         duration: float,
         dt: float,
         x0: NDArray[np.float64],
@@ -646,6 +712,10 @@ class Simulation:
 
         Args:
             system: CasADi function implementing the network state update.
+            metering_fn: None for a ``"closed_form"`` `system`; otherwise the function
+                ``x -> u`` of `_metering_evaluation` for an ``"exogenous_control"`` `system`.
+            update_intervals: Number of simulation steps between two updates of each entry of
+                ``u`` (empty for ``"closed_form"``); between updates the metering rate is held.
             duration: Total simulation time (same units as `dt`).
             dt: Time-step for integration.
             x0: Initial packed state vector (NumPy array).
@@ -682,6 +752,10 @@ class Simulation:
             ),
             dtype=np.float64,
         )
+
+        # metering rates for an "exogenous_control" system, held between controller updates
+        num_onramps = len(update_intervals)
+        u = np.full(num_onramps, np.inf)
 
         # run the simulation and store the results
         for t in range(len(time_array) - 1):
@@ -734,7 +808,16 @@ class Simulation:
                 )  # empty array for models that don't require parameters
 
             # perform the state update
-            x_next = system(params, state_history[:, t], d)
+            if metering_fn is None:
+                # for a "closed_form" system, the state update does not depend on metering rates
+                x_next = system(params, state_history[:, t], d)
+            else:
+                # for an "exogenous_control" system, the state update depends on metering rates
+                # only update the metering rates at the specified intervals, otherwise hold the previous values
+                due = np.equal(t % update_intervals, 0)
+                if due.any():
+                    u[due] = np.array(metering_fn(state_history[:, t])).flatten()[due]
+                x_next = system(params, state_history[:, t], d, u)
 
             # store the updated state and disturbance
             state_history[:, t + 1] = np.array(x_next).flatten()
@@ -871,6 +954,13 @@ class Simulation:
         )
 
         # ! 4 - generate the model update equations
+        # controllers with a control_dt are held, which needs the exogenous-control formulation
+        separate_controller_rates = any(
+            isinstance(link, Onramp)
+            and link.controller is not None
+            and link.controller.control_dt is not None
+            for link in self.network.list_links()
+        )
         system: casadi.Function = self.model.network_update_function(
             network=self.network,
             num_flows=num_flows,
@@ -882,11 +972,21 @@ class Simulation:
             num_splits=num_splits,
             num_destinations=num_destinations,
             dt=dt,
+            dynamics=(
+                "exogenous_control" if separate_controller_rates else "closed_form"
+            ),
+        )
+        metering_fn, update_intervals = (
+            _metering_evaluation(self.network, system, dt)
+            if separate_controller_rates
+            else (None, np.zeros(0, dtype=np.int64))
         )
 
         # ! 5 - run the simulation loop
         time_array, state_history, disturbance_history = self._run_simulation_loop(
             system=system,
+            metering_fn=metering_fn,
+            update_intervals=update_intervals,
             duration=duration,
             dt=dt,
             x0=cast(NDArray[np.float64], x0),

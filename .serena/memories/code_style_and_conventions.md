@@ -5,14 +5,17 @@ Follow the conventions of the existing code so that new code reads the same.
 - **Formatting: black is required** (default settings, line length 88; CI uses
   `psf/black@stable`). Run `black .` after every code change. Black owns the formatting, so do not
   hand-format against it.
-- **Linting: pylint.** Config lives in `.pylintrc` (only `cv2` false-positive handling). The CI gate
+- **Linting: pylint.** Config lives in `.pylintrc` (`cv2` false-positive handling; disabled
+  repo-wide: `too-many-arguments`, `too-many-positional-arguments`, `too-many-lines`, since
+  argument counts and module length are not limited). The CI gate
   is `pylint src --errors-only` and `pylint tests --errors-only`. The full `pylint src` score is
   below 10, mostly from line-too-long and too-many-* warnings in existing code. New or changed
   code must add no new warnings; fix the warnings you touch.
 - **No inline lint/type suppressions without asking (strict).** Before you add any
   `# pylint: disable=...` or `# type: ignore`, **stop and ask the user** whether to suppress
   the rule on that line, disable it repo-wide in `.pylintrc`, or fix the code. The default is to
-  fix the code. Leave the existing `# type: ignore`s in place.
+  fix the code. Leave the existing `# type: ignore`s in place. Exception: `# type: ignore` on
+  CasADi variables (e.g. `casadi.SX.sym(...)`) needs no asking.
 - **Typing: strict mypy is required.** `mypy` (config in `pyproject.toml`: `strict = true`,
   `warn_unreachable`, package `traffic_flow_models` only) must report no issues; CI job
   `typecheck`. The package ships `py.typed`, so its annotations are public API for users' type

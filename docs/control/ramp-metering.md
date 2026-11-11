@@ -38,6 +38,32 @@ enter the mainline are stored in the on-ramp virtual queue \(N_m(k)\).
 
 ---
 
+## Control interval
+
+Every controller accepts an optional `control_dt` in the same time unit as the simulation
+`dt`. The controller is then evaluated every `control_dt` and its metering rate is held
+in between. `control_dt` must be an integer multiple of `dt` (a 10 Hz simulation accepts a
+1 Hz controller, a 3 Hz simulation rejects a 2 Hz one with a `ValueError`); the default
+`None` updates the rate at every simulation step.
+
+```python
+onramp.controller = AlineaController(
+    onramp=onramp, measurement_link_id="m2", measurement_cell_idx=0,
+    gain=5.0, density_setpoint=40.0,
+    control_dt=60 / 3600,  # dt = 10 / 3600: new metering rate every 6th step
+)
+```
+
+The model step has two formulations, selected with `network_update_function(...,
+dynamics=...)` (type `DynamicsFormulation`):
+
+- `"closed_form"` (default): the controllers are part of the dynamics, `f(params, x, d)`.
+- `"exogenous_control"`: the controllers are ignored and the metering rates are an input,
+  `f(params, x, d, u)`, with one entry per on-ramp in the state-vector order of the on-ramp
+  queues (`inf` = unmetered). `Simulation` uses it only when a controller sets `control_dt`.
+
+---
+
 ## ALINEA — local ramp metering
 
 ALINEA is a **local I-type feedback controller**. It regulates the density at a

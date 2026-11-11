@@ -21,6 +21,7 @@ class CustomController:
         onramp: "Onramp",
         controller_fn: Callable[..., casadi.SX],
         params: dict[str, Any] | None = None,
+        control_dt: float | None = None,
     ) -> None:
         """Create a custom ramp metering controller instance.
 
@@ -31,6 +32,9 @@ class CustomController:
                 optional fourth ``params`` argument (positional or keyword).
             params: Optional dictionary of parameters forwarded to
                 ``controller_fn`` at each call. Defaults to an empty dict.
+            control_dt: Optional control interval (same time unit as the simulation `dt`, an
+                integer multiple of it); the metering rate is held between updates. None
+                (default) updates it at every simulation step.
 
         Raises:
             TypeError: If ``controller_fn`` is not callable.
@@ -43,6 +47,7 @@ class CustomController:
 
         # store a mutable params dict for use by the controller function
         self.params: dict[str, Any] = dict(params) if params is not None else {}
+        self.control_dt: float | None = control_dt
 
     def compute_regulated_flow(
         self,

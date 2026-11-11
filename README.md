@@ -251,6 +251,7 @@ onramp.controller = AlineaController(
     measurement_cell_idx=0,
     gain=5.0,
     density_setpoint=30.0,
+    control_dt=60 / 3600,  # optional: new metering rate every 60 s (default: every step)
 )
 ```
 

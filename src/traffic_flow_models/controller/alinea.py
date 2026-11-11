@@ -13,6 +13,7 @@ class AlineaController:
         measurement_cell_idx: int,
         gain: float,
         density_setpoint: float,
+        control_dt: float | None = None,
     ) -> None:
         """Create an ALINEA controller instance.
 
@@ -22,6 +23,9 @@ class AlineaController:
             measurement_cell_idx: Index of the cell on the measurement link where the density is measured
             gain: ALINEA controller gain parameter (positive scalar).
             density_setpoint: Desired downstream density setpoint (vehicles per length per lane).
+            control_dt: Optional control interval (same time unit as the simulation `dt`, an
+                integer multiple of it); the metering rate is held between updates. None
+                (default) updates it at every simulation step.
         """
 
         if density_setpoint < 0.0:
@@ -39,6 +43,7 @@ class AlineaController:
 
         self.gain: float = gain
         self.density_setpoint: float = density_setpoint
+        self.control_dt: float | None = control_dt
 
     def compute_regulated_flow(
         self,

@@ -6,18 +6,24 @@ if TYPE_CHECKING:
 
 
 class FlowController:
-    def __init__(self, onramp: "Onramp", flow: float) -> None:
+    def __init__(
+        self, onramp: "Onramp", flow: float, control_dt: float | None = None
+    ) -> None:
         """Create a fixed-flow ramp metering controller instance.
 
         Args:
             onramp: Onramp object to which the controller is attached.
             flow: value of the ramp metering flow that should be applied as the limit
+            control_dt: Optional control interval (same time unit as the simulation `dt`, an
+                integer multiple of it); the metering rate is held between updates. None
+                (default) updates it at every simulation step.
         """
         if flow < 0.0:
             raise ValueError("Flow must be non-negative.")
 
         self.onramp = onramp
         self.flow: casadi.SX = casadi.SX(flow)
+        self.control_dt: float | None = control_dt
 
     def compute_regulated_flow(
         self,
