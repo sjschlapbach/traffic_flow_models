@@ -1,12 +1,13 @@
 import uuid
 import warnings
-from typing import Iterable, List, Tuple, Any
+from typing import Iterable, List, Tuple
 
 from traffic_flow_models.network.motorway_link import MotorwayLink
 from traffic_flow_models.network.onramp import Onramp
 from traffic_flow_models.network.origin import Origin
 from traffic_flow_models.network.offramp import Offramp
 from traffic_flow_models.network.destination import Destination
+from traffic_flow_models.types import Link
 
 
 class Node:
@@ -28,8 +29,8 @@ class Node:
     def __init__(
         self,
         id: str | None = None,
-        incoming: Iterable[Any] | None = None,
-        outgoing: Iterable[Any] | None = None,
+        incoming: Iterable[Link] | None = None,
+        outgoing: Iterable[Link] | None = None,
     ) -> None:
         """Initialize the Node object.
 
@@ -39,8 +40,8 @@ class Node:
             outgoing: Optional iterable of outgoing link objects to attach.
         """
         self.id: str = id if id is not None else str(uuid.uuid4())  # node identifier
-        self.incoming: List[Any] = []  # list of incoming links
-        self.outgoing: List[Any] = []  # list of outgoing links
+        self.incoming: List[Link] = []  # list of incoming links
+        self.outgoing: List[Link] = []  # list of outgoing links
 
         # optional position coordinates (mainly for illustration purposes)
         self.position: Tuple[float, float] | None = None
@@ -52,7 +53,7 @@ class Node:
         if outgoing is not None:
             self.add_outgoing_multiple(outgoing)
 
-    def _allowed_incoming_types(self):
+    def _allowed_incoming_types(self) -> tuple[type, ...]:
         """Return a tuple of allowed types for incoming links.
 
         Returns:
@@ -61,7 +62,7 @@ class Node:
         """
         return (MotorwayLink, Onramp, Offramp, Origin)
 
-    def _allowed_outgoing_types(self):
+    def _allowed_outgoing_types(self) -> tuple[type, ...]:
         """Return a tuple of allowed types for outgoing links.
 
         Returns:
@@ -70,7 +71,7 @@ class Node:
         """
         return (MotorwayLink, Onramp, Offramp, Destination)
 
-    def _validate_link_type(self, link: Any, allowed_types: tuple) -> None:
+    def _validate_link_type(self, link: Link, allowed_types: tuple[type, ...]) -> None:
         """
         Validate that a link is of an allowed type.
 
@@ -121,63 +122,63 @@ class Node:
         """
         self.position = (x, y)
 
-    def _set_origin_node_to_self(self, link: Any) -> None:
+    def _set_origin_node_to_self(self, link: Link) -> None:
         """
         Set the origin_node_id attribute of a link to this node's id.
 
         Args:
             link: The link object whose origin_node_id to set.
         """
-        if hasattr(link, "origin_node_id"):
+        if not isinstance(link, Origin):
             link.origin_node_id = self.id
         else:
             raise TypeError(
                 f"Link of type {type(link).__name__} has no 'origin_node_id' attribute to set."
             )
 
-    def _set_destination_node_to_self(self, link: Any) -> None:
+    def _set_destination_node_to_self(self, link: Link) -> None:
         """
         Set the destination_node_id attribute of a link to this node's id.
 
         Args:
             link: The link object whose destination_node_id to set.
         """
-        if hasattr(link, "destination_node_id"):
+        if not isinstance(link, Destination):
             link.destination_node_id = self.id
         else:
             raise TypeError(
                 f"Link of type {type(link).__name__} has no 'destination_node_id' attribute to set."
             )
 
-    def _clear_origin_node_id(self, link: Any) -> None:
+    def _clear_origin_node_id(self, link: Link) -> None:
         """
         Clear the origin_node_id attribute of a link if it exists.
 
         Args:
             link: The link object whose origin_node_id to clear.
         """
-        if hasattr(link, "origin_node_id"):
+        if not isinstance(link, Origin):
             link.origin_node_id = None
         else:
             raise TypeError(
                 f"Link of type {type(link).__name__} has no 'origin_node_id' attribute to clear."
             )
 
-    def _clear_destination_node_id(self, link: Any) -> None:
+    def _clear_destination_node_id(self, link: Link) -> None:
         """
         Clear the destination_node_id attribute of a link if it exists.
 
         Args:
             link: The link object whose destination_node_id to clear.
         """
-        if hasattr(link, "destination_node_id"):
+        if not isinstance(link, Destination):
             link.destination_node_id = None
         else:
             raise TypeError(
                 f"Link of type {type(link).__name__} has no 'destination_node_id' attribute to clear."
             )
 
-    def add_incoming(self, link: Any) -> None:
+    def add_incoming(self, link: Link) -> None:
         """
         Add a single incoming link after validating its type.
 
@@ -195,7 +196,7 @@ class Node:
         # update the destination of the link
         self._set_destination_node_to_self(link)
 
-    def add_outgoing(self, link: Any) -> None:
+    def add_outgoing(self, link: Link) -> None:
         """
         Add a single outgoing link after validating its type.
 
@@ -213,7 +214,7 @@ class Node:
         # update the origin of the link
         self._set_origin_node_to_self(link)
 
-    def add_incoming_multiple(self, links: Iterable[Any]) -> None:
+    def add_incoming_multiple(self, links: Iterable[Link]) -> None:
         """
         Add multiple incoming links from an iterable.
 
@@ -223,7 +224,7 @@ class Node:
         for l in links:
             self.add_incoming(l)
 
-    def add_outgoing_multiple(self, links: Iterable[Any]) -> None:
+    def add_outgoing_multiple(self, links: Iterable[Link]) -> None:
         """
         Add multiple outgoing links from an iterable.
 
@@ -267,14 +268,14 @@ class Node:
 
         warnings.warn("No outgoing link with id found to remove.", stacklevel=2)
 
-    def set_incoming(self, links: Iterable[Any]) -> None:
+    def set_incoming(self, links: Iterable[Link]) -> None:
         """
         Replace all incoming links with the provided iterable after validation.
 
         Args:
             links: An iterable of link objects to set as incoming.
         """
-        new_list: List[Any] = []
+        new_list: List[Link] = []
         for l in links:
             self._validate_link_type(l, self._allowed_incoming_types())
             if l not in new_list:
@@ -295,14 +296,14 @@ class Node:
         for l in self.incoming:
             self._set_destination_node_to_self(l)
 
-    def set_outgoing(self, links: Iterable[Any]) -> None:
+    def set_outgoing(self, links: Iterable[Link]) -> None:
         """
         Replace all outgoing links with the provided iterable after validation.
 
         Args:
             links: An iterable of link objects to set as outgoing.
         """
-        new_list: List[Any] = []
+        new_list: List[Link] = []
         for l in links:
             self._validate_link_type(l, self._allowed_outgoing_types())
             if l not in new_list:

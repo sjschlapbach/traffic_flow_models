@@ -7,7 +7,7 @@ When you finish a task:
    reproduces it.
 2. **Format + lint:** run `black .`, then `black --check .` must report every file unchanged;
    `pylint src --errors-only` and `pylint tests --errors-only` must be clean (CI gate); `pylint src`
-   must show no new warnings in the code you touched.
+   must show no new warnings in the code you touched; `mypy` must report no issues (strict).
 3. **Demos:** if model, network, controller or calibration behaviour changed, run the affected demo
    from `mem:suggested_commands`. CI smoke-tests every demo.
 4. **Public API:** export a new public class or function from `src/traffic_flow_models/__init__.py`
@@ -25,7 +25,8 @@ When you finish a task:
    - Append a dated entry to `.ai/PROGRESS.md`, **always**.
    - Add an ADR to `.ai/DECISIONS.md` if you made a non-obvious choice (algorithm, modelling
      assumption, API change, parameter value).
-8. **Do not commit or push** (the human working with the agent does that). Never hand-edit `CHANGELOG.md`, and do not
-   start a release unless asked.
+8. **Do not commit or push** (the human working with the agent does that). Never hand-edit `CHANGELOG.md`, and never run a
+   release command (`git-cliff`, `git tag`, `twine`, `mkdocs gh-deploy`, `gh release`); releases are
+   manual-only for the maintainers (`mem:suggested_commands`).
 
 See `mem:ai_tracking_system` for how project knowledge is split.

@@ -17,7 +17,7 @@ from scipy.stats import qmc
 from numpy.typing import NDArray
 from matplotlib.lines import Line2D
 from scipy.optimize import OptimizeResult
-from typing import TYPE_CHECKING, Tuple, Union, Callable
+from typing import TYPE_CHECKING, Tuple, Union
 from traffic_flow_models.network import (
     Origin,
     Onramp,
@@ -25,6 +25,12 @@ from traffic_flow_models.network import (
     Offramp,
     Destination,
     Simulation,
+)
+from traffic_flow_models.types import (
+    ModelOptions,
+    ParameterSearchRun,
+    TimeProfile,
+    TurningRateProfile,
 )
 
 if TYPE_CHECKING:
@@ -51,7 +57,11 @@ class Calibrator:
         """
         self.network = network
 
-    def _infer_param_names(self, model, model_options: dict | None = None) -> list[str]:
+    def _infer_param_names(
+        self,
+        model: Union["CTM", "METANET"],
+        model_options: ModelOptions | None = None,
+    ) -> list[str]:
         """Return ordered calibration parameter names by delegating to the model.
 
         This method calls `model.get_calibration_param_names(network, model_options)`
@@ -235,7 +245,7 @@ class Calibrator:
 
     def plot_parameter_search_convergence(
         self,
-        results_list: list[dict],
+        results_list: list[ParameterSearchRun],
         save_dir: str,
         filename: str = "parameter_search_convergence.png",
         title: str | None = None,
@@ -500,7 +510,7 @@ class Calibrator:
         ground_truth_disturbances: NDArray[np.float64],
         measurable_indices: NDArray[np.float64],
         window_indices: list[int],
-        model_options: dict | None = None,
+        model_options: ModelOptions | None = None,
     ) -> NDArray[np.float64]:
         """Compute residuals between model predictions and ground truth over a time window.
 
@@ -669,7 +679,7 @@ class Calibrator:
         window_size: int = 50,
         stride: int | None = None,
         param_bounds: Tuple[NDArray[np.float64], NDArray[np.float64]] | None = None,
-        model_options: dict | None = None,
+        model_options: ModelOptions | None = None,
         regularization_weight: float = 0.0,
         max_nfev: int = 1000,
         verbose: bool = True,
@@ -686,12 +696,10 @@ class Calibrator:
         # via the arguments below (origin_demands_fn, turning_rates_fn,
         # flow_boundary_conditions_fn, density_boundary_conditions_fn).
         use_disturbance_from_file: bool = True,
-        origin_demands_fn: dict[str, Callable[[float], float]] | None = None,
-        turning_rates_fn: dict[str, Callable[[float], dict[str, float]]] | None = None,
-        flow_boundary_conditions_fn: dict[str, Callable[[float], float]] | None = None,
-        density_boundary_conditions_fn: (
-            dict[str, Callable[[float], float]] | None
-        ) = None,
+        origin_demands_fn: dict[str, TimeProfile] | None = None,
+        turning_rates_fn: dict[str, TurningRateProfile] | None = None,
+        flow_boundary_conditions_fn: dict[str, TimeProfile] | None = None,
+        density_boundary_conditions_fn: dict[str, TimeProfile] | None = None,
     ) -> Tuple["METANETParams", OptimizeResult, NDArray[np.float64]]:
         """Calibrate model parameters using ground truth simulation data.
 
@@ -853,7 +861,7 @@ class Calibrator:
             scaled_samples = qmc.scale(lhs_samples, lower_bounds, upper_bounds)
 
             # track results across all parameter search runs
-            results_list = []
+            results_list: list[ParameterSearchRun] = []
             best_cost = float("inf")
             best_params = None
             best_result = None
@@ -1479,7 +1487,8 @@ class Calibrator:
             )
 
             # plot true value as horizontal line
-            true_val = true_params[param_name]
+            # per-link alpha_<link id> names have no scalar reference value
+            true_val = true_params.get(param_name)
             if isinstance(true_val, (int, float)):
                 ax.axhline(
                     y=true_val,

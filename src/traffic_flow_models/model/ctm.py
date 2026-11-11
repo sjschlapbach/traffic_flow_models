@@ -1,5 +1,7 @@
 import casadi
-from typing import TYPE_CHECKING, Tuple, Union
+import numpy as np
+from numpy.typing import NDArray
+from typing import TYPE_CHECKING, NoReturn, Tuple, Union
 
 from .helpers import store_and_forward_update, update_queue, compute_node_outflows
 from traffic_flow_models.network import (
@@ -9,9 +11,11 @@ from traffic_flow_models.network import (
     Offramp,
     Destination,
 )
+from traffic_flow_models.types import ModelOptions
 
 if TYPE_CHECKING:
     from traffic_flow_models.network import Network, Node
+    from traffic_flow_models.model.metanet import METANETParams
 
 
 class CTM:
@@ -38,13 +42,13 @@ class CTM:
     symbolic formulation.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Create an empty CTM model instance."""
         return
 
     # ! Model parameter calibration support (not applicable for CTM)
     # region
-    def get_default_calibration_params(self):
+    def get_default_calibration_params(self) -> NoReturn:
         """CTM has no calibratable parameters.
 
         Raises:
@@ -56,51 +60,68 @@ class CTM:
             "(capacity, jam density, free-flow speed)."
         )
 
-    def get_calibration_bounds(self, network, **kwargs):
+    def get_calibration_bounds(
+        self, network: "Network", model_options: ModelOptions | None = None
+    ) -> NoReturn:
         """CTM has no calibratable parameters.
 
         Args:
             network: Network instance (unused; CTM has no calibratable parameters).
-            **kwargs: Additional keyword arguments (unused).
+            model_options: Model-specific options (unused).
 
         Raises:
             NotImplementedError: CTM does not support parameter calibration.
         """
         raise NotImplementedError("CTM model does not have calibratable parameters.")
 
-    def prepare_calibration_params(self, params, network, **kwargs):
+    def prepare_calibration_params(
+        self,
+        params: "METANETParams",
+        network: "Network",
+        model_options: ModelOptions | None = None,
+    ) -> NoReturn:
         """CTM has no calibratable parameters.
 
         Args:
             params: Parameter dictionary (unused; CTM has no calibratable parameters).
             network: Network instance (unused).
-            **kwargs: Additional keyword arguments (unused).
+            model_options: Model-specific options (unused).
 
         Raises:
             NotImplementedError: CTM does not support parameter calibration.
         """
         raise NotImplementedError("CTM model does not have calibratable parameters.")
 
-    def parse_calibration_params(self, param_vec, network, **kwargs):
+    def parse_calibration_params(
+        self,
+        param_vec: NDArray[np.float64],
+        network: "Network",
+        model_options: ModelOptions | None = None,
+    ) -> NoReturn:
         """CTM has no calibratable parameters.
 
         Args:
             param_vec: Parameter vector (unused; CTM has no calibratable parameters).
             network: Network instance (unused).
-            **kwargs: Additional keyword arguments (unused).
+            model_options: Model-specific options (unused).
 
         Raises:
             NotImplementedError: CTM does not support parameter calibration.
         """
         raise NotImplementedError("CTM model does not have calibratable parameters.")
 
-    def prepare_system_params(self, param_vec, network, **kwargs):
+    def prepare_system_params(
+        self,
+        param_vec: NDArray[np.float64],
+        network: "Network",
+        model_options: ModelOptions | None = None,
+    ) -> NoReturn:
         """CTM has no calibratable parameters.
 
         Args:
             param_vec: Calibration parameter vector (unused; CTM has no calibratable parameters).
             network: Network instance (unused).
-            **kwargs: Additional keyword arguments (unused).
+            model_options: Model-specific options (unused).
 
         Raises:
             NotImplementedError: CTM does not support parameter calibration.
@@ -108,8 +129,8 @@ class CTM:
         raise NotImplementedError("CTM model does not have calibratable parameters.")
 
     def get_calibration_param_names(
-        self, network: "Network", model_options: dict | None = None
-    ) -> list[str]:
+        self, network: "Network", model_options: ModelOptions | None = None
+    ) -> NoReturn:
         """CTM has no calibratable parameters.
 
         Raises:

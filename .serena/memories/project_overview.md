@@ -12,7 +12,8 @@ Network components: `Network`, `Node`, `MotorwayLink` (split into `Cell`s), `Onr
 `FlowController` (fixed rate), `CustomController` (wraps a user callable). Also included:
 performance metrics (VKT, VHT, average speed), plots, video export, and an experimental
 `Calibrator` that fits METANET parameters to user-provided ground-truth files in the
-results-JSON format (see `docs/experimental/calibration.md`). Code layout:
+results-JSON format (see `docs/experimental/calibration.md`). The package is fully typed
+(strict mypy, `py.typed`), so users' type checkers see the whole API. Code layout:
 `mem:codebase_structure`.
 
 Published to PyPI as `traffic-flow-models` (version in `pyproject.toml`), MIT licensed. User docs

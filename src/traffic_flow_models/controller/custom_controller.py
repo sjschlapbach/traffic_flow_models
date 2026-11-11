@@ -42,7 +42,7 @@ class CustomController:
         self.controller_fn = controller_fn
 
         # store a mutable params dict for use by the controller function
-        self.params: dict = dict(params) if params is not None else {}
+        self.params: dict[str, Any] = dict(params) if params is not None else {}
 
     def compute_regulated_flow(
         self,

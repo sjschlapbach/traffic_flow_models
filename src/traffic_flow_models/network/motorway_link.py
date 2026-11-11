@@ -1,4 +1,5 @@
 import uuid
+from collections.abc import Iterator
 from typing import Optional
 
 from .cell import Cell
@@ -186,7 +187,7 @@ class MotorwayLink:
         """Return the number of cells in the motorway link."""
         return self._cell_count
 
-    def __iter__(self):
+    def __iter__(self) -> Iterator[Cell]:
         """Iterate over cells from upstream to downstream."""
         current = self._head
         while current is not None:
@@ -201,7 +202,7 @@ class MotorwayLink:
         """Return the last (most downstream) cell, or None if motorway link is empty."""
         return self._tail
 
-    def enumerate_cells(self):
+    def enumerate_cells(self) -> Iterator[tuple[int, Cell]]:
         """Iterate over ``(index, cell)`` pairs from upstream to downstream.
 
         Yields:

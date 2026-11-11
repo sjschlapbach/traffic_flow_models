@@ -13,7 +13,8 @@ maintainer's Mac).
 ```bash
 python3.13 -m venv venv          # only if venv/ does not exist yet
 source venv/bin/activate
-pip install -e ".[dev]"          # editable install: runtime + pytest, pylint, git-cliff, mkdocs
+pip install -e ".[dev]"          # editable install: runtime + pytest, pylint, mypy + stubs,
+                                 # git-cliff, mkdocs
 pip install black                # black is a CI gate but is not in the dev extra
 ```
 
@@ -28,7 +29,13 @@ black .                          # format after every code change
 black --check .                  # what CI checks
 pylint src --errors-only         # CI gate (same for tests)
 pylint src                       # full report: new code adds no warnings
+mypy                             # strict type check of the package (pyproject.toml config)
 ```
+
+The stub pins in the dev extra follow the runtime pins: `scipy-stubs` 1.16.3.x for scipy
+1.16.3, `types-networkx` 3.5.x, `types-tqdm` 4.67.x, and `numpy-typing-compat` 20251206.2.3
+(the numpy 2.3 line; a newer release would upgrade numpy). Bump them together with the
+library.
 
 ## Demos
 
@@ -56,8 +63,8 @@ MkDocs Material, `mkdocstrings` python handler (`paths: [src]`, Google docstring
 | Workflow | Runs |
 |---|---|
 | `python_testing.yml` | `pytest` |
-| `lint.yml` | `psf/black@stable` + `pylint src/tests --errors-only` |
-| `build.yml` | `python -m build --sdist --wheel` |
+| `lint.yml` | jobs `format` (`psf/black@stable`), `lint` (`pylint src --errors-only`, `pylint tests --errors-only`), `typecheck` (`mypy`) |
+| `build.yml` | `python -m build --sdist --wheel`, then checks the wheel contains `traffic_flow_models/py.typed` |
 | `docs_build.yml` | `mkdocs build` |
 | `scripts_basics.yml` | `src.demo.plot_demo_network --no-plot` |
 | `scripts_ctm_simulation.yml` / `scripts_metanet_simulation.yml` | demo scenarios A, B, C, C1–C4, D |
@@ -65,8 +72,15 @@ MkDocs Material, `mkdocstrings` python handler (`paths: [src]`, Google docstring
 | `docs_release.yml` (tag) | `mkdocs gh-deploy --force` to GitHub Pages |
 | `release.yml` (tag `v*.*.*`) | checks tag == `pyproject.toml` == changelog version, builds, publishes to PyPI, commits `CHANGELOG.md` to `master`, creates a GitHub Release |
 
-## Release (only when explicitly asked)
+## Release (maintainers only, never run by an agent)
 
+**Agents never run a release command, even when asked to prepare or start a release.** The
+maintainers run these by hand: `git-cliff` (any form, incl. `--bump`), `git tag`, `git push`
+(incl. tags), `twine`, `mkdocs gh-deploy`, `gh release`. In Claude Code they are denied in
+`.claude/settings.json`. An agent may only describe the steps. `python -m build` (local wheel
+build, no upload) is fine for checking packaging.
+
+Manual steps, for reference:
 1. `git-cliff --bump` bumps `pyproject.toml`. Commit only the version change.
 2. Tag `vX.Y.Z` and push the tag. `release.yml` does the rest.
 

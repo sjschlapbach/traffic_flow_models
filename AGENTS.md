@@ -21,6 +21,11 @@ configuration nobody asked for.
 or `# type: ignore` on your own. Ask the user first whether the rule should be suppressed on that
 line, disabled repo-wide in `.pylintrc`, or the code fixed instead.
 
+**No functions inside functions (strict):** never define a `def` (or a closure factory that
+returns a function) inside a function or method. Use a module-level helper or a method, and
+`functools.partial` to bind per-call values. Short inline lambdas used directly as a value or
+argument are fine. Details and the existing exceptions are in `code_style_and_conventions`.
+
 **Comments (strict):** every inline `#` comment starts **lower-case**, with no exceptions; reword
 rather than start with a capitalised identifier. Comment only where it adds meaning the code does
 not already carry (why, modelling assumption, unit, convention).
@@ -34,8 +39,9 @@ longer", "previously", "was"). Describe what the code does and why. History goes
 
 Always run everything inside the local `venv/` (`source venv/bin/activate`) from the repository
 root. Setup and all commands are in the `suggested_commands` memory. **`pytest` must pass, all
-Python code must be formatted with black (`black --check .`), and `pylint src --errors-only` must
-be clean (CI runs all three); new code adds no pylint warnings.**
+Python code must be formatted with black (`black --check .`), `pylint src --errors-only` must be
+clean and strict `mypy` must report no issues (CI runs all four); new code adds no pylint
+warnings.**
 
 ## Git (hard rules)
 
@@ -43,7 +49,10 @@ be clean (CI runs all three); new code adds no pylint warnings.**
   pushes. Leave changes in the working tree.
 - **Never create a git worktree.** Apply all changes directly to the checked-out branch: `.ai/`
   is git-ignored and does not follow into a worktree, so tracking would split across copies.
-- Never hand-edit `CHANGELOG.md` (git-cliff generates it). Do not start a release unless asked.
+- Never hand-edit `CHANGELOG.md` (git-cliff generates it).
+- **Never run a release command** (`git-cliff`, `git tag`, `twine`, `mkdocs gh-deploy`,
+  `gh release`), even when asked. Releases are run by hand by the maintainers only; an agent may
+  only describe the steps (see the `suggested_commands` memory).
 
 ## Project knowledge (where to look)
 

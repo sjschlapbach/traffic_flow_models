@@ -16,6 +16,7 @@ A Python library for simulating and analyzing macroscopic traffic flow on highwa
 - **Control Strategies**: Generic control interfaces for local and coordinated ramp metering strategies, including implementations for ALINEA, METALINE, and fixed-rate metering
 - **Performance Metrics**: Extensive set of network performance metrics (VKT, VHT, average speed, density, flow, etc.) computed from simulation results
 - **Visualization**: Network topology plotting, simulation result visualization, and video export
+- **Fully typed**: Ships a `py.typed` marker and passes strict mypy checks, so type checkers and IDEs see the full API; shared aliases live in `traffic_flow_models.types`
 - **Calibration & Parameter Estimation** _(experimental)_: Tools for calibrating macroscopic model parameters from aggregated observation data. Includes regularized least-squares calibration, multi-start parameter search, parameter-correlation analysis, and plotting utilities.
 
 ## Installation
@@ -102,7 +103,7 @@ Simulations use dictionaries of time-dependent demand functions. Ramp inflows ar
 
 ```python
 from traffic_flow_models import CTM, METANET, METANETParams, Simulation
-from typing import Callable
+from traffic_flow_models.types import TimeProfile, TurningRateProfile
 
 # Define demand functions
 def mainline_demand(t: float) -> float:
@@ -112,19 +113,19 @@ def ramp_demand(t: float) -> float:
     return 1800.0 if 0.2 < t < 0.9 else 400.0
 
 # Map demands to network components (origins only)
-origin_demands: dict[str, Callable[[float], float]] = {
+origin_demands: dict[str, TimeProfile] = {
     "o_main": mainline_demand,
     "o_ramp": ramp_demand,
 }
-destination_flow_bc: dict[str, Callable[[float], float]] = {
+destination_flow_bc: dict[str, TimeProfile] = {
     "d_main": lambda t: 7000.0,
     "d_off": lambda t: 2000.0,
 }
-destination_density_bc: dict[str, Callable[[float], float]] = {
+destination_density_bc: dict[str, TimeProfile] = {
     "d_main": lambda t: 0.0,
     "d_off": lambda t: 0.0,
 }
-turning_rates: dict[str, Callable[[float], dict[str, float]]] = {
+turning_rates: dict[str, TurningRateProfile] = {
     "n_entry": lambda t: {"m1": 1.0},
     "n_ramp": lambda t: {"r1": 1.0},
     "n_merge": lambda t: {"m2": 1.0},
@@ -306,7 +307,8 @@ Contributions are welcome! Before opening a pull request, please ensure that:
 
 1. All tests pass (`pytest`)
 2. Code is formatted with [Black](https://github.com/psf/black)
-3. New features include appropriate tests
+3. The package type-checks with strict [mypy](https://mypy-lang.org/) (`mypy`)
+4. New features include appropriate tests
 
 ## Project Structure
 
@@ -316,7 +318,8 @@ traffic_flow_models/
 │   ├── traffic_flow_models/     # Main package
 │   │   ├── model/               # Traffic flow models (CTM, METANET)
 │   │   ├── network/             # Network components (links, nodes, cells)
-│   │   └── controller/          # Control strategies (ALINEA, METALINE, custom)
+│   │   ├── controller/          # Control strategies (ALINEA, METALINE, custom)
+│   │   └── types.py             # Shared type aliases (Link, TimeProfile, ...)
 │   └── demo/                    # Demo scripts and example networks
 └── tests/                       # Unit tests
 ```

@@ -13,14 +13,29 @@ Follow the conventions of the existing code so that new code reads the same.
   `# pylint: disable=...` or `# type: ignore`, **stop and ask the user** whether to suppress
   the rule on that line, disable it repo-wide in `.pylintrc`, or fix the code. The default is to
   fix the code. Leave the existing `# type: ignore`s in place.
-- **Type annotations** on every new or changed function signature. A few older methods have
-  none, e.g. the CTM calibration-interface stubs. The typing style is mixed: built-in generics
-  and `X | None` (`dict[str, casadi.SX]`, `str | None`) in most modules, `typing`'s
-  `Optional`/`Tuple`/`Union` in some (`model/helpers.py`, `calibrator.py`). Match the
-  surrounding file, and prefer the built-in style in new modules. Use `Literal` for string enums
-  and `NDArray[np.float64]` for numpy arrays. For imports needed only in annotations, use
-  `if TYPE_CHECKING:` with a quoted annotation (`onramp: "Onramp"`); this avoids circular
-  imports between `network/` and `controller/`.
+- **Typing: strict mypy is required.** `mypy` (config in `pyproject.toml`: `strict = true`,
+  `warn_unreachable`, package `traffic_flow_models` only) must report no issues; CI job
+  `typecheck`. The package ships `py.typed`, so its annotations are public API for users' type
+  checkers. Every function and method is annotated.
+  - **Avoid `Any`/`object`** wherever the real type is known. Accepted exceptions: raw parsed
+    JSON (`JSONDict`), networkx edge attribute dicts, and everything casadi (it ships no types,
+    so `casadi.SX` is `Any` to mypy, an override in `pyproject.toml` ignores its missing
+    imports).
+  - **Shared types live in `traffic_flow_models/types.py`** as simple `type` aliases (`Link`,
+    `RampController`, `PackedVector`, `TimeProfile`, `TurningRateProfile`, `TimeSeriesById`,
+    `JSONDict`) plus two small TypedDicts (`ModelOptions`, `ParameterSearchRun`). Use them
+    instead of re-spelling the union or callable; add a new one only when a type is passed
+    between several modules. Keep it simple: unions and aliases, no Protocols or class
+    hierarchies when a union works.
+  - Typing style is mixed: built-in generics and `X | None` in most modules, `typing`'s
+    `Optional`/`Tuple`/`Union` in some (`model/helpers.py`, `calibrator.py`). Match the
+    surrounding file, and prefer the built-in style in new code. `Literal` for string enums,
+    `NDArray[np.float64]` for numpy arrays, `ArrayLike` for anything passed to `np.asarray`.
+  - For imports needed only in annotations, use `if TYPE_CHECKING:` with a quoted annotation
+    (`onramp: "Onramp"`); this avoids circular imports between `network/` and `controller/`.
+  - The `# type: ignore`s on `casadi.SX.sym(...)` in `ctm.py`/`metanet.py` are for pyright
+    (Pylance), which infers casadi's wrong SWIG signatures. mypy's unused-ignore warning is off
+    for those two modules only. Keep them.
 - **Imports:** subpackage `__init__.py` files use relative imports; modules import other package
   modules absolutely (`from traffic_flow_models.network.onramp import Onramp`). Tests import the
   public API (`from traffic_flow_models import ...`).
@@ -47,6 +62,17 @@ Follow the conventions of the existing code so that new code reads the same.
   `os.path.join` / `os.makedirs`. Generated output goes under `results/` (git-ignored), never
   into the repo.
 - **Named constants** instead of magic numbers or strings. Prefer explicit over clever.
+- **No functions inside functions (strict).** Never define a `def` inside a function or method,
+  and no closure factories (a function or lambda that builds and returns another function). Put
+  helpers at module level (private `_name`) or make them a method / `@staticmethod`, and pass
+  what they need as arguments; to bind a value per call site use
+  `functools.partial(_module_helper, name=value)`. A short inline lambda used directly as a
+  value or argument (`key=lambda x: ...`) is fine. Known exceptions in existing code: nested
+  helpers in `network.py` (`nodes_with_outgoing_link`, `nodes_with_incoming_link`,
+  `_link_style`, `_ensure`, `_draw_group`), `simulation.py` (`_extend_time`, `_interp_2d`,
+  `_interp_1d`, and the outer-lambda turning-rate default in
+  `_augment_network_initialization`), `calibrator.py` (`residual_func`) and `tests/metanet_test.py`
+  (`run_model`); lift them out when you change that code.
 - **Public API stability:** never reorder or rename positional constructor parameters of exported
   classes. Add new parameters as keyword arguments with defaults at the end.
 - **Dependencies:** pinned in `pyproject.toml` (`package==x.y.z`); no `requirements.txt`.
