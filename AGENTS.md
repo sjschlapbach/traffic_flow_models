@@ -1,290 +1,98 @@
-# AGENTS.md — traffic_flow_models Coding Agent Instructions
+# AGENTS.md
 
-> **Compatibility:** This file is read automatically by OpenCode, OpenAI Codex, GitHub Copilot,
-> Aider, and Claude Code. All agents operating on this repository MUST follow every rule here.
+Working protocol for **every coding agent** on this repository (Claude Code, Codex, Copilot,
+Cursor, Aider, Gemini, …). Claude Code loads this file through `CLAUDE.md`, which adds only
+Claude-specific tooling.
 
----
+## Project
 
-## Repository Overview
+**traffic_flow_models** is a Python 3.13 library for macroscopic traffic flow simulation on
+highway networks: CTM and METANET models, network components, ramp-metering controllers (ALINEA,
+METALINE, fixed rate, custom) and experimental METANET calibration. It is published on PyPI and
+documented with MkDocs. The details live in the project memories (below), not here.
 
-This repository implements **traffic_flow_models** — a Python 3.13 library for simulating and
-analyzing macroscopic traffic flow on highway networks. It implements two widely-used traffic
-flow models, the **Cell Transmission Model (CTM)** and **METANET**, along with network
-infrastructure components (motorway links, nodes, onramps, offramps, origins, destinations),
-ramp metering controllers (ALINEA, METALINE, fixed-rate), performance metrics, and visualization
-tools. It also includes experimental macroscopic model calibration tools that fit METANET
-parameters to user-provided ground-truth files. Generating such data (e.g. via microsimulation or
-OSM import) is out of scope for this package.
+## Keep the code simple (guiding principle)
 
-The package is published to PyPI as `traffic-flow-models` and documented via MkDocs at
-`https://sjschlapbach.github.io/traffic_flow_models/`.
+Prefer the simplest solution that works and do not over-engineer. Follow the style already in the
+code (see the `code_style_and_conventions` memory). No speculative abstraction, and no options or
+configuration nobody asked for.
 
-**Primary language:** Python 3.13
-**Key runtime dependencies:** numpy, scipy, matplotlib, casadi, networkx, opencv-python,
-tqdm (see `pyproject.toml`)
-**Key dev dependencies:** pytest, pylint, black, git-cliff, mkdocs-material, mkdocstrings
+**No inline lint/type suppressions without asking (strict):** never add `# pylint: disable=...`
+or `# type: ignore` on your own. Ask the user first whether the rule should be suppressed on that
+line, disabled repo-wide in `.pylintrc`, or the code fixed instead.
 
----
+**Comments (strict):** every inline `#` comment starts **lower-case**, with no exceptions; reword
+rather than start with a capitalised identifier. Comment only where it adds meaning the code does
+not already carry (why, modelling assumption, unit, convention).
 
-## Documentation Files — MANDATORY MAINTENANCE
+**Comments describe the current code, never its history (strict):** no comment, docstring,
+README line, `docs/` page or memory may mention past changes ("copied", "moved from", "now", "no
+longer", "previously", "was"). Describe what the code does and why. History goes only in
+`.ai/PROGRESS.md` / `.ai/DECISIONS.md`.
 
-The following files are the **single source of truth** for the repository's state.
-Every agent **MUST** keep them up to date. Failure to do so is treated as an incomplete task.
+## Environment
 
-| File                          | Purpose                                                  | Update trigger                           |
-| ----------------------------- | -------------------------------------------------------- | ----------------------------------------- |
-| `README.md`                   | Package overview, usage examples, project structure, release process | When public API, usage patterns, or entry points change |
-| `.agent_docs/STRUCTURE.md`    | Annotated directory tree with module responsibilities    | Any file/folder added, moved, or removed |
-| `.agent_docs/DECISIONS.md`    | Architectural Decision Records (ADRs)                    | Any non-trivial tech or design choice    |
-| `.agent_docs/INTEGRATIONS.md` | External tools, simulators, and their config patterns    | When external dependency changes         |
-| `.agent_docs/scratchpad.md`   | Per-session working memory (tasks, learnings, dead ends) | Continuously during every session        |
-| `docs/`                       | **User-facing MkDocs documentation** (deployed to GitHub Pages) | When models, network components, controllers, or calibration change    |
-| `CHANGELOG.md`                | Generated automatically via `git-cliff` from conventional commits | Never edit by hand — see Release Process section below |
+Always run everything inside the local `venv/` (`source venv/bin/activate`) from the repository
+root. Setup and all commands are in the `suggested_commands` memory. **`pytest` must pass, all
+Python code must be formatted with black (`black --check .`), and `pylint src --errors-only` must
+be clean (CI runs all three); new code adds no pylint warnings.**
 
-> `.agent_docs/` and `.memory-bank/` are populated — start every session by reading
-> `.memory-bank/` (see the "Memory Bank" section below) and skim `.agent_docs/STRUCTURE.md` and
-> `.agent_docs/scratchpad.md` for recent context before making changes.
+## Git (hard rules)
 
-### Update Protocol (MANDATORY)
+- **Agents never run `git commit` or `git push`.** The human working with the agent commits and
+  pushes. Leave changes in the working tree.
+- **Never create a git worktree.** Apply all changes directly to the checked-out branch: `.ai/`
+  is git-ignored and does not follow into a worktree, so tracking would split across copies.
+- Never hand-edit `CHANGELOG.md` (git-cliff generates it). Do not start a release unless asked.
 
-At the **end of every task**, before considering it complete, you MUST:
+## Project knowledge (where to look)
 
-1. **`README.md`** — Ensure usage examples, the "Project Structure" section, and installation
-   instructions match the current code. If you changed public API surface (new classes exported
-   from `src/traffic_flow_models/__init__.py`, changed constructor signatures used in examples,
-   new demo scripts), update the corresponding examples.
-2. **`.agent_docs/STRUCTURE.md`** — Update the directory tree if any files or folders were added,
-   removed, or had their responsibilities changed.
-3. **`.agent_docs/DECISIONS.md`** — Add an ADR if a non-obvious architectural or algorithmic choice
-   was made.
-4. **`.agent_docs/scratchpad.md`** — Update task progress, mark completed sub-tasks, and record any
-   learnings or dead ends encountered during the session.
-5. **`docs/`** — Update the relevant MkDocs pages (`docs/api/`, `docs/models/`, `docs/concepts/`,
-   `docs/control/`, `docs/simulation/`, `docs/experimental/`, `docs/getting-started/`) if you
-   changed components, setup instructions, interfaces, or architecture. These pages are deployed
-   to GitHub Pages and must stay in sync with the implementation.
+Knowledge is split to avoid duplication, and keeping it current is part of every task:
 
-> If you are unsure whether a change warrants a docs update, err on the side of updating.
-> A one-line entry is always better than silence.
->
-> **Special note on README:** This file is your primary communication with users about what the
-> package does and how to use it. If you change the public API, usage patterns, or installation
-> steps, the README must change. Keep it in sync with the actual code — a stale README damages
-> credibility and wastes user time.
+- **Memories** (`.serena/memories/*.md`, committed): the reference knowledge and the **primary
+  source of truth**:
 
----
+  | Memory | Contents |
+  |---|---|
+  | `project_overview` | scope, stability tiers, fragile areas |
+  | `codebase_structure` | every module, its classes and invariants |
+  | `code_style_and_conventions` | formatting, typing, docstrings, tests |
+  | `suggested_commands` | setup, test/lint, demos, docs, CI, release |
+  | `task_completion_checklist` | the definition of done |
+  | `tools_and_skills` | serena, context7, other tools |
+  | `ai_tracking_system` | how this split is enforced |
 
-## Project Layout
+  They are plain markdown. With the [serena](https://github.com/oraios/serena) MCP server, use
+  `list_memories` / `read_memory` / `write_memory`; without it, read and edit the files directly.
+- **`.ai/`** (git-ignored, local): the append-only logs `DECISIONS.md` (ADRs, newest first) and
+  `PROGRESS.md` (dated log, newest first). See `.ai/README.md`. On a fresh clone `.ai/` does not
+  exist; create both files on your first task.
+- **This file**: the protocol and pointers only. It deliberately does **not** restate the memory
+  content.
 
-```
-traffic_flow_models/
-├── src/
-│   ├── traffic_flow_models/        – Main installable package
-│   │   ├── __init__.py             – Public API re-exports (keep in sync with new modules)
-│   │   ├── model/                  – Traffic flow model implementations
-│   │   │   ├── ctm.py              – Cell Transmission Model (first-order)
-│   │   │   ├── metanet.py          – METANET model (second-order)
-│   │   │   └── helpers.py          – Shared model helper functions
-│   │   ├── network/                – Network topology and simulation orchestration
-│   │   │   ├── network.py          – Network class: builds/validates topology, runs simulation
-│   │   │   ├── simulation.py       – Simulation class: time-stepping, metrics, visualization
-│   │   │   ├── cell.py             – Discrete highway segment (CTM/METANET state unit)
-│   │   │   ├── motorway_link.py    – Mainline link composed of cells
-│   │   │   ├── onramp.py / offramp.py – Ramp links, optionally attached to a controller
-│   │   │   ├── node.py             – Junction connecting incoming/outgoing links
-│   │   │   ├── origin.py / destination.py – Network boundary conditions
-│   │   │   └── calibrator.py       – Parameter calibration against ground-truth data
-│   │   └── controller/             – Ramp metering control strategies
-│   │       ├── flow_controller.py  – Base controller interface
-│   │       ├── alinea.py           – ALINEA local feedback ramp metering
-│   │       ├── metaline.py         – METALINE coordinated ramp metering
-│   │       └── custom_controller.py – Template/interface for user-defined controllers
-│   └── demo/                       – Demo scripts and example networks
-│       ├── ctm_simulation.py       – CTM usage example
-│       ├── metanet_simulation.py   – METANET usage example
-│       ├── metanet_calibration.py  – Calibration workflow example
-│       ├── plot_demo_network.py    – Network topology visualization example
-│       └── scenarios.py            – Demo network definitions (scenarios A–E2)
-├── tests/                          – pytest test suite (flat, one file per module/feature)
-├── docs/                           – User-facing MkDocs documentation (deployed to GitHub Pages)
-│   ├── getting-started/            – Installation, quickstart
-│   ├── concepts/                   – Network and state-space concepts
-│   ├── models/                     – CTM, METANET, model comparison
-│   ├── control/                    – Ramp metering strategies
-│   ├── simulation/                 – Running simulations, metrics, visualization
-│   ├── experimental/               – Calibration
-│   ├── api/                        – API reference pages (mkdocstrings)
-│   └── development/                – Contributing guide, changelog
-├── results/                        – Generated simulation outputs (not authoritative source)
-├── .agent_docs/                    – LLM-maintained documentation (see above)
-│   ├── STRUCTURE.md
-│   ├── DECISIONS.md
-│   ├── INTEGRATIONS.md
-│   └── scratchpad.md
-├── .memory-bank/                   – Persistent cross-session project context
-│   ├── projectbrief.md
-│   ├── systemPatterns.md
-│   ├── techContext.md
-│   ├── activeContext.md
-│   └── progress.md
-├── .github/workflows/              – CI: testing, linting, docs build/release, package build/release
-├── pyproject.toml                  – Package metadata, dependencies (runtime + dev + docs extras)
-├── mkdocs.yml                      – MkDocs site configuration
-├── cliff.toml                      – git-cliff changelog generation configuration
-├── .pylintrc                       – Pylint configuration
-├── .gitignore
-├── AGENTS.md                       – This file
-└── CLAUDE.md                       – Claude-specific quick reference
-```
+## Working protocol
 
-- All installable source code lives under `src/traffic_flow_models/`. Demo/example scripts live
-  under `src/demo/` and are not part of the installed package.
-- Tests live in the flat `tests/` directory at the repo root, not co-located with source.
-- Do **not** create new top-level directories without explicit instruction.
-- Use relative imports within `src/traffic_flow_models/` submodules; when adding a new public
-  class or function, re-export it from `src/traffic_flow_models/__init__.py` and add it to
-  `__all__` so it is importable as `from traffic_flow_models import X`.
-- After any structural change, update the "Project Layout" section above and the README's
-  "Project Structure" section.
+**Before starting a task**
 
----
+1. Read the relevant memories. Start with `project_overview`, then `codebase_structure`,
+   `code_style_and_conventions`, `suggested_commands`, `tools_and_skills`.
+2. Read `.ai/DECISIONS.md` (if present) for the decisions and constraints that bind your work.
+3. Check `.ai/PROGRESS.md` (if present) for in-flight work and recent changes.
 
-## Hard Requirements
+**While working**, follow `code_style_and_conventions`. Check library APIs (numpy, scipy,
+casadi, networkx, matplotlib) against current docs instead of writing them from memory. If you
+deviate from a convention, record why in `.ai/DECISIONS.md`.
 
-These rules apply to **every task** and must never be skipped.
+**Before finishing a task (definition of done)**, update whichever apply:
 
-### Python Virtual Environment
+- **Memories**: update `codebase_structure`, `code_style_and_conventions`, `suggested_commands`
+  or `project_overview` if structure, conventions, commands or scope changed. A new module,
+  model, network component or controller means `codebase_structure` needs a line; do not defer it.
+- **Documentation**: if the public API, usage or installation changed, update `README.md` and the
+  matching `docs/` MkDocs pages in the same task.
+- `.ai/DECISIONS.md`: add an ADR when you made a non-obvious or systematic choice (algorithm,
+  modelling assumption, API change, parameter value).
+- `.ai/PROGRESS.md`: **always** append a dated entry summarizing what changed and why.
+- Work through the `task_completion_checklist` memory.
 
-Always check for a virtual environment before running any Python command.
-
-- If `venv/` exists at the project root, activate it first:
-  ```bash
-  source venv/bin/activate
-  ```
-- If no virtual environment exists and one is needed, create it with Python 3.13:
-  ```bash
-  python3.13 -m venv venv
-  source venv/bin/activate
-  pip install -e ".[dev]"
-  ```
-- Never install packages globally. Always install into the active virtual environment.
-- The package uses editable installs (`pip install -e .`), not a pinned `requirements.txt`.
-  Runtime and dev dependencies are declared in `pyproject.toml` under `[project.dependencies]`
-  and `[project.optional-dependencies]`. If you add a new dependency, add it there with a pinned
-  version, matching the existing style (`package==x.y.z`).
-
----
-
-## Memory Bank — MANDATORY
-
-All files in `.memory-bank/` MUST be read at the start of every session and updated
-at the end. They are the primary source of project context — treat them as your
-persistent working memory across sessions.
-
-- `projectbrief.md` — read-only unless scope changes
-- `systemPatterns.md` — update when architecture changes
-- `techContext.md` — update when dependencies or environment changes
-- `activeContext.md` — update every session (current focus + recent changes)
-- `progress.md` — update every session (what works, what's broken)
-
-## Code Quality
-
-- Follow existing code style and naming conventions exactly — do not diverge without instruction.
-- Format code with **Black** before finishing a task:
-  ```bash
-  black .
-  ```
-  CI (`lint.yml`) runs `black --check` and will fail on unformatted code.
-- Obey the lint rules in `.pylintrc`. Run `pylint src/` and fix all warnings before considering a
-  task complete.
-- Write docstrings for all public functions, classes, and modules.
-- Add inline comments only when the _why_ is not obvious from the code.
-- Avoid magic numbers and strings — use named constants.
-- Validate inputs at system boundaries (file I/O, scenario/config parsing, calibration entry
-  points).
-- Prefer explicit over implicit; readable over clever.
-- Use type annotations on all new function signatures.
-
----
-
-## Testing
-
-- Write tests for every non-trivial function, covering edge cases and numerical edge cases
-  (e.g. congestion/free-flow regime transitions, capacity limits, degenerate network topologies).
-- Place tests in the flat `tests/` directory at the repo root, named `<module>_test.py` or
-  `test_<module>.py` to match the existing convention for that area.
-- Run the full test suite before and after every change:
-  ```bash
-  pytest
-  ```
-- Do not consider a task complete until all tests pass.
-- `pytest` is declared as a dev dependency in `pyproject.toml` (`pip install -e ".[dev]"`).
-
----
-
-## Security & Data Integrity
-
-- Never hardcode absolute file paths — use `pathlib.Path` and relative paths.
-- Never commit generated output files (plots, videos, result JSON/CSV under `results/`) — verify
-  they are covered by `.gitignore` before adding new output locations.
-- Sanitize all external inputs (ground-truth/results files, config files, CLI arguments)
-  before passing them to model or calibration algorithms.
-
----
-
-## Communication & Reasoning
-
-- Think step-by-step before writing code or making changes, especially for traffic flow model
-  internals (CTM/METANET equations) and calibration logic.
-- If requirements are ambiguous, ask one focused clarifying question before proceeding.
-- When proposing a non-obvious algorithmic approach, briefly explain the reasoning and complexity.
-- If multiple valid approaches exist, list them with trade-offs (numerical stability, performance,
-  correctness) before choosing.
-- Flag potential risks explicitly — especially numerical stability issues (e.g. CFL-condition
-  violations in CTM, METANET solver divergence), degenerate network geometry, or calibration
-  optimizer (`casadi`/`scipy`) failures to converge.
-- At the end of each task, summarize what was changed and why.
-- Do not hallucinate APIs for `numpy`, `scipy`, `casadi`, `networkx`, or `matplotlib` —
-  verify method signatures before using.
-
----
-
-## Release Process
-
-Releases are handled via `git-cliff` (conventional commits → changelog) and GitHub Actions
-(`release.yml`, `build.yml`). Do not hand-edit `CHANGELOG.md`. See the "Release" section of
-`README.md` for the full step-by-step process. Agents should not initiate a release unless
-explicitly instructed to.
-
----
-
-## Scratchpad Format
-
-When updating `.agent_docs/scratchpad.md`, use this structure for each session:
-
-```markdown
-## Task: <short description>
-
-### Plan
-
-- [ ] Step 1
-- [ ] Step 2
-
-### Learnings
-
-- YYYY-MM-DD: <learning>
-
-### Decisions
-
-- <decision>: <rationale>
-
-### Dead Ends
-
-- <approach>: <why it failed>
-
-### Open Questions
-
-- <question>
-```
-
-Do not delete previous entries between sessions — accumulate knowledge over time.
+**A stale memory or log is a bug**, so fix it in the same task.

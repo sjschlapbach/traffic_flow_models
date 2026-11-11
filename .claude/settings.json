@@ -1,4 +1,8 @@
 {
+  "enabledPlugins": {
+    "serena@claude-plugins-official": true,
+    "context7@claude-plugins-official": true
+  },
   "permissions": {
     "allow": [
       "mcp__plugin_context7_context7__resolve-library-id",
@@ -14,14 +18,15 @@
       "mcp__plugin_serena_serena__read_file",
       "mcp__plugin_serena_serena__list_memories",
       "mcp__plugin_serena_serena__read_memory",
+      "mcp__plugin_serena_serena__write_memory",
       "mcp__plugin_serena_serena__get_diagnostics_for_file",
+      "Bash(source venv/bin/activate*)",
       "Bash(pytest*)",
       "Bash(python -m pytest*)",
-      "Bash(ruff *)",
-      "Bash(mypy*)",
-      "Bash(python -m build*)",
-      "Bash(python -m mesoltm*)",
+      "Bash(black *)",
+      "Bash(pylint *)",
       "Bash(pip install -e*)",
+      "Bash(mkdocs build*)",
       "Bash(pip show*)",
       "Bash(pip list*)",
       "Bash(pip freeze*)"
@@ -30,10 +35,23 @@
       "EnterWorktree",
       "Bash(git worktree *)",
       "Bash(git commit*)",
-      "Bash(git commit:*)"
+      "Bash(git commit:*)",
+      "Bash(git push*)",
+      "Bash(git push:*)"
     ]
   },
   "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo 'Read the serena memories (.serena/memories/) and .ai/ logs before starting work; update them before finishing — see AGENTS.md.'",
+            "statusMessage": "Reminding to read project memories"
+          }
+        ]
+      }
+    ],
     "Stop": [
       {
         "hooks": [
@@ -41,11 +59,6 @@
             "type": "command",
             "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/ai-tracking-reminder.sh\"",
             "statusMessage": "Checking .ai/ tracking is up to date"
-          },
-          {
-            "type": "command",
-            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/pylint-check.sh\"",
-            "statusMessage": "Checking pylint scores 10/10"
           }
         ]
       }
