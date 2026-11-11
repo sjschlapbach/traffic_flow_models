@@ -18,8 +18,15 @@ set -euo pipefail
 repo="${CLAUDE_PROJECT_DIR:-$(pwd)}"
 cd "$repo" 2>/dev/null || exit 0
 
-# seconds-since-epoch mtime for a file: BSD stat (macOS) first, GNU stat as fallback
-mtime() { stat -f %m "$1" 2>/dev/null || stat -c %Y "$1" 2>/dev/null || echo 0; }
+# seconds-since-epoch mtime for a file: BSD stat (macOS) first, GNU stat as fallback.
+# gnu `stat -f` means --file-system and prints a non-numeric value, so only digits count
+mtime() {
+  local m
+  m="$(stat -f %m "$1" 2>/dev/null || true)"
+  [[ "$m" =~ ^[0-9]+$ ]] || m="$(stat -c %Y "$1" 2>/dev/null || true)"
+  [[ "$m" =~ ^[0-9]+$ ]] || m=0
+  echo "$m"
+}
 
 status="$(git status --porcelain --untracked-files=all 2>/dev/null || true)"
 # not a git repo, or a clean tree: nothing to enforce
@@ -32,11 +39,17 @@ changed="$(printf '%s\n' "$status" | sed 's/^...//; s/.* -> //; s/^"//; s/"$//' 
   | grep -vE '^(\.ai/|\.serena/)' || true)"
 [ -z "$changed" ] && exit 0
 
-# newest mtime among the changed relevant files (deleted files have none and are skipped)
+# newest mtime among the changed relevant files. a deleted file has no mtime, but
+# removing it bumps the mtime of its directory, so the nearest existing parent stands in
 newest_change=0
 while IFS= read -r f; do
-  [ -f "$f" ] || continue
-  m="$(mtime "$f")"
+  if [ -f "$f" ]; then
+    m="$(mtime "$f")"
+  else
+    d="$(dirname "$f")"
+    while [ ! -d "$d" ]; do d="$(dirname "$d")"; done
+    m="$(mtime "$d")"
+  fi
   [ "$m" -gt "$newest_change" ] && newest_change="$m"
 done <<< "$changed"
 

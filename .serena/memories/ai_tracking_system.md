@@ -34,5 +34,6 @@ Other agents have no hooks and follow the protocol in AGENTS.md by hand.
   - **Detection by mtime, not `git status`:** `.ai/` is git-ignored, so git never lists `.ai/`
     edits. The hook compares mtimes. Tracking counts as current when `.ai/DECISIONS.md`,
     `.ai/PROGRESS.md` or some `.serena/memories/*.md` was modified at least as recently as the
-    newest changed relevant file. Touching a tracking file, or committing the change, clears the
+    newest changed relevant file. A deleted relevant file counts with the mtime of its nearest
+    existing parent directory. Touching a tracking file, or committing the change, clears the
     block.

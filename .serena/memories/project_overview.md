@@ -45,10 +45,8 @@ and aggregating detector data into ground truth. Users build networks in code (o
   bugs on record (merge/diverge virtual upstream speed, downstream density). It is numerically
   stable at present. Read the state-packing contract in `mem:codebase_structure` and the
   `metanet.py` docstrings before you change node processing.
-- **CTM calibration identifiability**: earlier debugging found that regularized CTM fits barely
-  moved from the initial guess (|corr| ≈ 0.99 between parameters). This is a known modelling
-  limitation that has not been re-checked against the current code, so treat CTM calibration
-  results with scepticism.
+- **CTM is not calibratable**: its calibration-interface methods (`model/ctm.py`) raise
+  `NotImplementedError`, pinned by `tests/ctm_test.py`. Only METANET supports calibration.
 - **CFL condition**: see `MotorwayLink.partition_link` in `mem:codebase_structure`.
 - **Public positional argument order**: constructors are public API since v1.0. For example,
   `Onramp.__init__(..., id, controller, origin_node_id, destination_node_id)` is pinned by
