@@ -1,0 +1,15 @@
+# Serena project configuration.
+# Full annotated template: https://github.com/oraios/serena
+project_name: "traffic_flow_models"
+
+languages:
+  - python
+
+encoding: "utf-8"
+
+# paths serena should not index (relative to the project root); git-ignored paths are skipped too
+ignored_paths:
+  - ".ai"
+
+read_only: false
+excluded_tools: []
