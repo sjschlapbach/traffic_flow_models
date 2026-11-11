@@ -1,7 +1,7 @@
 """Shared type aliases used across the traffic_flow_models package."""
 
 from collections.abc import Callable
-from typing import TYPE_CHECKING, Any, TypedDict
+from typing import TYPE_CHECKING, Any, Literal, TypedDict
 
 import casadi
 import numpy as np
@@ -45,6 +45,11 @@ type TimeSeriesById = dict[str, NDArray[np.float64]]
 
 # parsed JSON of a results file, whose content is only known at runtime
 type JSONDict = dict[str, Any]
+
+# model step formulation: "closed_form" bakes the onramp controllers into the dynamics,
+# f(params, x, d); "exogenous_control" ignores them and takes the metering rates as input,
+# f(params, x, d, u)
+type DynamicsFormulation = Literal["closed_form", "exogenous_control"]
 
 
 class ModelOptions(TypedDict, total=False):

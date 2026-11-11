@@ -11,6 +11,8 @@ from traffic_flow_models import (
     AlineaController,
     Onramp,
     CustomController,
+    CTM,
+    Simulation,
 )
 from traffic_flow_models.model.helpers import store_and_forward_update
 from traffic_flow_models.controller.metaline import MetalineController
@@ -450,3 +452,95 @@ def test_metaline_equivalent_to_alinea_for_diagonal_gains():
     assert np.isclose(val_a1, val_m1)
     assert np.isclose(val_a2, val_m2)
     assert np.isclose(val_a3, val_m3)
+
+
+def _metered_network(control_dt):
+    """Single-onramp network whose onramp rate (100-280 veh/h) stays below its demand."""
+    m1 = MotorwayLink(
+        id="m1",
+        length=1.0,
+        lanes=3,
+        lane_capacity=2000,
+        free_flow_speed=100,
+        jam_density=180,
+    )
+    m2 = MotorwayLink(
+        id="m2",
+        length=2.0,
+        lanes=3,
+        lane_capacity=2000,
+        free_flow_speed=100,
+        jam_density=180,
+    )
+    onr = Onramp(
+        id="onramp",
+        length=0.5,
+        lanes=1,
+        lane_capacity=2000,
+        free_flow_speed=100,
+        jam_density=180,
+    )
+    onr.controller = CustomController(
+        onr, controller_fn=lambda q, f, d: 100.0 + d["m2"][0], control_dt=control_dt
+    )
+    origin, origin_onr, dest = (
+        Origin(id="o"),
+        Origin(id="o_onr"),
+        Destination(id="dest"),
+    )
+    nodes = [
+        Node(id="n0", incoming=[origin], outgoing=[m1]),
+        Node(id="nonr", incoming=[origin_onr], outgoing=[onr]),
+        Node(id="n1", incoming=[m1, onr], outgoing=[m2]),
+        Node(id="n2", incoming=[m2], outgoing=[dest]),
+    ]
+    return Network(nodes=nodes)
+
+
+def _run_metered(control_dt, dt=10.0 / 3600, steps=60):
+    """Simulate the metered network with CTM; return states and onramp flows."""
+    net = _metered_network(control_dt)
+    sim = Simulation(network=net, model=CTM())
+    _, states, _ = sim.run(
+        duration=steps * dt,
+        dt=dt,
+        origin_demands={"o": lambda _: 5000.0, "o_onr": lambda _: 1500.0},
+        turning_rates={},
+        destination_flow_bc={"dest": lambda _: 6000.0},
+        destination_density_bc={"dest": lambda _: 0.0},
+        plot_results=False,
+    )
+    onramp_flows = np.array(
+        [
+            net.state_vec_to_network_dict(states[:, t])[0]["onramp"][0]
+            for t in range(states.shape[1])
+        ]
+    )
+    return states, onramp_flows
+
+
+def test_control_dt_equal_to_dt_matches_closed_form_dynamics():
+    """Exogenous control with control_dt = dt reproduces the closed-form dynamics."""
+    dt = 10.0 / 3600
+    states_closed_form, _ = _run_metered(control_dt=None, dt=dt)
+    states_exogenous, _ = _run_metered(control_dt=dt, dt=dt)
+    np.testing.assert_allclose(states_exogenous, states_closed_form)
+
+
+def test_control_dt_holds_metering_rate_between_updates():
+    """The metering rate is held for control_dt / dt steps between controller updates."""
+    dt, k = 10.0 / 3600, 5
+    _, onramp_flows = _run_metered(control_dt=k * dt, dt=dt)
+
+    # the rate computed at step j*k drives the onramp flows of states j*k+1 .. (j+1)*k;
+    # block 0 is skipped because the onramp demand starts at zero
+    blocks = onramp_flows[1:].reshape(-1, k)[1:]
+    assert np.allclose(blocks, blocks[:, :1])
+    # the rate changes between blocks while the mainline fills (before steady state)
+    assert np.all(np.abs(np.diff(blocks[:4, 0])) > 1e-2)
+
+
+def test_control_dt_not_multiple_of_dt_raises():
+    """A 3 Hz simulation rejects a 2 Hz controller."""
+    with pytest.raises(ValueError, match="integer multiple"):
+        _run_metered(control_dt=1.0 / (2 * 3600), dt=1.0 / (3 * 3600), steps=6)

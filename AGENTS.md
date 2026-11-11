@@ -17,9 +17,22 @@ Prefer the simplest solution that works and do not over-engineer. Follow the sty
 code (see the `code_style_and_conventions` memory). No speculative abstraction, and no options or
 configuration nobody asked for.
 
+**Stay within the requested scope (strict):** never over-engineer. Make only the changes the
+task actually requires: no extra refactors, renames, signature tweaks (e.g. keyword-only
+markers), options, helpers or "nice to have" extensions. A change outside the request needs a
+good reason (a repo rule such as "no new pylint warnings", or the code not working without it),
+and you name that reason in your report. If you think an extension is important, ask the user
+first and get approval before implementing it. Never change the interface or formulation of
+core functions (e.g. the model `network_update_function` step, the state/disturbance layout)
+without the user's explicit approval for that specific change; a general "breaking changes are
+fine" is not that approval.
+
 **No inline lint/type suppressions without asking (strict):** never add `# pylint: disable=...`
 or `# type: ignore` on your own. Ask the user first whether the rule should be suppressed on that
 line, disabled repo-wide in `.pylintrc`, or the code fixed instead.
+Exception: `# type: ignore` on CasADi variables (e.g. `casadi.SX.sym(...)`, whose SWIG
+signature pyright misreads) is allowed without asking; mypy's unused-ignore warning is off only
+for `model.ctm` and `model.metanet`, so elsewhere add one only where mypy needs it too.
 
 **No functions inside functions (strict):** never define a `def` (or a closure factory that
 returns a function) inside a function or method. Use a module-level helper or a method, and
@@ -41,7 +54,9 @@ Always run everything inside the local `venv/` (`source venv/bin/activate`) from
 root. Setup and all commands are in the `suggested_commands` memory. **`pytest` must pass, all
 Python code must be formatted with black (`black --check .`), `pylint src --errors-only` must be
 clean and strict `mypy` must report no issues (CI runs all four); new code adds no pylint
-warnings.**
+warnings.** **Type errors are checked automatically and fixed before you return (strict):** run
+strict `mypy` and pyright (the engine behind Pylance, command in `suggested_commands`) after
+every code change; neither may report an error in the code you touched.
 
 ## Git (hard rules)
 

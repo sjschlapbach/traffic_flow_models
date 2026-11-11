@@ -14,6 +14,7 @@ class MetalineController:
         measurement_cells: list[tuple[str, int]],
         gain_matrix: dict[str, NDArray[np.float64]],
         density_setpoints: list[tuple[str, int, float]],
+        control_dt: float | None = None,
     ) -> None:
         """Create an Metaline controller instance.
 
@@ -22,6 +23,9 @@ class MetalineController:
             measurement_cells: A list of tuples (link_id, cell_idx) indicating the cells to measure.
             gain_matrix: A dictionary mapping link IDs to their corresponding gain matrices.
             density_setpoints: A list of tuples (link_id, cell_idx, setpoint) indicating the desired densities.
+            control_dt: Optional control interval (same time unit as the simulation `dt`, an
+                integer multiple of it); the metering rate is held between updates. None
+                (default) updates it at every simulation step.
         """
         # verify that density setpoins are specified for each measurement cell
         for link_id, cell_idx in measurement_cells:
@@ -61,6 +65,7 @@ class MetalineController:
         self.measurement_cells: list[tuple[str, int]] = measurement_cells
         self.gain_matrix: dict[str, NDArray[np.float64]] = gain_matrix
         self.density_setpoints: list[tuple[str, int, float]] = density_setpoints
+        self.control_dt: float | None = control_dt
 
     def compute_regulated_flow(
         self,

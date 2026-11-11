@@ -32,6 +32,19 @@ pylint src                       # full report: new code adds no warnings
 mypy                             # strict type check of the package (pyproject.toml config)
 ```
 
+pyright (Pylance's engine) is not a dev dependency; run it from a throwaway venv outside the
+repository against the project venv, and check the files you touched:
+
+```bash
+python3 -m venv /tmp/pyright-venv && /tmp/pyright-venv/bin/pip install -q pyright
+/tmp/pyright-venv/bin/pyright --pythonpath venv/bin/python src tests
+```
+
+Known casadi false positive: SWIG defines `SX.sym(*args)` / `MX.sym(*args)` so that pyright reads
+the arguments as SX/MX. Put `# type: ignore` on such CasADi lines (allowed without asking;
+mypy's unused-ignore warning is off only for `model.ctm` / `model.metanet`). Pre-existing pyright errors outside the touched code (tests that pass invalid
+input on purpose) are not yours to fix unless asked.
+
 The stub pins in the dev extra follow the runtime pins: `scipy-stubs` 1.16.3.x for scipy
 1.16.3, `types-networkx` 3.5.x, `types-tqdm` 4.67.x, and `numpy-typing-compat` 20251206.2.3
 (the numpy 2.3 line; a newer release would upgrade numpy). Bump them together with the
