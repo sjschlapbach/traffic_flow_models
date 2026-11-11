@@ -1,7 +1,6 @@
 # Performance Metrics
 
-After running a simulation, call `compute_metrics()` to obtain standard traffic
-performance indicators aggregated over the entire network and simulation period.
+After running a simulation, call `compute_metrics()` to obtain standard traffic performance indicators aggregated over the entire network and simulation period.
 
 `compute_metrics()` takes the raw arrays returned by `run()`:
 
@@ -27,8 +26,7 @@ print(f"Avg speed: {avg_speed:.1f} km/h")
 
 ## Excluding queue time
 
-Pass `ignore_queues=True` to exclude time spent in origin / on-ramp / off-ramp queues
-from the VHT calculation (mainline only):
+Pass `ignore_queues=True` to exclude time spent in origin / on-ramp / off-ramp queues from the VHT calculation (mainline only):
 
 ```python
 VKT, VHT, avg_speed = sim.compute_metrics(

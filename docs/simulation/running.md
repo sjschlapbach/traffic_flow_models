@@ -14,9 +14,7 @@ sim = Simulation(
 )
 ```
 
-Call `run()` to execute the time-stepping loop. All four demand/BC dicts are required
-and must map **string IDs** to **callables** `(t: float) -> float` (or, for turning
-rates, `(t: float) -> dict[str, float]`):
+Call `run()` to execute the time-stepping loop. All four demand/BC dicts are required and must map **string IDs** to **callables** `(t: float) -> float` (or, for turning rates, `(t: float) -> dict[str, float]`):
 
 ```python
 time_arr, states, disturbances = sim.run(
@@ -55,8 +53,7 @@ time_arr, states, disturbances = sim.run(
 - `state_history` — 2-D NumPy array, shape `(state_size, steps + 1)`
 - `disturbance_history` — 2-D NumPy array, shape `(disturbance_size, steps)`
 
-The time step must satisfy the CFL condition for all links. An error is raised if it
-is violated.
+The time step must satisfy the CFL condition for all links. An error is raised if it is violated.
 
 ## Saving and loading results
 

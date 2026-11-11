@@ -31,16 +31,13 @@ The project uses [Black](https://black.readthedocs.io/) for linting and formatti
 black .
 ```
 
-The package is fully typed and ships a `py.typed` marker, so type checkers use its
-annotations. It must pass strict [mypy](https://mypy-lang.org/) (configured in
-`pyproject.toml`):
+The package is fully typed and ships a `py.typed` marker, so type checkers use its annotations. It must pass strict [mypy](https://mypy-lang.org/) (configured in `pyproject.toml`):
 
 ```bash
 mypy
 ```
 
-Shared type aliases (e.g. `Link`, `RampController`, `TimeProfile`) live in
-`traffic_flow_models.types`.
+Shared type aliases (e.g. `Link`, `RampController`, `TimeProfile`) live in `traffic_flow_models.types`.
 
 ## Adding documentation
 
@@ -54,5 +51,4 @@ mkdocs serve
 
 1. Fork the repository and create a feature branch.
 2. Ensure all tests pass and new code is covered.
-3. Open a pull request against `dev`. The CI pipeline will build the documentation
-   and run the test suite.
+3. Open a pull request against `dev`. The CI pipeline will build the documentation and run the test suite.

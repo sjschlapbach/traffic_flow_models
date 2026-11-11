@@ -1,19 +1,14 @@
 # Ramp Metering
 
-Ramp metering regulates inflow through on-ramps to prevent mainline congestion. The
-library provides a general control interface and two reference implementations —
-**ALINEA** (local) and **METALINE** (coordinated) — that can be used with both CTM and
-METANET.
+Ramp metering regulates inflow through on-ramps to prevent mainline congestion. The library provides a general control interface and two reference implementations — **ALINEA** (local) and **METALINE** (coordinated) — that can be used with both CTM and METANET.
 
-For full algorithmic derivations, see
-[Schlapbach et al., STRC 2026](../index.md#citation).
+For full algorithmic derivations, see [Schlapbach et al., STRC 2026](../index.md#citation).
 
 ---
 
 ## How controllers are attached
 
-A controller is assigned to an `Onramp` via its `controller` attribute. The simulation
-reads the controller from the onramp automatically during each time step.
+A controller is assigned to an `Onramp` via its `controller` attribute. The simulation reads the controller from the onramp automatically during each time step.
 
 ```python
 from traffic_flow_models import Onramp
@@ -27,24 +22,17 @@ onramp = Onramp(id="r1", length=0.5, lanes=1,
 
 ## General metering mechanism
 
-All ramp metering strategies compute a **maximum allowed inflow** \(r_m(k)\) for each
-controlled on-ramp \(m\). The actual metered flow is:
+All ramp metering strategies compute a **maximum allowed inflow** \(r_m(k)\) for each controlled on-ramp \(m\). The actual metered flow is:
 
 $$q_m^r(k+1) = \min\!\bigl\{q_m(k+1),\; \max\{r_m(k+1),\; 0\}\bigr\}$$
 
-where \(q_m(k+1)\) is the unmetered on-ramp outflow. An unmetered on-ramp (no
-controller) is equivalent to setting \(r_m = \infty\). Excess vehicles that cannot
-enter the mainline are stored in the on-ramp virtual queue \(N_m(k)\).
+where \(q_m(k+1)\) is the unmetered on-ramp outflow. An unmetered on-ramp (no controller) is equivalent to setting \(r_m = \infty\). Excess vehicles that cannot enter the mainline are stored in the on-ramp virtual queue \(N_m(k)\).
 
 ---
 
 ## Control interval
 
-Every controller accepts an optional `control_dt` in the same time unit as the simulation
-`dt`. The controller is then evaluated every `control_dt` and its metering rate is held
-in between. `control_dt` must be an integer multiple of `dt` (a 10 Hz simulation accepts a
-1 Hz controller, a 3 Hz simulation rejects a 2 Hz one with a `ValueError`); the default
-`None` updates the rate at every simulation step.
+Every controller accepts an optional `control_dt` in the same time unit as the simulation `dt`. The controller is then evaluated every `control_dt` and its metering rate is held in between. `control_dt` must be an integer multiple of `dt` (a 10 Hz simulation accepts a 1 Hz controller, a 3 Hz simulation rejects a 2 Hz one with a `ValueError`); the default `None` updates the rate at every simulation step.
 
 ```python
 onramp.controller = AlineaController(
@@ -54,30 +42,22 @@ onramp.controller = AlineaController(
 )
 ```
 
-The model step has two formulations, selected with `network_update_function(...,
-dynamics=...)` (type `DynamicsFormulation`):
+The model step has two formulations, selected with `network_update_function(..., dynamics=...)` (type `DynamicsFormulation`):
 
 - `"closed_form"` (default): the controllers are part of the dynamics, `f(params, x, d)`.
-- `"exogenous_control"`: the controllers are ignored and the metering rates are an input,
-  `f(params, x, d, u)`, with one entry per on-ramp in the state-vector order of the on-ramp
-  queues (`inf` = unmetered). `Simulation` uses it only when a controller sets `control_dt`.
+- `"exogenous_control"`: the controllers are ignored and the metering rates are an input, `f(params, x, d, u)`, with one entry per on-ramp in the state-vector order of the on-ramp queues (`inf` = unmetered). `Simulation` uses it only when a controller sets `control_dt`.
 
 ---
 
 ## ALINEA — local ramp metering
 
-ALINEA is a **local I-type feedback controller**. It regulates the density at a
-detector location on the mainline to a set point (typically the critical density
-\(\rho\_{cr}\) for maximum throughput):
+ALINEA is a **local I-type feedback controller**. It regulates the density at a detector location on the mainline to a set point (typically the critical density \(\rho\_{cr}\) for maximum throughput):
 
 $$r_m(k+1) = q_m^r(k) + K'_I \bigl[\rho_j^\mu(k) - \rho_{set}^\mu\bigr]$$
 
-where \(K'\_I = K_I L_j^\mu / \Delta t\) is the gain (transformed from the original
-occupancy-based formulation to density units).
+where \(K'\_I = K_I L_j^\mu / \Delta t\) is the gain (transformed from the original occupancy-based formulation to density units).
 
-**Choosing the measurement location:** typically a cell **downstream of the on-ramp**
-and upstream of a known bottleneck, so the controller can react before congestion
-propagates back to the ramp.
+**Choosing the measurement location:** typically a cell **downstream of the on-ramp** and upstream of a known bottleneck, so the controller can react before congestion propagates back to the ramp.
 
 ```python
 from traffic_flow_models import AlineaController, Onramp
@@ -99,14 +79,11 @@ onramp.controller = AlineaController(
 
 ## METALINE — coordinated ramp metering
 
-METALINE distributes control effort across **multiple on-ramps** simultaneously,
-using density measurements from several relevant locations. This reduces the
-myopia of local controllers:
+METALINE distributes control effort across **multiple on-ramps** simultaneously, using density measurements from several relevant locations. This reduces the myopia of local controllers:
 
 $$r_m(k+1) = q_m^r(k) + K_{METALINE}^m \cdot \bigl[\boldsymbol{\rho}(k) - \boldsymbol{\rho}_{set}\bigr]$$
 
-where \(K\_{METALINE}^m\) is the \(m\)-th row of the gain matrix. A purely diagonal
-gain matrix reduces to uncoordinated ALINEA-style control.
+where \(K\_{METALINE}^m\) is the \(m\)-th row of the gain matrix. A purely diagonal gain matrix reduces to uncoordinated ALINEA-style control.
 
 ```python
 import numpy as np
@@ -142,8 +119,7 @@ onramp.controller = FlowController(onramp=onramp, flow=600.0)  # 600 veh/h max
 
 ## Custom controllers
 
-Supply any CasADi-compatible callable via `CustomController`. The function receives
-`(onramp_queues, flows, densities)` dicts and must return a `casadi.SX` expression:
+Supply any CasADi-compatible callable via `CustomController`. The function receives `(onramp_queues, flows, densities)` dicts and must return a `casadi.SX` expression:
 
 ```python
 import casadi

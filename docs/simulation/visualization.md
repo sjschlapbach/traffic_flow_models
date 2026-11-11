@@ -2,9 +2,7 @@
 
 ## Automatic plots during `run()`
 
-Pass `plot_results=True` to `run()` to automatically generate and save plots (density,
-flow, speed per link; queue plots for origins and on-ramps; node summary plots) to
-`results_dir`:
+Pass `plot_results=True` to `run()` to automatically generate and save plots (density, flow, speed per link; queue plots for origins and on-ramps; node summary plots) to `results_dir`:
 
 ```python
 time_arr, states, disturbances = sim.run(
@@ -31,8 +29,7 @@ sim.plot_results(
 
 ## Video export
 
-`visualize()` generates an AVI video from a **saved results JSON file** (requires
-`opencv-python`). Save results first, then call:
+`visualize()` generates an AVI video from a **saved results JSON file** (requires `opencv-python`). Save results first, then call:
 
 ```python
 # 1. Save results after run()
@@ -49,8 +46,7 @@ sim.visualize(
 
 !!! note "Node coordinates required for video export"
 
-    Node position coordinates must be set on each `Node` for the video to render
-    the network topology correctly:
+    Node position coordinates must be set on each `Node` for the video to render the network topology correctly:
 
     ```python
     node.position = (x, y)

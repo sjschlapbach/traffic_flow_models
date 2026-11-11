@@ -1,20 +1,14 @@
 # METANET
 
-METANET is a **second-order** macroscopic traffic flow model. It supplements the
-first-order density conservation equation with an explicit dynamic equation for
-**mean speed**, capturing effects that CTM cannot reproduce: driver anticipation of
-downstream conditions, speed relaxation towards equilibrium, on-ramp merging speed
-drops, and lane-drop anticipation.
+METANET is a **second-order** macroscopic traffic flow model. It supplements the first-order density conservation equation with an explicit dynamic equation for **mean speed**, capturing effects that CTM cannot reproduce: driver anticipation of downstream conditions, speed relaxation towards equilibrium, on-ramp merging speed drops, and lane-drop anticipation.
 
-For full mathematical derivations, see
-[Schlapbach et al., STRC 2026](../index.md#citation).
+For full mathematical derivations, see [Schlapbach et al., STRC 2026](../index.md#citation).
 
 ---
 
 ## Fundamental diagram
 
-Unlike the triangular FD in CTM, METANET uses an **exponential equilibrium speed
-function**:
+Unlike the triangular FD in CTM, METANET uses an **exponential equilibrium speed function**:
 
 $$
 V_S^m[\rho_i^m(k)] = v_f^m \exp\!\left[
@@ -32,8 +26,7 @@ $$\rho_{cr}^m = \frac{Q_c^m}{\lambda_m v_f^m \exp\!\left(-\tfrac{1}{\alpha_m}\ri
 
 ## Speed update equation
 
-The core of METANET is a second update equation for mean speed. It has four additive
-components:
+The core of METANET is a second update equation for mean speed. It has four additive components:
 
 $$
 v_i^m(k+1) = v_i^m(k)
@@ -61,8 +54,7 @@ $$
 | On-ramp drop | \(\delta\)                                | Speed reduction caused by merging flow at the first cell       |
 | Lane-drop    | \(\phi\)                                  | Speed reduction in anticipation of a downstream lane reduction |
 
-The on-ramp and lane-drop terms are non-zero only in the relevant cells; all other
-cells use \(q\_{on}(k)=0\) and \(\Delta\lambda_m = 0\).
+The on-ramp and lane-drop terms are non-zero only in the relevant cells; all other cells use \(q\_{on}(k)=0\) and \(\Delta\lambda_m = 0\).
 
 Cell flow is then recovered from the fundamental relation:
 
@@ -70,9 +62,7 @@ $$q_i^m(k) = \lambda_m \cdot \rho_i^m(k) \cdot v_i^m(k)$$
 
 !!! note "Flows may temporarily exceed capacity"
 
-    Unlike CTM, METANET does not enforce a hard upper bound on cell flow. Transient
-    flows above \(Q_c^m\) are physically plausible and mimic real-world congestion onset
-    dynamics such as capacity drop and hysteresis.
+    Unlike CTM, METANET does not enforce a hard upper bound on cell flow. Transient flows above \(Q_c^m\) are physically plausible and mimic real-world congestion onset dynamics such as capacity drop and hysteresis.
 
 ---
 
@@ -96,8 +86,7 @@ $$
                             {\sum_{\mu \in O_n} \rho_1^\mu(k)}
 $$
 
-A contraharmonic mean of the first-cell densities of all outgoing links. Both
-quantities are computed automatically by the library.
+A contraharmonic mean of the first-cell densities of all outgoing links. Both quantities are computed automatically by the library.
 
 ---
 
@@ -134,9 +123,7 @@ metanet = METANET()
 
 !!! tip "Calibration sensitivity"
 
-    Depending on the chosen calibration approach, different parameters may
-    be more or less sensitive and coupled through correlation. See the
-    [Calibration guide](../experimental/calibration.md) for details.
+    Depending on the chosen calibration approach, different parameters may be more or less sensitive and coupled through correlation. See the [Calibration guide](../experimental/calibration.md) for details.
 
 ---
 

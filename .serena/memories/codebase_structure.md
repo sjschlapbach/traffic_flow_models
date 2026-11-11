@@ -1,7 +1,6 @@
 # Codebase Structure
 
-Keep this memory in sync: every file or folder that is added, moved or removed gets its line
-updated in the same task, and so does any change to a module's responsibility.
+Keep this memory in sync: every file or folder that is added, moved or removed gets its line updated in the same task, and so does any change to a module's responsibility.
 
 ```
 traffic_flow_models/
@@ -32,133 +31,47 @@ traffic_flow_models/
 └── .ai/                       git-ignored append-only logs (DECISIONS.md, PROGRESS.md)
 ```
 
-Layout rules: installable code only under `src/traffic_flow_models/`; a new public class or
-function is re-exported from `src/traffic_flow_models/__init__.py` and added to `__all__`
-(`from traffic_flow_models import X`). Do not create new top-level directories unless asked.
+Layout rules: installable code only under `src/traffic_flow_models/`; a new public class or function is re-exported from `src/traffic_flow_models/__init__.py` and added to `__all__` (`from traffic_flow_models import X`). Do not create new top-level directories unless asked.
 
 ## `types.py`: shared types
 
-`Link` (any node link), `RampController` (union of the four controllers), `PackedVector`
-(numeric or symbolic state/disturbance vector), `TimeProfile` (time -> value: demands, boundary
-conditions), `TurningRateProfile` (time -> split per outgoing link), `TimeSeriesById`,
-`JSONDict` (raw results JSON), `DynamicsFormulation` (`Literal["closed_form",
-"exogenous_control"]`, the model-step formulation), `ModelOptions` (calibration options TypedDict),
-`ParameterSearchRun` (one multi-start calibration run). The aliases are lazy PEP 695 `type`
-statements, so the network/controller classes are imported only under `TYPE_CHECKING` (no
-import cycle).
+`Link` (any node link), `RampController` (union of the four controllers), `PackedVector` (numeric or symbolic state/disturbance vector), `TimeProfile` (time -> value: demands, boundary conditions), `TurningRateProfile` (time -> split per outgoing link), `TimeSeriesById`, `JSONDict` (raw results JSON), `DynamicsFormulation` (`Literal["closed_form", "exogenous_control"]`, the model-step formulation), `ModelOptions` (calibration options TypedDict), `ParameterSearchRun` (one multi-start calibration run). The aliases are lazy PEP 695 `type` statements, so the network/controller classes are imported only under `TYPE_CHECKING` (no import cycle).
 
 ## `model/`: models built as CasADi symbolic graphs
 
-- **Step formulations (both models)**: `network_update_function(..., dt, dynamics="closed_form")`
-  returns `f(params, x, d)` with the onramp controllers baked in. With
-  `dynamics="exogenous_control"` the controllers are ignored and it returns `f(params, x, d, u)`,
-  `u` = one metering rate per onramp in the state order of the onramp queues (`inf` = unmetered).
-- **`ctm.py`**, `CTM` (stateless). `network_update_function(network, num_flows, num_densities,
-  num_speeds, num_origins, num_onramps, num_offramps, num_splits, num_destinations, dt,
-  dynamics="closed_form") -> casadi.Function("ctm_network_step")`. FD helpers `critical_density`, `backward_wave_speed`.
-  Internals: `_update_motorway_link` (Godunov demand/supply), `_compute_normalized_splits`,
-  `_compute_node_maximum_outflows`, `_compute_offramp_outflows`. Known causality caveat: the
-  first-cell supply uses the outgoing link's *previous-step* density. All six calibration-interface
-  methods raise `NotImplementedError` on purpose (the FD follows from geometry and capacity).
-- **`metanet.py`**, `METANET`. `METANETParams` / `METANETSymbolicParams` TypedDicts: `tau`
-  (relaxation), `nu` (speed diffusion), `kappa` (density smoothing), `delta` (onramp-merge speed
-  drop), `phi` (lane-drop capacity drop), `alpha` (FD shape, a scalar or a per-link dict). Full
-  calibration interface. `cell_update(...)` computes relaxation + convection + anticipation −
-  merge drop − lane-drop deceleration. `network_update_function(...) ->
-  casadi.Function("metanet_network_step")` processes destinations last, so every incoming flow is
-  known before the destination outflow is computed. If a simulation oscillates, `kappa` and
-  `delta` are the most sensitive knobs (lower `delta`, raise `kappa`).
-- **`helpers.py`**, model-agnostic: `store_and_forward_update(capacity, jam_density,
-  backward_wave_speed, density, demand, queue, dt, metering_rate=None) -> (inflow, queue)`,
-  `update_queue`, `compute_node_outflows(node, flows, node_splits)`.
+- **Step formulations (both models)**: `network_update_function(..., dt, dynamics="closed_form")` returns `f(params, x, d)` with the onramp controllers baked in. With `dynamics="exogenous_control"` the controllers are ignored and it returns `f(params, x, d, u)`, `u` = one metering rate per onramp in the state order of the onramp queues (`inf` = unmetered).
+- **`ctm.py`**, `CTM` (stateless). `network_update_function(network, num_flows, num_densities, num_speeds, num_origins, num_onramps, num_offramps, num_splits, num_destinations, dt, dynamics="closed_form") -> casadi.Function("ctm_network_step")`. FD helpers `critical_density`, `backward_wave_speed`. Internals: `_update_motorway_link` (Godunov demand/supply), `_compute_normalized_splits`, `_compute_node_maximum_outflows`, `_compute_offramp_outflows`. Known causality caveat: the first-cell supply uses the outgoing link's *previous-step* density. All six calibration-interface methods raise `NotImplementedError` on purpose (the FD follows from geometry and capacity).
+- **`metanet.py`**, `METANET`. `METANETParams` / `METANETSymbolicParams` TypedDicts: `tau` (relaxation), `nu` (speed diffusion), `kappa` (density smoothing), `delta` (onramp-merge speed drop), `phi` (lane-drop capacity drop), `alpha` (FD shape, a scalar or a per-link dict). Full calibration interface. `cell_update(...)` computes relaxation + convection + anticipation − merge drop − lane-drop deceleration. `network_update_function(...) -> casadi.Function("metanet_network_step")` processes destinations last, so every incoming flow is known before the destination outflow is computed. If a simulation oscillates, `kappa` and `delta` are the most sensitive knobs (lower `delta`, raise `kappa`).
+- **`helpers.py`**, model-agnostic: `store_and_forward_update(capacity, jam_density, backward_wave_speed, density, demand, queue, dt, metering_rate=None) -> (inflow, queue)`, `update_queue`, `compute_node_outflows(node, flows, node_splits)`.
 
 ## `network/`
 
-- **`cell.py`**, `Cell`: `length`, `upcoming_lane_drop`, and the `upstream`/`downstream` pointers.
-  It holds no FD parameters; those live on the parent link because the FD shape depends on the
-  model.
-- **`motorway_link.py`**, `MotorwayLink(length, lanes, lane_capacity, free_flow_speed,
-  jam_density, id=None, origin_node_id=None, destination_node_id=None)`: a doubly linked list of
-  cells. `partition_link(preferred_cell_size, dt, upcoming_lane_drop=0)` enforces the
-  **CFL condition** `min_cell_length = free_flow_speed * dt`, and `Simulation.run` calls it before
-  every run. Any change to `dt`, partitioning or `free_flow_speed` must keep this invariant.
+- **`cell.py`**, `Cell`: `length`, `upcoming_lane_drop`, and the `upstream`/`downstream` pointers. It holds no FD parameters; those live on the parent link because the FD shape depends on the model.
+- **`motorway_link.py`**, `MotorwayLink(length, lanes, lane_capacity, free_flow_speed, jam_density, id=None, origin_node_id=None, destination_node_id=None)`: a doubly linked list of cells. `partition_link(preferred_cell_size, dt, upcoming_lane_drop=0)` enforces the **CFL condition** `min_cell_length = free_flow_speed * dt`, and `Simulation.run` calls it before every run. Any change to `dt`, partitioning or `free_flow_speed` must keep this invariant.
 - **`origin.py` / `destination.py`**: virtual boundary containers (`id` + node id).
-- **`onramp.py`**, `Onramp(length, lanes, lane_capacity, free_flow_speed, jam_density, id=None,
-  controller=None, origin_node_id=None, destination_node_id=None)`: a single-cell
-  store-and-forward link with an optional controller, plus the HERO scaffolding
-  (`mem:project_overview`).
+- **`onramp.py`**, `Onramp(length, lanes, lane_capacity, free_flow_speed, jam_density, id=None, controller=None, origin_node_id=None, destination_node_id=None)`: a single-cell store-and-forward link with an optional controller, plus the HERO scaffolding (`mem:project_overview`).
 - **`offramp.py`**, `Offramp`: store-and-forward point link. No length and no controller.
-- **`node.py`**, `Node(id=None, incoming=None, outgoing=None)`: junction.
-  `add_*`/`remove_*_by_id`/`set_*` maintain the back-references; `validate()` checks the allowed
-  link types.
-- **`network.py`**, `Network(nodes=None)`: topology container and **the single owner of the
-  state/disturbance layout**: `network_dict_to_state_vec`, `state_vec_to_network_dict`,
-  `network_dict_to_disturbance_vec`, `disturbance_vec_to_network_dict`. Packing order follows
-  `list_nodes()` and **must stay stable**: both models, `Simulation` and `Calibrator` unpack
-  `x`/`d` by that order, so iteration or sorting logic changes only together with the packing
-  functions. Also: `validate()`, `update_all_onramp_neighbors()` (BFS), `save_to_txt`,
-  `save_to_json`, `load_from_json`, `plot()` (networkx layout).
-- **`simulation.py`**, `Simulation(network, model, model_params=None)` (largest file).
-  `run(duration, dt, origin_demands, turning_rates, destination_flow_bc, destination_density_bc,
-  ..., preferred_cell_size=0.5, plot_results=True, reference_results_path=None,
-  results_dir=None)`. `_run_simulation_loop` evaluates the model's compiled
-  `casadi.Function` step by step and contains no physics itself. If any controller sets
-  `control_dt`, `run` builds the `"exogenous_control"` step and the module-level
-  `_held_metering(network, system, dt)` (controllers as `x -> u`, update interval per onramp,
-  raises if `control_dt` is no integer multiple of `dt`); the loop then recomputes each rate
-  every `control_dt / dt` steps and holds it in between. Otherwise the `"closed_form"` step runs
-  unchanged. Also: `save_results` /
-  `load_results` (JSON; `load_mainline_only` for external ground truth, auto-used for
-  `metadata.model_type == "MICRO"` files; results whose cell count differs from the network are
-  spatially resampled on load), `resample_results_file` (classmethod, time-grid interpolation),
-  `compute_metrics(...) -> (VKT, VHT, avg_speed)`, `plot_results`, `visualize` (AVI via OpenCV,
-  frames via the backend-agnostic `fig.canvas.print_to_buffer()`), `visualize_comparison`.
-- **`calibrator.py`**, `Calibrator(network)`. `calibrate_model_params(ground_truth_filepath,
-  model, window_size=50, stride=None, regularization_weight=0.0, use_parameter_search=False, ...)
-  -> (params, OptimizeResult, param_history)`: sliding-window multi-step residuals fitted with
-  `scipy.optimize.least_squares(method="trf")`; multi-start search uses Latin Hypercube (seed 42).
-  `analyze_parameter_correlation` (Jacobian → condition number; above 1e6 means poor
-  identifiability). It never touches model internals. Each model implements
-  `get_default_calibration_params`, `get_calibration_bounds`, `prepare_calibration_params`,
-  `parse_calibration_params`, `prepare_system_params` and `get_calibration_param_names`.
-  Model-specific options go through the `model_options` dict (e.g. `link_specific_alpha`); follow
-  this pattern for any new model.
+- **`node.py`**, `Node(id=None, incoming=None, outgoing=None)`: junction. `add_*`/`remove_*_by_id`/`set_*` maintain the back-references; `validate()` checks the allowed link types.
+- **`network.py`**, `Network(nodes=None)`: topology container and **the single owner of the state/disturbance layout**: `network_dict_to_state_vec`, `state_vec_to_network_dict`, `network_dict_to_disturbance_vec`, `disturbance_vec_to_network_dict`. Packing order follows `list_nodes()` and **must stay stable**: both models, `Simulation` and `Calibrator` unpack `x`/`d` by that order, so iteration or sorting logic changes only together with the packing functions. Also: `validate()`, `update_all_onramp_neighbors()` (BFS), `save_to_txt`, `save_to_json`, `load_from_json`, `plot()` (networkx layout).
+- **`simulation.py`**, `Simulation(network, model, model_params=None)` (largest file). `run(duration, dt, origin_demands, turning_rates, destination_flow_bc, destination_density_bc, ..., preferred_cell_size=0.5, plot_results=True, reference_results_path=None, results_dir=None)`. `_run_simulation_loop` evaluates the model's compiled `casadi.Function` step by step and contains no physics itself. If any controller sets `control_dt`, `run` builds the `"exogenous_control"` step and the module-level `_held_metering(network, system, dt)` (controllers as `x -> u`, update interval per onramp, raises if `control_dt` is no integer multiple of `dt`); the loop then recomputes each rate every `control_dt / dt` steps and holds it in between. Otherwise the `"closed_form"` step runs unchanged. Also: `save_results` / `load_results` (JSON; `load_mainline_only` for external ground truth, auto-used for `metadata.model_type == "MICRO"` files; results whose cell count differs from the network are spatially resampled on load), `resample_results_file` (classmethod, time-grid interpolation), `compute_metrics(...) -> (VKT, VHT, avg_speed)`, `plot_results`, `visualize` (AVI via OpenCV, frames via the backend-agnostic `fig.canvas.print_to_buffer()`), `visualize_comparison`.
+- **`calibrator.py`**, `Calibrator(network)`. `calibrate_model_params(ground_truth_filepath, model, window_size=50, stride=None, regularization_weight=0.0, use_parameter_search=False, ...) -> (params, OptimizeResult, param_history)`: sliding-window multi-step residuals fitted with `scipy.optimize.least_squares(method="trf")`; multi-start search uses Latin Hypercube (seed 42). `analyze_parameter_correlation` (Jacobian → condition number; above 1e6 means poor identifiability). It never touches model internals. Each model implements `get_default_calibration_params`, `get_calibration_bounds`, `prepare_calibration_params`, `parse_calibration_params`, `prepare_system_params` and `get_calibration_param_names`. Model-specific options go through the `model_options` dict (e.g. `link_specific_alpha`); follow this pattern for any new model.
 
 ## `controller/`: duck-typed
 
-Each controller exposes `compute_regulated_flow(onramp_queues, flows, densities) -> casadi.SX`;
-every constructor ends with `control_dt: float | None = None` (controller update interval in the
-unit of `dt`, validated by `Simulation`).
-The model update functions call it when `onramp.controller is not None` and clamp the result
-with `casadi.fmin`.
+Each controller exposes `compute_regulated_flow(onramp_queues, flows, densities) -> casadi.SX`; every constructor ends with `control_dt: float | None = None` (controller update interval in the unit of `dt`, validated by `Simulation`). The model update functions call it when `onramp.controller is not None` and clamp the result with `casadi.fmin`.
 - `flow_controller.py`, `FlowController(onramp, flow)`: fixed rate.
-- `alinea.py`, `AlineaController(onramp, measurement_link_id, measurement_cell_idx, gain,
-  density_setpoint)`.
-- `metaline.py`, `MetalineController(onramp, measurement_cells, gain_matrix, density_setpoints)`:
-  MIMO ALINEA.
-- `custom_controller.py`, `CustomController(onramp, controller_fn, params=None)`: the extension
-  point for custom metering logic (`inspect.signature` detects whether `params` is accepted).
+- `alinea.py`, `AlineaController(onramp, measurement_link_id, measurement_cell_idx, gain, density_setpoint)`.
+- `metaline.py`, `MetalineController(onramp, measurement_cells, gain_matrix, density_setpoints)`: MIMO ALINEA.
+- `custom_controller.py`, `CustomController(onramp, controller_fn, params=None)`: the extension point for custom metering logic (`inspect.signature` detects whether `params` is accepted).
 
 ## `src/demo/`
 
-`ctm_simulation.py` / `metanet_simulation.py` (CLI: `--scenario` A, B, C, C1–C4, D, E, E1, E2;
-`--no-plot`, `--generate-video`), `scenarios.py` (hand-built networks `setup_network_a`…`_e2`,
-all four controller types), `plot_demo_network.py` (topology only, `--no-plot`),
-`metanet_calibration.py` (calibration demo with diagnostic plots, `--parameter-search`,
-`--generate-video`). Each one has a CI smoke-test workflow; the simulation workflows
-cover scenarios A–D.
+`ctm_simulation.py` / `metanet_simulation.py` (CLI: `--scenario` A, B, C, C1–C4, D, E, E1, E2; `--no-plot`, `--generate-video`), `scenarios.py` (hand-built networks `setup_network_a`…`_e2`, all four controller types), `plot_demo_network.py` (topology only, `--no-plot`), `metanet_calibration.py` (calibration demo with diagnostic plots, `--parameter-search`, `--generate-video`). Each one has a CI smoke-test workflow; the simulation workflows cover scenarios A–D.
 
 ## `tests/`
 
-One file per module: `cell`, `controller`, `ctm`, `destination`, `metanet`, `motorway_link`,
-`node`, `network` (largest), `offramp`, `onramp`, `origin`, `simulation`, `visualization`
-(`*_test.py`, 138 tests). No `conftest.py`, no skips, no external tools; tests that write files
-use `tmp_path`. Default
-component ids are random UUIDs, so tests that compare two networks against one saved file need
-fixed ids.
+One file per module: `cell`, `controller`, `ctm`, `destination`, `metanet`, `motorway_link`, `node`, `network` (largest), `offramp`, `onramp`, `origin`, `simulation`, `visualization` (`*_test.py`, 138 tests). No `conftest.py`, no skips, no external tools; tests that write files use `tmp_path`. Default component ids are random UUIDs, so tests that compare two networks against one saved file need fixed ids.
 
 ## `docs/` (MkDocs)
 
-`getting-started/`, `concepts/`, `models/`, `control/`, `simulation/`, `experimental/`
-(stability tiers, calibration incl. the ground-truth format), `api/` (mkdocstrings),
-`development/` (contributing, changelog). Nav lives in `mkdocs.yml`.
+`getting-started/`, `concepts/`, `models/`, `control/`, `simulation/`, `experimental/` (stability tiers, calibration incl. the ground-truth format), `api/` (mkdocstrings), `development/` (contributing, changelog). Nav lives in `mkdocs.yml`.

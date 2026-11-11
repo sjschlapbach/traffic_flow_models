@@ -1,16 +1,12 @@
 # Quickstart
 
-This guide walks through a complete CTM simulation, introducing
-the main building blocks: network topology, model selection, simulation execution,
-and result inspection.
+This guide walks through a complete CTM simulation, introducing the main building blocks: network topology, model selection, simulation execution, and result inspection.
 
 ## 1. Build a network
 
-A network consists of **links** connected by **nodes**. Virtual `Origin` and `Destination`
-nodes represent demand sources and sinks at the boundary of the modelled area.
+A network consists of **links** connected by **nodes**. Virtual `Origin` and `Destination` nodes represent demand sources and sinks at the boundary of the modelled area.
 
-The example below models a simple motorway stretch with a bottleneck (lane drop in the
-middle) and an on-ramp.
+The example below models a simple motorway stretch with a bottleneck (lane drop in the middle) and an on-ramp.
 
 ```python
 from traffic_flow_models import (
@@ -48,16 +44,14 @@ net = Network(nodes=[n0, n1, n2, n3, n4])
 
 ## 2. Define demand
 
-Demand is a **callable** `(t: float) -> float` for each `Origin`, where `t` is the
-current simulation time in hours. Here we use constant or piecewise-constant demand.
+Demand is a **callable** `(t: float) -> float` for each `Origin`, where `t` is the current simulation time in hours. Here we use constant or piecewise-constant demand.
 
 ```python
 main_demand = lambda t: 1500.0                              # constant 1500 veh/h
 ramp_demand = lambda t: 800.0 if t < 0.5 else 400.0         # steps down after 30 min
 ```
 
-The simulation also requires turning rates at each node (fractions of flow routed into
-each outgoing link) and boundary conditions at each destination:
+The simulation also requires turning rates at each node (fractions of flow routed into each outgoing link) and boundary conditions at each destination:
 
 ```python
 origin_demands = {
@@ -139,8 +133,7 @@ print(f"Mean speed: {avg_speed:.1f} km/h")
 
 ## 5. Save results and generate plots
 
-Pass `plot_results=True` (and optionally `results_dir`) to `run()` to automatically
-save plots and a JSON results file:
+Pass `plot_results=True` (and optionally `results_dir`) to `run()` to automatically save plots and a JSON results file:
 
 ```python
 time_arr, states, disturbances = sim.run(

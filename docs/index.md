@@ -1,9 +1,6 @@
 # traffic-flow-models
 
-A modular Python library for macroscopic traffic flow simulation on highway networks.
-It implements both the **Cell Transmission Model (CTM)** and the **METANET** model on a
-unified network representation, with consistent interfaces for demand definition, ramp
-metering control, and result visualisation.
+A modular Python library for macroscopic traffic flow simulation on highway networks. It implements both the **Cell Transmission Model (CTM)** and the **METANET** model on a unified network representation, with consistent interfaces for demand definition, ramp metering control, and result visualisation.
 
 The library can be installed from [PyPI](https://pypi.org/project/traffic-flow-models/) through the following command, while the source code is available on [GitHub](https://github.com/sjschlapbach/traffic_flow_models):
 
@@ -15,12 +12,7 @@ pip install traffic-flow-models
 
 ## Why macroscopic models?
 
-Microscopic simulators track individual vehicles and capture detailed dynamics, but their
-computational cost scales with vehicle count, making them impractical for large networks,
-long time horizons, or real-time optimisation. Macroscopic models aggregate traffic into
-three continuum variables — **flow** \(q\) (veh/h), **density** \(\rho\) (veh/km/lane),
-and **mean speed** \(v\) (km/h) — and operate orders of magnitude faster while remaining
-mostly compatible with loop-detector measurements.
+Microscopic simulators track individual vehicles and capture detailed dynamics, but their computational cost scales with vehicle count, making them impractical for large networks, long time horizons, or real-time optimisation. Macroscopic models aggregate traffic into three continuum variables — **flow** \(q\) (veh/h), **density** \(\rho\) (veh/km/lane), and **mean speed** \(v\) (km/h) — and operate orders of magnitude faster while remaining mostly compatible with loop-detector measurements.
 
 ---
 
@@ -29,11 +21,9 @@ mostly compatible with loop-detector measurements.
 **Traffic flow models**
 
 - **CTM** — First-order model based on the LWR theory and a triangular fundamental diagram.
-- **METANET** — Second-order model with an explicit speed dynamics equation, capturing
-  driver anticipation, speed relaxation, and merging effects.
+- **METANET** — Second-order model with an explicit speed dynamics equation, capturing driver anticipation, speed relaxation, and merging effects.
 
-Both models operate on an identical network representation and use consistent input interfaces, making
-their outputs directly comparable under the same conditions.
+Both models operate on an identical network representation and use consistent input interfaces, making their outputs directly comparable under the same conditions.
 
 **Simulation infrastructure**
 
@@ -94,16 +84,10 @@ See the [Quickstart guide](getting-started/quickstart.md) for a complete worked 
 
 If you use this library in your research, please cite:
 
-> J. Schlapbach, K. K. Vuppala Narasimha, A. Kouvelas, M. A. Makridis,
-> _"Macroscopic Traffic Flow Modelling on Highway Networks:
-> An Open-Source Computational Framework"_,
-> 26th Swiss Transport Research Conference (STRC), Ascona, May 2026.
-> DOI: `[to be added upon publication]`
+> J. Schlapbach, K. K. Vuppala Narasimha, A. Kouvelas, M. A. Makridis, _"Macroscopic Traffic Flow Modelling on Highway Networks: An Open-Source Computational Framework"_, 26th Swiss Transport Research Conference (STRC), Ascona, May 2026. DOI: `[to be added upon publication]`
 
 ---
 
 ## Licence
 
-[MIT](https://github.com/sjschlapbach/traffic_flow_models/blob/master/LICENSE) ·
-Authors: Julius Schlapbach, Krishna Kanth Vuppala Narasimha, Anastasios Kouvelas,
-Michail A. Makridis (IVT, ETH Zurich)
+[MIT](https://github.com/sjschlapbach/traffic_flow_models/blob/master/LICENSE) · Authors: Julius Schlapbach, Krishna Kanth Vuppala Narasimha, Anastasios Kouvelas, Michail A. Makridis (IVT, ETH Zurich)

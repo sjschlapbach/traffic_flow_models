@@ -4,15 +4,9 @@
 
     Calibration tooling is experimental. The API may change in future releases.
 
-Parameter calibration fits METANET model parameters to reference data (e.g. measured
-traffic data or the output of another simulator, converted to the
-[ground-truth file format](#ground-truth-file-format)) using
-**sliding-window nonlinear least-squares** optimisation via SciPy's Trust-Region
-Reflective algorithm. Only METANET supports calibration; CTM has no calibratable
-parameters (its characteristics are entirely determined by link geometry).
+Parameter calibration fits METANET model parameters to reference data (e.g. measured traffic data or the output of another simulator, converted to the [ground-truth file format](#ground-truth-file-format)) using **sliding-window nonlinear least-squares** optimisation via SciPy's Trust-Region Reflective algorithm. Only METANET supports calibration; CTM has no calibratable parameters (its characteristics are entirely determined by link geometry).
 
-For a detailed algorithmic description, see
-[Schlapbach et al., STRC 2026](../index.md#citation).
+For a detailed algorithmic description, see [Schlapbach et al., STRC 2026](../index.md#citation).
 
 ---
 
@@ -20,12 +14,10 @@ For a detailed algorithmic description, see
 
 The calibration workflow:
 
-1. **Provide ground-truth data** as a results JSON file (e.g. saved from a reference
-   simulation with `Simulation.save_results`, or converted from measurements).
+1. **Provide ground-truth data** as a results JSON file (e.g. saved from a reference simulation with `Simulation.save_results`, or converted from measurements).
 2. **Instantiate a `Calibrator`** with the same `Network` object.
 3. **Call `calibrate_model_params()`** with the path to the saved JSON.
-4. Optionally run **multi-start search** (Latin Hypercube Sampling) to escape local
-   minima, and inspect **parameter correlations** to detect identifiability issues.
+4. Optionally run **multi-start search** (Latin Hypercube Sampling) to escape local minima, and inspect **parameter correlations** to detect identifiability issues.
 
 ---
 
@@ -73,9 +65,7 @@ print(f"Success: {result.success}")
 print(f"Evals:   {result.nfev}")
 ```
 
-The calibration targets the six `METANETParams` fields: `tau`, `nu`, `kappa`,
-`delta`, `phi`, and `alpha`. Fundamental-diagram parameters (`lane_capacity`,
-`free_flow_speed`, `jam_density`) are **not** calibrated — they stay on the links.
+The calibration targets the six `METANETParams` fields: `tau`, `nu`, `kappa`, `delta`, `phi`, and `alpha`. Fundamental-diagram parameters (`lane_capacity`, `free_flow_speed`, `jam_density`) are **not** calibrated — they stay on the links.
 
 ### Return values
 
@@ -89,9 +79,7 @@ The calibration targets the six `METANETParams` fields: `tau`, `nu`, `kappa`,
 
 ## Ground-truth file format
 
-The ground truth is a JSON file with the same layout that `Simulation.save_results`
-writes and `Simulation.load_results` reads. Link, node, origin and destination IDs
-must match the `Network` passed to the `Calibrator`.
+The ground truth is a JSON file with the same layout that `Simulation.save_results` writes and `Simulation.load_results` reads. Link, node, origin and destination IDs must match the `Network` passed to the `Calibrator`.
 
 ```json
 {
@@ -110,22 +98,10 @@ must match the `Network` passed to the `Calibrator`.
 }
 ```
 
-- `time_array` is in hours. State series hold one entry per time step (per-cell lists
-  for motorway links). Disturbance series hold one entry fewer, since they apply between
-  steps.
-- **Full files** (`use_disturbance_from_file=True`, the default) must contain all state
-  fields (including the queue fields) and all four disturbance fields.
-- **Mainline-only files** (`use_disturbance_from_file=False`) only need `flows`,
-  `densities` and `speeds` for the mainline motorway links, plus the two boundary-condition
-  fields. Queues, demands and turning rates are not read from the file. Instead, all four
-  disturbance callables (`origin_demands_fn`, `turning_rates_fn`,
-  `flow_boundary_conditions_fn`, `density_boundary_conditions_fn`) must be passed.
-  Set `metadata.model_type` to `"MICRO"` so that `Simulation.visualize` and
-  `visualize_comparison` also load the file in mainline-only mode.
-- If the number of cells per link in the file differs from the network partitioning,
-  the per-cell arrays are resampled spatially, using `metadata.link_properties[<id>].cell_lengths`
-  when present (uniform cells otherwise). Use `Simulation.resample_results_file` to
-  resample a file to a different time grid.
+- `time_array` is in hours. State series hold one entry per time step (per-cell lists for motorway links). Disturbance series hold one entry fewer, since they apply between steps.
+- **Full files** (`use_disturbance_from_file=True`, the default) must contain all state fields (including the queue fields) and all four disturbance fields.
+- **Mainline-only files** (`use_disturbance_from_file=False`) only need `flows`, `densities` and `speeds` for the mainline motorway links, plus the two boundary-condition fields. Queues, demands and turning rates are not read from the file. Instead, all four disturbance callables (`origin_demands_fn`, `turning_rates_fn`, `flow_boundary_conditions_fn`, `density_boundary_conditions_fn`) must be passed. Set `metadata.model_type` to `"MICRO"` so that `Simulation.visualize` and `visualize_comparison` also load the file in mainline-only mode.
+- If the number of cells per link in the file differs from the network partitioning, the per-cell arrays are resampled spatially, using `metadata.link_properties[<id>].cell_lengths` when present (uniform cells otherwise). Use `Simulation.resample_results_file` to resample a file to a different time grid.
 
 ---
 
@@ -157,10 +133,7 @@ calibrated_params, result, param_history = calibrator.calibrate_model_params(
 
 ## Multi-start search
 
-When data are noisy or the loss surface is multimodal, use Latin Hypercube Sampling
-to explore the parameter space from multiple starting points. The best result across
-all runs is returned. Pass `plot_convergence` as a filename string to save a
-diagnostic plot of cost, evaluations, and optimality across all LHS runs:
+When data are noisy or the loss surface is multimodal, use Latin Hypercube Sampling to explore the parameter space from multiple starting points. The best result across all runs is returned. Pass `plot_convergence` as a filename string to save a diagnostic plot of cost, evaluations, and optimality across all LHS runs:
 
 ```python
 calibrated_params, result, param_history = calibrator.calibrate_model_params(
@@ -184,19 +157,13 @@ calibrated_params, result, param_history = calibrator.calibrate_model_params(
 )
 ```
 
-`plot_convergence` only produces output when `use_parameter_search=True`; it is
-silently ignored in single-start mode. Both `plot_convergence` and
-`plot_correlation` also accept `True` (uses a default filename) or `False`
-(disabled).
+`plot_convergence` only produces output when `use_parameter_search=True`; it is silently ignored in single-start mode. Both `plot_convergence` and `plot_correlation` also accept `True` (uses a default filename) or `False` (disabled).
 
 ---
 
 ## Correlation analysis
 
-High off-diagonal correlations (> 0.8) indicate parameter pairs that cannot be
-identified simultaneously. The analysis is triggered automatically during
-`calibrate_model_params()` when `plot_correlation` is set. It can also be run
-standalone on a result returned from a previous call:
+High off-diagonal correlations (> 0.8) indicate parameter pairs that cannot be identified simultaneously. The analysis is triggered automatically during `calibrate_model_params()` when `plot_correlation` is set. It can also be run standalone on a result returned from a previous call:
 
 ```python
 param_names = METANET().get_calibration_param_names(network=net)
@@ -211,9 +178,7 @@ calibrator.analyze_parameter_correlation(
 )
 ```
 
-If a pair is strongly correlated, consider fixing one parameter to a physically
-motivated value by setting its lower and upper bounds to the same value, then
-re-running.
+If a pair is strongly correlated, consider fixing one parameter to a physically motivated value by setting its lower and upper bounds to the same value, then re-running.
 
 ---
 
@@ -221,10 +186,8 @@ re-running.
 
 For noisy real-world data, three strategies improve robustness:
 
-1. **Disable link-specific alpha** (`link_specific_alpha: False`) to reduce
-   the number of free parameters.
-2. **Add Tikhonov regularization** (`regularization_weight`) to penalise
-   deviation from `initial_params`.
+1. **Disable link-specific alpha** (`link_specific_alpha: False`) to reduce the number of free parameters.
+2. **Add Tikhonov regularization** (`regularization_weight`) to penalise deviation from `initial_params`.
 3. **Use multi-start search** to avoid local minima introduced by noise.
 
 ```python
@@ -249,9 +212,7 @@ calibrated_params_reg, result_reg, param_history_reg = calibrator.calibrate_mode
 
 ## Link-specific alpha
 
-Set `model_options={"link_specific_alpha": True}` to calibrate a separate `alpha`
-for every motorway link. The returned `calibrated_params["alpha"]` is then a
-`dict[str, float]` mapping link IDs to values rather than a scalar:
+Set `model_options={"link_specific_alpha": True}` to calibrate a separate `alpha` for every motorway link. The returned `calibrated_params["alpha"]` is then a `dict[str, float]` mapping link IDs to values rather than a scalar:
 
 ```python
 calibrated_params_link, result_link, param_history_link = calibrator.calibrate_model_params(
@@ -282,8 +243,7 @@ else:
 
 ## Comparing parameter histories
 
-After running multiple experiments you can overlay their parameter trajectories
-to compare convergence across conditions:
+After running multiple experiments you can overlay their parameter trajectories to compare convergence across conditions:
 
 ```python
 param_names = ["tau", "nu", "kappa", "delta", "phi", "alpha"]

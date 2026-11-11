@@ -1,8 +1,6 @@
 # CTM vs. METANET
 
-Both models share the same network representation and simulation interface. The choice
-between them depends on the phenomena you need to capture and the availability of
-calibration data.
+Both models share the same network representation and simulation interface. The choice between them depends on the phenomena you need to capture and the availability of calibration data.
 
 ## Side-by-side comparison
 
@@ -29,17 +27,13 @@ calibration data.
 
 ## When to use METANET
 
-- You want to capture **speed dynamics**: relaxation towards equilibrium, driver
-  anticipation, and merging speed drops.
-- You are modelling scenarios where **transient flow** behaviour (e.g. congestion onset
-  with capacity drop) is important.
-- You plan to use the model inside a **model predictive control** or
-  **gradient-based optimisation** framework that benefits from smooth dynamics.
+- You want to capture **speed dynamics**: relaxation towards equilibrium, driver anticipation, and merging speed drops.
+- You are modelling scenarios where **transient flow** behaviour (e.g. congestion onset with capacity drop) is important.
+- You plan to use the model inside a **model predictive control** or **gradient-based optimisation** framework that benefits from smooth dynamics.
 
 ## Direct comparison
 
-Because both models share the identical network topology, demands, and turning rates,
-running them in parallel under the same conditions requires minimal extra code:
+Because both models share the identical network topology, demands, and turning rates, running them in parallel under the same conditions requires minimal extra code:
 
 ```python
 from traffic_flow_models import CTM, METANET, METANETParams, Simulation

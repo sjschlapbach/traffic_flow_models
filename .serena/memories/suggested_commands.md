@@ -1,12 +1,8 @@
 # Suggested Commands
 
-Commands assume a POSIX shell. The maintainer's machine is macOS (zsh, BSD userland, not GNU).
-On Windows, activate with `venv\Scripts\activate`.
+Commands assume a POSIX shell. The maintainer's machine is macOS (zsh, BSD userland, not GNU). On Windows, activate with `venv\Scripts\activate`.
 
-**Always run everything inside the local `venv/` (git-ignored), from the repository root.**
-Python **3.13** (`requires-python = ">=3.13"`, CI uses 3.13). Name `python3.13` explicitly when
-you create the venv, because plain `python3` may be a different version (Homebrew's is 3.14 on the
-maintainer's Mac).
+**Always run everything inside the local `venv/` (git-ignored), from the repository root.** Python **3.13** (`requires-python = ">=3.13"`, CI uses 3.13). Name `python3.13` explicitly when you create the venv, because plain `python3` may be a different version (Homebrew's is 3.14 on the maintainer's Mac).
 
 ## Setup
 
@@ -32,23 +28,16 @@ pylint src                       # full report: new code adds no warnings
 mypy                             # strict type check of the package (pyproject.toml config)
 ```
 
-pyright (Pylance's engine) is not a dev dependency; run it from a throwaway venv outside the
-repository against the project venv, and check the files you touched:
+pyright (Pylance's engine) is not a dev dependency; run it from a throwaway venv outside the repository against the project venv, and check the files you touched:
 
 ```bash
 python3 -m venv /tmp/pyright-venv && /tmp/pyright-venv/bin/pip install -q pyright
 /tmp/pyright-venv/bin/pyright --pythonpath venv/bin/python src tests
 ```
 
-Known casadi false positive: SWIG defines `SX.sym(*args)` / `MX.sym(*args)` so that pyright reads
-the arguments as SX/MX. Put `# type: ignore` on such CasADi lines (allowed without asking;
-mypy's unused-ignore warning is off only for `model.ctm` / `model.metanet`). Pre-existing pyright errors outside the touched code (tests that pass invalid
-input on purpose) are not yours to fix unless asked.
+Known casadi false positive: SWIG defines `SX.sym(*args)` / `MX.sym(*args)` so that pyright reads the arguments as SX/MX. Put `# type: ignore` on such CasADi lines (allowed without asking; mypy's unused-ignore warning is off only for `model.ctm` / `model.metanet`). Pre-existing pyright errors outside the touched code (tests that pass invalid input on purpose) are not yours to fix unless asked.
 
-The stub pins in the dev extra follow the runtime pins: `scipy-stubs` 1.16.3.x for scipy
-1.16.3, `types-networkx` 3.5.x, `types-tqdm` 4.67.x, and `numpy-typing-compat` 20251206.2.3
-(the numpy 2.3 line; a newer release would upgrade numpy). Bump them together with the
-library.
+The stub pins in the dev extra follow the runtime pins: `scipy-stubs` 1.16.3.x for scipy 1.16.3, `types-networkx` 3.5.x, `types-tqdm` 4.67.x, and `numpy-typing-compat` 20251206.2.3 (the numpy 2.3 line; a newer release would upgrade numpy). Bump them together with the library.
 
 ## Demos
 
@@ -68,8 +57,7 @@ mkdocs serve                     # local preview
 mkdocs build                     # what docs_build.yml runs
 ```
 
-MkDocs Material, `mkdocstrings` python handler (`paths: [src]`, Google docstrings), MathJax via
-`pymdownx.arithmatex`. Nav lives in `mkdocs.yml` and mirrors `docs/`.
+MkDocs Material, `mkdocstrings` python handler (`paths: [src]`, Google docstrings), MathJax via `pymdownx.arithmatex`. Nav lives in `mkdocs.yml` and mirrors `docs/`.
 
 ## CI (`.github/workflows/`, push/PR to `master`/`dev`)
 
@@ -87,22 +75,14 @@ MkDocs Material, `mkdocstrings` python handler (`paths: [src]`, Google docstring
 
 ## Release (maintainers only, never run by an agent)
 
-**Agents never run a release command, even when asked to prepare or start a release.** The
-maintainers run these by hand: `git-cliff` (any form, incl. `--bump`), `git tag`, `git push`
-(incl. tags), `twine`, `mkdocs gh-deploy`, `gh release`. In Claude Code they are denied in
-`.claude/settings.json`. An agent may only describe the steps. `python -m build` (local wheel
-build, no upload) is fine for checking packaging.
+**Agents never run a release command, even when asked to prepare or start a release.** The maintainers run these by hand: `git-cliff` (any form, incl. `--bump`), `git tag`, `git push` (incl. tags), `twine`, `mkdocs gh-deploy`, `gh release`. In Claude Code they are denied in `.claude/settings.json`. An agent may only describe the steps. `python -m build` (local wheel build, no upload) is fine for checking packaging.
 
 Manual steps, for reference:
 1. `git-cliff --bump` bumps `pyproject.toml`. Commit only the version change.
 2. Tag `vX.Y.Z` and push the tag. `release.yml` does the rest.
 
-git-cliff config is `cliff.toml`: conventional commits (`feat`, `enhance`, `fix`, `doc`, `perf`,
-`refactor`, `style`, `test`, `chore`/`ci`, `revert`), `breaking_always_bump_major = true`,
-`chore(release|deps|pr|pull)` skipped. **Never hand-edit `CHANGELOG.md`.**
+git-cliff config is `cliff.toml`: conventional commits (`feat`, `enhance`, `fix`, `doc`, `perf`, `refactor`, `style`, `test`, `chore`/`ci`, `revert`), `breaking_always_bump_major = true`, `chore(release|deps|pr|pull)` skipped. **Never hand-edit `CHANGELOG.md`.**
 
 ## Git
 
-Agents never commit or push; the human working with the agent does (AGENTS.md). In Claude Code,
-`git commit`, `git push`, `git worktree` and the `EnterWorktree` tool are also denied in
-`.claude/settings.json`.
+Agents never commit or push; the human working with the agent does (AGENTS.md). In Claude Code, `git commit`, `git push`, `git worktree` and the `EnterWorktree` tool are also denied in `.claude/settings.json`.

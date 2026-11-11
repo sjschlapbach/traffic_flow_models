@@ -1,19 +1,14 @@
 # Cell Transmission Model (CTM)
 
-CTM is a **first-order** macroscopic traffic flow model. It partitions motorway links
-into cells and advances vehicle densities in discrete time steps using a triangular
-fundamental diagram. Its simplicity and physical consistency make it the standard
-baseline for highway traffic simulation.
+CTM is a **first-order** macroscopic traffic flow model. It partitions motorway links into cells and advances vehicle densities in discrete time steps using a triangular fundamental diagram. Its simplicity and physical consistency make it the standard baseline for highway traffic simulation.
 
-For full mathematical derivations, see
-[Schlapbach et al., STRC 2026](../index.md#citation).
+For full mathematical derivations, see [Schlapbach et al., STRC 2026](../index.md#citation).
 
 ---
 
 ## Fundamental diagram
 
-CTM uses a **triangular fundamental diagram** relating flow, density, and speed. The
-three parameters that fully define it are:
+CTM uses a **triangular fundamental diagram** relating flow, density, and speed. The three parameters that fully define it are:
 
 | Parameter          | Symbol                 | Unit        | Typical range |
 | ------------------ | ---------------------- | ----------- | ------------- |
@@ -52,13 +47,11 @@ q_i^m(k+1) = \min\!\Bigl\{
 \Bigr\}
 $$
 
-The demand term limits flow in free-flow; the supply term limits it under congestion,
-reproducing upstream shockwave propagation.
+The demand term limits flow in free-flow; the supply term limits it under congestion, reproducing upstream shockwave propagation.
 
 ### Speed (derived)
 
-Speed is not an independent state variable in CTM — it is recovered from flow and
-density via the fundamental relation:
+Speed is not an independent state variable in CTM — it is recovered from flow and density via the fundamental relation:
 
 $$v_i^m(k+1) = \frac{q_i^m(k+1)}{\lambda_m \, \rho_i^m(k+1)}$$
 
@@ -66,11 +59,7 @@ $$v_i^m(k+1) = \frac{q_i^m(k+1)}{\lambda_m \, \rho_i^m(k+1)}$$
 
 ## Node flow and proportional reduction
 
-At merge nodes, total incoming flow is accumulated and forwarded according to **turning rates**
-\(\beta_n^m(k)\). If the combined demand exceeds the downstream supply of any outgoing
-link, all incoming link flows are reduced proportionally to satisfy the constraint — a
-standard technique for first-order merge models. This mechanism is handled automatically
-by the library.
+At merge nodes, total incoming flow is accumulated and forwarded according to **turning rates** \(\beta_n^m(k)\). If the combined demand exceeds the downstream supply of any outgoing link, all incoming link flows are reduced proportionally to satisfy the constraint — a standard technique for first-order merge models. This mechanism is handled automatically by the library.
 
 ---
 
@@ -85,8 +74,7 @@ from traffic_flow_models import CTM
 ctm = CTM()
 ```
 
-Fundamental-diagram parameters live on each **link** so heterogeneous networks are
-naturally supported:
+Fundamental-diagram parameters live on each **link** so heterogeneous networks are naturally supported:
 
 ```python
 from traffic_flow_models import MotorwayLink
@@ -122,8 +110,7 @@ time_arr, states, disturbances = sim.run(
 
 ## Limitations
 
-CTM assumes vehicles **instantaneously** reach the equilibrium speed prescribed by the
-fundamental diagram. This means it cannot capture:
+CTM assumes vehicles **instantaneously** reach the equilibrium speed prescribed by the fundamental diagram. This means it cannot capture:
 
 - **Capacity drop** after congestion onset
 - **Hysteresis** in the flow–density relationship

@@ -19,5 +19,4 @@ cd traffic_flow_models
 pip install -e ".[dev]"
 ```
 
-The `dev` extras include `pytest`, `pylint`, `git-cliff`, and all documentation
-dependencies (`mkdocs-material`, `mkdocstrings`, etc.).
+The `dev` extras include `pytest`, `pylint`, `git-cliff`, and all documentation dependencies (`mkdocs-material`, `mkdocstrings`, etc.).

@@ -1,8 +1,6 @@
 # Network Structure
 
-A `Network` is a directed graph of **links** and **nodes**. The same topology is shared
-by all models (CTM and METANET), ensuring that simulation results are directly comparable
-under identical network conditions.
+A `Network` is a directed graph of **links** and **nodes**. The same topology is shared by all models (CTM and METANET), ensuring that simulation results are directly comparable under identical network conditions.
 
 ## Link types
 
@@ -14,15 +12,11 @@ under identical network conditions.
 | `Origin`       | Virtual demand source          | demand \(d(k)\), virtual queue \(N\)                 |
 | `Destination`  | Virtual flow sink              | boundary condition \(q_{bc}(k)\) or \(\rho_{bc}(k)\) |
 
-`Origin`, `Onramp`, and `Offramp` are all modelled as **store-and-forward** links: they
-accept arbitrary inflow and store excess traffic in a virtual queue \(N(k)\), so highway
-backpressure is captured without enforcing hard capacity on the ramp itself. This is consistent with the network-level METANET formulation proposed by A. Kotsialos, M. Papageorgiou, et al. (2002).
+`Origin`, `Onramp`, and `Offramp` are all modelled as **store-and-forward** links: they accept arbitrary inflow and store excess traffic in a virtual queue \(N(k)\), so highway backpressure is captured without enforcing hard capacity on the ramp itself. This is consistent with the network-level METANET formulation proposed by A. Kotsialos, M. Papageorgiou, et al. (2002).
 
 ## Nodes
 
-A `Node` connects a set of incoming links to a set of outgoing links. Nodes are placed
-wherever the network is **inhomogeneous**: on-ramp merges, off-ramp diverges, lane drops,
-and changes in free-flow speed or jam density all require a node boundary.
+A `Node` connects a set of incoming links to a set of outgoing links. Nodes are placed wherever the network is **inhomogeneous**: on-ramp merges, off-ramp diverges, lane drops, and changes in free-flow speed or jam density all require a node boundary.
 
 ```python
 from traffic_flow_models import Node, MotorwayLink, Onramp, Origin, Destination
@@ -47,29 +41,21 @@ merge_node = Node(
 
 ## Cell discretisation
 
-`MotorwayLink` instances are automatically split into **cells** (also called _segments_
-in the METANET literature). The number of cells is chosen to satisfy the
-**Courant–Friedrichs–Lewy (CFL) condition**:
+`MotorwayLink` instances are automatically split into **cells** (also called _segments_ in the METANET literature). The number of cells is chosen to satisfy the **Courant–Friedrichs–Lewy (CFL) condition**:
 
 $$L_i^m \;\geq\; \Delta t \cdot v_f^m$$
 
-This prevents vehicles from travelling across more than one cell per time step and
-guarantees numerical stability. A desired cell size \(L\_{des}\) can be passed as a
-constructor argument; the library adjusts it upward if necessary to satisfy the CFL
-condition for the given time step and free-flow speed.
+This prevents vehicles from travelling across more than one cell per time step and guarantees numerical stability. A desired cell size \(L\_{des}\) can be passed as a constructor argument; the library adjusts it upward if necessary to satisfy the CFL condition for the given time step and free-flow speed.
 
 ## Regularity assumptions
 
 The following structural rules are enforced during `Network` validation:
 
 - Every `Origin` or `Destination` node has exactly **one** connected link.
-- `Origin` nodes directly connected to a highway link or an on-ramp act as
-  store-and-forward links; no spillback from the ramp is modelled.
-- `Offramp` nodes are connected to exactly one upstream motorway link and one
-  downstream `Destination`.
+- `Origin` nodes directly connected to a highway link or an on-ramp act as store-and-forward links; no spillback from the ramp is modelled.
+- `Offramp` nodes are connected to exactly one upstream motorway link and one downstream `Destination`.
 
-These assumptions simplify the model equations and ensure a well-posed network
-topology for both CTM and METANET. They are validated during the construction of the non-linear model equation system and will raise an error if violated.
+These assumptions simplify the model equations and ensure a well-posed network topology for both CTM and METANET. They are validated during the construction of the non-linear model equation system and will raise an error if violated.
 
 ## Full network example
 
