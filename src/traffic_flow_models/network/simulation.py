@@ -400,9 +400,11 @@ class Simulation:
         for node in self.network.list_nodes():
             # split ratios should be defined for each node (add the ones that are missing for SISO nodes)
             if node.id not in turning_rates and len(node.outgoing) == 1:
-                # capture the current outgoing link id in a default argument to avoid late-binding
-                link_id = node.outgoing[0].id
-                turning_rates_dict[node.id] = lambda _, link_id=link_id: {link_id: 1.0}
+                # the outer lambda binds the current outgoing link id to avoid late binding
+                # (a default-argument lambda would not be type-inferable by mypy)
+                turning_rates_dict[node.id] = (lambda lid: lambda _: {lid: 1.0})(
+                    node.outgoing[0].id
+                )
             else:
                 turning_rates_dict[node.id] = turning_rates[node.id]
 
@@ -1316,7 +1318,9 @@ class Simulation:
             src_x = np.linspace(0.0, 1.0, src_n)
 
         if dst_centers.size > 1 and not np.isclose(dst_centers[-1], dst_centers[0]):
-            dst_x = (dst_centers - dst_centers[0]) / (dst_centers[-1] - dst_centers[0])
+            dst_x: NDArray[np.float64] = (dst_centers - dst_centers[0]) / (
+                dst_centers[-1] - dst_centers[0]
+            )
         else:
             dst_x = np.linspace(0.0, 1.0, dst_n)
 
