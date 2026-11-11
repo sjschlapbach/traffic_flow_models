@@ -16,7 +16,7 @@ Follow the conventions of the existing code so that new code reads the same.
 - **Typing: strict mypy is required.** `mypy` (config in `pyproject.toml`: `strict = true`,
   `warn_unreachable`, package `traffic_flow_models` only) must report no issues; CI job
   `typecheck`. The package ships `py.typed`, so its annotations are public API for users' type
-  checkers. Every function, method and nested helper is annotated.
+  checkers. Every function and method is annotated.
   - **Avoid `Any`/`object`** wherever the real type is known. Accepted exceptions: raw parsed
     JSON (`JSONDict`), networkx edge attribute dicts, and everything casadi (it ships no types,
     so `casadi.SX` is `Any` to mypy, an override in `pyproject.toml` ignores its missing
@@ -62,6 +62,17 @@ Follow the conventions of the existing code so that new code reads the same.
   `os.path.join` / `os.makedirs`. Generated output goes under `results/` (git-ignored), never
   into the repo.
 - **Named constants** instead of magic numbers or strings. Prefer explicit over clever.
+- **No functions inside functions (strict).** Never define a `def` inside a function or method,
+  and no closure factories (a function or lambda that builds and returns another function). Put
+  helpers at module level (private `_name`) or make them a method / `@staticmethod`, and pass
+  what they need as arguments; to bind a value per call site use
+  `functools.partial(_module_helper, name=value)`. A short inline lambda used directly as a
+  value or argument (`key=lambda x: ...`) is fine. Known exceptions in existing code: nested
+  helpers in `network.py` (`nodes_with_outgoing_link`, `nodes_with_incoming_link`,
+  `_link_style`, `_ensure`, `_draw_group`), `simulation.py` (`_extend_time`, `_interp_2d`,
+  `_interp_1d`, and the outer-lambda turning-rate default in
+  `_augment_network_initialization`), `calibrator.py` (`residual_func`) and `tests/metanet_test.py`
+  (`run_model`); lift them out when you change that code.
 - **Public API stability:** never reorder or rename positional constructor parameters of exported
   classes. Add new parameters as keyword arguments with defaults at the end.
 - **Dependencies:** pinned in `pyproject.toml` (`package==x.y.z`); no `requirements.txt`.

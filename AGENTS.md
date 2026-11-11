@@ -21,6 +21,11 @@ configuration nobody asked for.
 or `# type: ignore` on your own. Ask the user first whether the rule should be suppressed on that
 line, disabled repo-wide in `.pylintrc`, or the code fixed instead.
 
+**No functions inside functions (strict):** never define a `def` (or a closure factory that
+returns a function) inside a function or method. Use a module-level helper or a method, and
+`functools.partial` to bind per-call values. Short inline lambdas used directly as a value or
+argument are fine. Details and the existing exceptions are in `code_style_and_conventions`.
+
 **Comments (strict):** every inline `#` comment starts **lower-case**, with no exceptions; reword
 rather than start with a capitalised identifier. Comment only where it adds meaning the code does
 not already carry (why, modelling assumption, unit, convention).

@@ -63,7 +63,7 @@ MkDocs Material, `mkdocstrings` python handler (`paths: [src]`, Google docstring
 | Workflow | Runs |
 |---|---|
 | `python_testing.yml` | `pytest` |
-| `lint.yml` | jobs `format` (`psf/black@stable`), `lint` (`pylint src/tests --errors-only`), `typecheck` (`mypy`) |
+| `lint.yml` | jobs `format` (`psf/black@stable`), `lint` (`pylint src --errors-only`, `pylint tests --errors-only`), `typecheck` (`mypy`) |
 | `build.yml` | `python -m build --sdist --wheel`, then checks the wheel contains `traffic_flow_models/py.typed` |
 | `docs_build.yml` | `mkdocs build` |
 | `scripts_basics.yml` | `src.demo.plot_demo_network --no-plot` |
