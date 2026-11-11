@@ -815,7 +815,8 @@ class Simulation:
                 # for an "exogenous_control" system, the state update depends on metering rates
                 # only update the metering rates at the specified intervals, otherwise hold the previous values
                 due = np.equal(t % update_intervals, 0)
-                u[due] = np.array(metering_fn(state_history[:, t])).flatten()[due]
+                if due.any():
+                    u[due] = np.array(metering_fn(state_history[:, t])).flatten()[due]
                 x_next = system(params, state_history[:, t], d, u)
 
             # store the updated state and disturbance
