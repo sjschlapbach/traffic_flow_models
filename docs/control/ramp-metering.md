@@ -111,7 +111,7 @@ Set `max_queue` (veh) on an `Onramp`, e.g. to the vehicles the ramp can store, t
 
 $$r_w(k) = \frac{w(k) - w_{max}}{T} + d(k-1), \qquad r(k) = \max\bigl\{r_{ctrl}(k),\; r_w(k)\bigr\}$$
 
-where \(w(k)\) is the current queue, \(w*{max}\) the `max_queue`, \(d(k-1)\) the arrival flow from the origin feeding the on-ramp, \(r*{ctrl}\) the ALINEA / METALINE rate and \(T\) the time between two metering-rate updates. Held for \(T\), \(r*w\) brings the queue back to \(w*{max}\) for constant arrivals. The metering rate is raised only as far as the queue requires, and the control law takes over again once the queue is below the limit.
+where \(w(k)\) is the current queue, \(w_{max}\) the `max_queue`, \(d(k-1)\) the arrival flow from the origin feeding the on-ramp, \(r_{ctrl}\) the ALINEA / METALINE rate and \(T\) the time between two metering-rate updates. Held for \(T\), \(r_w\) brings the queue back to \(w_{max}\) for constant arrivals. The metering rate is raised only as far as the queue requires, and the control law takes over again once the queue is below the limit.
 
 ```python
 onramp = Onramp(id="r1", length=0.5, lanes=1,
@@ -123,7 +123,7 @@ onramp.controller = AlineaController(
 )
 ```
 
-- \(T\) is the controller's update interval (`control_dt`, or the simulation `dt` if it is None), so \(r*w\) is evaluated together with the control law and held with it. \(d\) is the arrival flow of the feeding origin in the last simulation step, assumed constant over \(T\) (zero-order hold); if arrivals rise within the interval, the queue ends the interval above \(w*{max}\). Both are set automatically when the model step is built.
+- \(T\) is the controller's update interval (`control_dt`, or the simulation `dt` if it is None), so \(r_w\) is evaluated together with the control law and held with it. \(d\) is the arrival flow of the feeding origin in the last simulation step, assumed constant over \(T\) (zero-order hold); if arrivals rise within the interval, the queue ends the interval above \(w_{max}\). Both are set automatically when the model step is built.
 - Only ALINEA and METALINE support `max_queue`. With a `FlowController` or `CustomController` it is ignored with a warning (a custom function can read `onramp_queues` and `onramp.max_queue` itself); an on-ramp without a controller is unmetered and ignores it. In the `"exogenous_control"` formulation, metering rates passed as `u` are applied unchanged.
 - The queue can still exceed `max_queue` when the ramp capacity or the merge (mainline supply) limits the on-ramp outflow; no metering rate can prevent that. Similarly, the zero-hold assumption of the demand can lead to temporary overshoots if the arrival flow rises within the interval.
 
