@@ -252,6 +252,8 @@ onramp.controller = AlineaController(
 )
 ```
 
+Setting `max_queue` on the `Onramp` (in vehicles) makes ALINEA and METALINE relax the metering rate as far as needed to keep the ramp queue at or below that length (queue control, see `docs/control/ramp-metering.md`).
+
 Other controllers are available in the `controller` directory — for example, [METALINE](src/traffic_flow_models/controller/metaline.py). See [src/traffic_flow_models/controller](src/traffic_flow_models/controller) for more controllers and the structure of custom controllers.
 
 ## Development

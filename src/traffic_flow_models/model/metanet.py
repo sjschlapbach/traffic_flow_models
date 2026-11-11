@@ -14,7 +14,11 @@ from traffic_flow_models.network import (
     Node,
     Cell,
 )
-from .helpers import store_and_forward_update, compute_node_outflows
+from .helpers import (
+    store_and_forward_update,
+    compute_node_outflows,
+    configure_queue_control,
+)
 from traffic_flow_models.types import DynamicsFormulation, ModelOptions
 
 if TYPE_CHECKING:
@@ -1393,6 +1397,9 @@ class METANET:
         # exogenous metering rates ("exogenous_control" only), in onramp state order
         u = casadi.SX.sym("u", num_onramps, 1)  # type: ignore
         metering_rates = {k: u[i] for i, k in enumerate(onramp_queues)}
+
+        # queue-control inputs of the onramp controllers (update interval, feeding origin)
+        configure_queue_control(network=network, dt=dt)
 
         # initialize next-step state dictionaries
         next_flows: dict[str, casadi.SX] = {}

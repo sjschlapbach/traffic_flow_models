@@ -28,6 +28,17 @@ class TestOnramp:
                 with pytest.raises(ValueError):
                     Onramp(**kwargs)
 
+    def test_init_rejects_negative_max_queue(self):
+        with pytest.raises(ValueError):
+            Onramp(
+                length=0.5,
+                lanes=1,
+                lane_capacity=1000,
+                free_flow_speed=60,
+                jam_density=100,
+                max_queue=-1.0,
+            )
+
     def test_init_assigns_attributes(self):
         link = MotorwayLink(
             length=2.0,

@@ -1472,6 +1472,7 @@ class Network:
                 "jam_density": link.rho_jam,
                 "origin_node_id": link.origin_node_id,
                 "destination_node_id": link.destination_node_id,
+                "max_queue": link.max_queue,
             }
         if isinstance(link, Offramp):
             return {
@@ -1580,6 +1581,7 @@ class Network:
                     id=entry["id"],
                     origin_node_id=entry["origin_node_id"],
                     destination_node_id=entry["destination_node_id"],
+                    max_queue=entry["max_queue"],
                 )
             elif l_type == "Offramp":
                 link_obj = Offramp(

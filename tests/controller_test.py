@@ -12,9 +12,14 @@ from traffic_flow_models import (
     Onramp,
     CustomController,
     CTM,
+    METANET,
+    METANETParams,
     Simulation,
 )
-from traffic_flow_models.model.helpers import store_and_forward_update
+from traffic_flow_models.model.helpers import (
+    store_and_forward_update,
+    configure_queue_control,
+)
 from traffic_flow_models.controller.metaline import MetalineController
 import pytest
 
@@ -544,3 +549,162 @@ def test_control_dt_not_multiple_of_dt_raises():
     """A 3 Hz simulation rejects a 2 Hz controller."""
     with pytest.raises(ValueError, match="integer multiple"):
         _run_metered(control_dt=1.0 / (2 * 3600), dt=1.0 / (3 * 3600), steps=6)
+
+
+def _queue_onramp(max_queue):
+    return Onramp(
+        length=0.5,
+        lanes=1,
+        lane_capacity=1500,
+        free_flow_speed=80,
+        jam_density=140,
+        id="r1",
+        max_queue=max_queue,
+    )
+
+
+@pytest.mark.parametrize(
+    "queue, expected",
+    [
+        # queue below the limit: the ALINEA rate 100 + 2 * (10 - 5) = 110 applies
+        (20.0, 110.0),
+        # queue above the limit: (60 - 50) / 0.01 + 900 = 1900 (queue-control rate)
+        (60.0, 1900.0),
+    ],
+)
+def test_alinea_queue_control(queue, expected):
+    """ALINEA returns max(ALINEA rate, (w - w_max) / rate_update_dt + arrivals)."""
+    c = AlineaController(
+        onramp=_queue_onramp(max_queue=50.0),
+        measurement_link_id="m1",
+        measurement_cell_idx=0,
+        gain=2.0,
+        density_setpoint=10.0,
+    )
+    c.set_queue_control(rate_update_dt=0.01, origin_id="o")
+    regulated = c.compute_regulated_flow(
+        onramp_queues={"r1": casadi.SX(queue)},
+        flows={"r1": casadi.SX([100.0]), "o": casadi.SX([900.0])},
+        densities={"m1": casadi.SX([5.0])},
+    )
+    assert np.isclose(_eval([regulated])[0], expected)
+
+
+def test_queue_control_keeps_lenient_rate():
+    """Queue control only raises the rate: a rate above r_w stays even over the limit."""
+    c = AlineaController(
+        onramp=_queue_onramp(max_queue=50.0),
+        measurement_link_id="m1",
+        measurement_cell_idx=0,
+        gain=2.0,
+        density_setpoint=10.0,
+    )
+    c.set_queue_control(rate_update_dt=0.01, origin_id="o")
+    # ALINEA rate 2490 + 2 * (10 - 5) = 2500 > r_w = (60 - 50) / 0.01 + 900 = 1900
+    regulated = c.compute_regulated_flow(
+        onramp_queues={"r1": casadi.SX(60.0)},
+        flows={"r1": casadi.SX([2490.0]), "o": casadi.SX([900.0])},
+        densities={"m1": casadi.SX([5.0])},
+    )
+    assert np.isclose(_eval([regulated])[0], 2500.0)
+
+
+def test_metaline_queue_control():
+    """METALINE applies the same queue-control law as ALINEA."""
+    onr = _queue_onramp(max_queue=50.0)
+    c = MetalineController(
+        onramp=onr,
+        measurement_cells=[("m1", 0)],
+        gain_matrix={"r1": np.array([[2.0]])},
+        density_setpoints=[("m1", 0, 10.0)],
+    )
+    c.set_queue_control(rate_update_dt=0.01, origin_id="o")
+    regulated = c.compute_regulated_flow(
+        onramp_queues={"r1": casadi.SX(60.0)},
+        flows={"r1": casadi.SX([100.0]), "o": casadi.SX([900.0])},
+        densities={"m1": casadi.SX([5.0])},
+    )
+    assert np.isclose(_eval([regulated])[0], 1900.0)
+
+
+def test_queue_control_not_configured_raises():
+    """A max_queue without the automatic configuration is never silently ignored."""
+    c = AlineaController(
+        onramp=_queue_onramp(max_queue=50.0),
+        measurement_link_id="m1",
+        measurement_cell_idx=0,
+        gain=2.0,
+        density_setpoint=10.0,
+    )
+    with pytest.raises(ValueError, match="not configured"):
+        c.compute_regulated_flow(
+            onramp_queues={"r1": casadi.SX(60.0)},
+            flows={"r1": casadi.SX([100.0])},
+            densities={"m1": casadi.SX([5.0])},
+        )
+
+
+def test_queue_control_ignores_other_controllers_with_warning():
+    """A max_queue on an onramp with another controller type is ignored with a warning."""
+    net = _metered_network(control_dt=None)
+    onr = net.get_link("onramp")
+    assert isinstance(onr, Onramp)
+    onr.max_queue = 10.0
+    with pytest.warns(UserWarning, match="ALINEA and METALINE"):
+        configure_queue_control(network=net, dt=10.0 / 3600)
+
+
+def _run_alinea_queue(model, control_dt, max_queue, dt=10.0 / 3600, steps=120):
+    """Simulate a restrictive ALINEA onramp; return the onramp queue over time."""
+    net = _metered_network(control_dt=None)
+    onr = net.get_link("onramp")
+    assert isinstance(onr, Onramp)
+    onr.max_queue = max_queue
+    # a setpoint far below the mainline density keeps the ALINEA rate near zero
+    onr.controller = AlineaController(
+        onramp=onr,
+        measurement_link_id="m2",
+        measurement_cell_idx=0,
+        gain=5.0,
+        density_setpoint=1.0,
+        control_dt=control_dt,
+    )
+    params: METANETParams | None = None
+    if isinstance(model, METANET):
+        params = {
+            "tau": 22 / 3600,
+            "nu": 15,
+            "kappa": 10,
+            "delta": 1.4,
+            "phi": 10,
+            "alpha": 2,
+        }
+    sim = Simulation(network=net, model=model, model_params=params)
+    _, states, _ = sim.run(
+        duration=steps * dt,
+        dt=dt,
+        origin_demands={"o": lambda _: 3000.0, "o_onr": lambda _: 1000.0},
+        turning_rates={},
+        destination_flow_bc={"dest": lambda _: 6000.0},
+        destination_density_bc={"dest": lambda _: 0.0},
+        plot_results=False,
+    )
+    return np.array(
+        [
+            float(net.state_vec_to_network_dict(states[:, t])[4]["onramp"])
+            for t in range(states.shape[1])
+        ]
+    )
+
+
+@pytest.mark.parametrize("model_cls", [CTM, METANET])
+@pytest.mark.parametrize("control_steps", [None, 6])
+def test_max_queue_limits_onramp_queue(model_cls, control_steps):
+    """With a max_queue, the restrictive ALINEA queue settles at the limit, not beyond."""
+    dt, max_queue = 10.0 / 3600, 20.0
+    control_dt = None if control_steps is None else control_steps * dt
+    uncapped = _run_alinea_queue(model_cls(), control_dt, max_queue=None)
+    capped = _run_alinea_queue(model_cls(), control_dt, max_queue=max_queue)
+    assert uncapped.max() > 2 * max_queue
+    assert capped.max() <= max_queue + 1e-6
+    assert np.isclose(capped[-1], max_queue)

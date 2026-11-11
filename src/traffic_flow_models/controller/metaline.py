@@ -3,6 +3,8 @@ import numpy as np
 from typing import TYPE_CHECKING
 from numpy.typing import NDArray
 
+from traffic_flow_models.controller.queue_control import apply_queue_control
+
 if TYPE_CHECKING:
     from traffic_flow_models.network.onramp import Onramp
 
@@ -67,6 +69,23 @@ class MetalineController:
         self.density_setpoints: list[tuple[str, int, float]] = density_setpoints
         self.control_dt: float | None = control_dt
 
+        # queue-control inputs, set by `set_queue_control` (see `Onramp.max_queue`)
+        self._rate_update_dt: float | None = None
+        self._origin_id: str | None = None
+
+    def set_queue_control(self, rate_update_dt: float, origin_id: str) -> None:
+        """Set the inputs of the queue-control law (called automatically by the library).
+
+        The models call this for onramps with a `max_queue` when they build the step.
+
+        Args:
+            rate_update_dt: Update interval of the controller (`control_dt`, or the
+                simulation `dt` if it is None).
+            origin_id: ID of the origin feeding the onramp (its flow is the ramp arrival flow).
+        """
+        self._rate_update_dt = rate_update_dt
+        self._origin_id = origin_id
+
     def compute_regulated_flow(
         self,
         onramp_queues: dict[str, casadi.SX],
@@ -106,6 +125,11 @@ class MetalineController:
             gain_matrix_onramp, casadi.vertcat(*density_errors)
         )
 
-        return casadi.fmax(
-            0, regulated_flow
-        )  # ensure non-negativity of the regulated flow
+        return apply_queue_control(
+            metering_rate=casadi.fmax(0, regulated_flow),  # ensure non-negativity
+            onramp=self.onramp,
+            onramp_queues=onramp_queues,
+            flows=flows,
+            rate_update_dt=self._rate_update_dt,
+            origin_id=self._origin_id,
+        )
