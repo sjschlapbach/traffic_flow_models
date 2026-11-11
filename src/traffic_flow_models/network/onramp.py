@@ -1,12 +1,7 @@
 import uuid
-from typing import Union, Literal
+from typing import Literal
 
-from traffic_flow_models.controller import (
-    FlowController,
-    AlineaController,
-    MetalineController,
-    CustomController,
-)
+from traffic_flow_models.types import RampController
 
 
 class Onramp:
@@ -30,12 +25,7 @@ class Onramp:
         free_flow_speed: float,
         jam_density: float,
         id: str | None = None,
-        controller: (
-            Union[
-                FlowController, AlineaController, MetalineController, CustomController
-            ]
-            | None
-        ) = None,
+        controller: RampController | None = None,
         origin_node_id: str | None = None,
         destination_node_id: str | None = None,
     ) -> None:

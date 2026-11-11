@@ -31,6 +31,17 @@ The project uses [Black](https://black.readthedocs.io/) for linting and formatti
 black .
 ```
 
+The package is fully typed and ships a `py.typed` marker, so type checkers use its
+annotations. It must pass strict [mypy](https://mypy-lang.org/) (configured in
+`pyproject.toml`):
+
+```bash
+mypy
+```
+
+Shared type aliases (e.g. `Link`, `RampController`, `TimeProfile`) live in
+`traffic_flow_models.types`.
+
 ## Adding documentation
 
 Documentation lives in `docs/`. Serve locally with:

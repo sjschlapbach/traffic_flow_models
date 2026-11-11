@@ -1,7 +1,7 @@
 import casadi
 import warnings
 import numpy as np
-from typing import cast, TYPE_CHECKING, Tuple, TypedDict, Union
+from typing import cast, Literal, TYPE_CHECKING, Tuple, TypedDict, Union
 from numpy.typing import NDArray
 
 
@@ -15,6 +15,7 @@ from traffic_flow_models.network import (
     Cell,
 )
 from .helpers import store_and_forward_update, compute_node_outflows
+from traffic_flow_models.types import ModelOptions
 
 if TYPE_CHECKING:
     from traffic_flow_models.network.network import Network
@@ -72,7 +73,7 @@ class METANETSymbolicParams(TypedDict):
 
 
 class METANET:
-    def __init__(self):
+    def __init__(self) -> None:
         """Create an empty METANET model instance."""
         return
 
@@ -96,7 +97,9 @@ class METANET:
             alpha=1.0,
         )
 
-    def _validate_model_options(self, model_options: dict | None) -> dict:
+    def _validate_model_options(
+        self, model_options: ModelOptions | None
+    ) -> ModelOptions:
         """Validate and return model_options for METANET calibration.
 
         Args:
@@ -134,7 +137,7 @@ class METANET:
     def get_calibration_param_names(
         self,
         network: "Network",
-        model_options: dict | None = None,
+        model_options: ModelOptions | None = None,
     ) -> list[str]:
         """Return ordered calibration parameter names corresponding to the
         calibration vector.
@@ -183,7 +186,7 @@ class METANET:
     def get_calibration_bounds(
         self,
         network: "Network",
-        model_options: dict | None = None,
+        model_options: ModelOptions | None = None,
     ) -> Tuple[NDArray[np.float64], NDArray[np.float64]]:
         """Return default parameter bounds for calibration.
 
@@ -245,7 +248,7 @@ class METANET:
         self,
         params: METANETParams,
         network: "Network",
-        model_options: dict | None = None,
+        model_options: ModelOptions | None = None,
     ) -> NDArray[np.float64]:
         """Convert METANET parameters to a calibration vector.
 
@@ -293,7 +296,7 @@ class METANET:
             # use single global alpha value
             if isinstance(params["alpha"], dict):
                 # if dict provided, take the mean (or first value)
-                alpha_val = np.mean(list(params["alpha"].values()))
+                alpha_val = float(np.mean(list(params["alpha"].values())))
             else:
                 alpha_val = params["alpha"]
 
@@ -305,7 +308,7 @@ class METANET:
         self,
         param_vec: NDArray[np.float64],
         network: "Network",
-        model_options: dict | None = None,
+        model_options: ModelOptions | None = None,
     ) -> METANETParams:
         """Convert a calibration vector back to METANET parameters.
 
@@ -349,7 +352,7 @@ class METANET:
         self,
         param_vec: NDArray[np.float64],
         network: "Network",
-        model_options: dict | None = None,
+        model_options: ModelOptions | None = None,
     ) -> NDArray[np.float64]:
         """Convert calibration parameter vector to system parameter vector.
 
@@ -419,7 +422,7 @@ class METANET:
         link_id: str,
         lane_capacity: float,
         free_flow_speed: float,
-    ) -> float:
+    ) -> float | casadi.SX:
         """
         Compute the METANET critical density for a link.
 
@@ -507,7 +510,7 @@ class METANET:
         lane_capacity: float,
         free_flow_speed: float,
         density: float | casadi.SX,
-    ) -> float:
+    ) -> float | casadi.SX:
         """Compute the stationary (equilibrium) velocity for a cell.
 
         The stationary velocity is the speed that the traffic on the cell would
@@ -573,7 +576,9 @@ class METANET:
             ValueError: If a required parameter is missing or has an invalid type.
         """
 
-        required_params = ["tau", "nu", "kappa", "delta", "phi", "alpha"]
+        required_params: list[
+            Literal["tau", "nu", "kappa", "delta", "phi", "alpha"]
+        ] = ["tau", "nu", "kappa", "delta", "phi", "alpha"]
         for param in required_params:
             if param not in model_params:
                 raise ValueError(f"Missing required METANET model parameter: {param}")
@@ -639,13 +644,11 @@ class METANET:
                     link_ids.append(link.id)
 
         for link_id in link_ids:
-            if isinstance(model_params["alpha"], float) or isinstance(
-                model_params["alpha"], int
-            ):
-                alpha_vector = np.append(alpha_vector, model_params["alpha"])
+            alpha = model_params["alpha"]
+            if isinstance(alpha, dict):
+                alpha_vector = np.append(alpha_vector, alpha[link_id])
             else:
-                casted_params_function = cast(dict[str, float], model_params["alpha"])
-                alpha_vector = np.append(alpha_vector, casted_params_function[link_id])
+                alpha_vector = np.append(alpha_vector, alpha)
 
         return np.concatenate(
             (

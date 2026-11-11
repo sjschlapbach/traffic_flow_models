@@ -11,6 +11,7 @@ from __future__ import annotations
 import os
 import json
 import cv2
+from cv2.typing import MatLike
 import math
 import warnings
 import casadi
@@ -20,9 +21,10 @@ from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 from matplotlib.transforms import IdentityTransform
 from tqdm import tqdm
-from numpy.typing import NDArray
+from collections.abc import Sequence
+from numpy.typing import ArrayLike, NDArray
 from datetime import datetime
-from typing import Callable, Tuple, Union, Any, cast, TYPE_CHECKING
+from typing import Tuple, TypedDict, Union, cast, TYPE_CHECKING
 
 from traffic_flow_models.network import (
     Node,
@@ -33,9 +35,23 @@ from traffic_flow_models.network import (
     Destination,
 )
 from traffic_flow_models.model import CTM, METANET, METANETParams
+from traffic_flow_models.types import (
+    JSONDict,
+    TimeProfile,
+    TimeSeriesById,
+    TurningRateProfile,
+)
 
 if TYPE_CHECKING:
     from traffic_flow_models.network import Network
+
+
+class _StoredRun(TypedDict):
+    """One loaded results file in ``Simulation.visualize_comparison``."""
+
+    time_array: NDArray[np.float64]
+    state_history: NDArray[np.float64]
+    metadata: JSONDict
 
 
 class Simulation:
@@ -64,7 +80,7 @@ class Simulation:
 
     def __init__(
         self,
-        network: "Network",  # type: ignore  # Forward reference
+        network: "Network",
         model: Union[CTM, METANET],
         model_params: Union[METANETParams, None] = None,
     ):
@@ -217,14 +233,14 @@ class Simulation:
 
     def _validate_initial_conditions_numerical(
         self,
-        origin_demands: dict[str, Callable[[float], float]],
-        turning_rates: dict[str, Callable[[float], dict[str, float]]],
-        destination_flow_bc: dict[str, Callable[[float], float]],
-        destination_density_bc: dict[str, Callable[[float], float]],
+        origin_demands: dict[str, TimeProfile],
+        turning_rates: dict[str, TurningRateProfile],
+        destination_flow_bc: dict[str, TimeProfile],
+        destination_density_bc: dict[str, TimeProfile],
         initial_flows: dict[str, float | NDArray[np.float64]] | None = None,
         initial_densities: dict[str, float | NDArray[np.float64]] | None = None,
         initial_speeds: dict[str, float | NDArray[np.float64]] | None = None,
-    ):
+    ) -> None:
         """Validate presence and basic consistency of initial-condition inputs.
 
         Ensures that for each node in the network the required callable demand
@@ -323,10 +339,20 @@ class Simulation:
         initial_origin_queues: dict[str, float] | None,
         initial_onramp_queues: dict[str, float] | None,
         initial_offramp_queues: dict[str, float] | None,
-        turning_rates: dict[str, Callable[[float], dict[str, float]]],
-        destination_flow_bc: dict[str, Callable[[float], float]],
-        destination_density_bc: dict[str, Callable[[float], float]],
-    ):
+        turning_rates: dict[str, TurningRateProfile],
+        destination_flow_bc: dict[str, TimeProfile],
+        destination_density_bc: dict[str, TimeProfile],
+    ) -> tuple[
+        dict[str, NDArray[np.float64]],
+        dict[str, NDArray[np.float64]],
+        dict[str, NDArray[np.float64]],
+        dict[str, float],
+        dict[str, float],
+        dict[str, float],
+        dict[str, TurningRateProfile],
+        dict[str, TimeProfile],
+        dict[str, TimeProfile],
+    ]:
         """Prepare and augment initial per-link and per-queue dictionaries.
 
         This method fills defaults for missing initial states (flows, densities,
@@ -367,9 +393,9 @@ class Simulation:
         origin_queues_dict: dict[str, float] = {}
         onramp_queues_dict: dict[str, float] = {}
         offramp_queues_dict: dict[str, float] = {}
-        turning_rates_dict: dict[str, Callable[[float], dict[str, float]]] = {}
-        destination_flow_bc_dict: dict[str, Callable[[float], float]] = {}
-        destination_density_bc_dict: dict[str, Callable[[float], float]] = {}
+        turning_rates_dict: dict[str, TurningRateProfile] = {}
+        destination_flow_bc_dict: dict[str, TimeProfile] = {}
+        destination_density_bc_dict: dict[str, TimeProfile] = {}
 
         for node in self.network.list_nodes():
             # split ratios should be defined for each node (add the ones that are missing for SISO nodes)
@@ -549,9 +575,7 @@ class Simulation:
                             stacklevel=2,
                         )
                         # capture link.id to avoid late-binding (if lambda ever uses it)
-                        destination_density_bc_dict[link.id] = (
-                            lambda _, link_id=link.id: 0.0
-                        )
+                        destination_density_bc_dict[link.id] = lambda _: 0.0
                     else:
                         destination_density_bc_dict[link.id] = destination_density_bc[
                             link.id
@@ -605,11 +629,11 @@ class Simulation:
         num_splits: int,
         num_destinations: int,
         origin_queues_dict: dict[str, float],
-        turning_rates_dict: dict[str, Callable[[float], dict[str, float]]],
-        destination_flow_bc_dict: dict[str, Callable[[float], float]],
-        destination_density_bc_dict: dict[str, Callable[[float], float]],
-        origin_demands: dict[str, Callable[[float], float]],
-    ):
+        turning_rates_dict: dict[str, TurningRateProfile],
+        destination_flow_bc_dict: dict[str, TimeProfile],
+        destination_density_bc_dict: dict[str, TimeProfile],
+        origin_demands: dict[str, TimeProfile],
+    ) -> tuple[NDArray[np.float64], NDArray[np.float64], NDArray[np.float64]]:
         """Execute the discrete-time simulation loop for the network.
 
         Advances the system state using the provided CasADi `system` update
@@ -724,10 +748,10 @@ class Simulation:
         self,
         duration: float,
         dt: float,
-        origin_demands: dict[str, Callable[[float], float]],
-        turning_rates: dict[str, Callable[[float], dict[str, float]]],
-        destination_flow_bc: dict[str, Callable[[float], float]],
-        destination_density_bc: dict[str, Callable[[float], float]],
+        origin_demands: dict[str, TimeProfile],
+        turning_rates: dict[str, TurningRateProfile],
+        destination_flow_bc: dict[str, TimeProfile],
+        destination_density_bc: dict[str, TimeProfile],
         initial_flows: dict[str, NDArray[np.float64] | float] | None = None,
         initial_densities: dict[str, NDArray[np.float64] | float] | None = None,
         initial_speeds: dict[str, NDArray[np.float64] | float] | None = None,
@@ -739,7 +763,7 @@ class Simulation:
         show_plots: bool = False,
         reference_results_path: str | None = None,
         results_dir: str | None = None,
-    ):
+    ) -> tuple[NDArray[np.float64], NDArray[np.float64], NDArray[np.float64]]:
         """Run the network simulation over a time horizon.
 
         Executes a forward simulation using the traffic model specified during
@@ -1031,17 +1055,17 @@ class Simulation:
             preferred_cell_size = self._last_preferred_cell_size
 
         # prepare containers for per-link / per-node time series
-        flows_time: dict[str, list] = {}
-        densities_time: dict[str, list] = {}
-        speeds_time: dict[str, list] = {}
-        origin_queues_time: dict[str, list] = {}
-        onramp_queues_time: dict[str, list] = {}
-        offramp_queues_time: dict[str, list] = {}
+        flows_time: dict[str, list[list[float]]] = {}
+        densities_time: dict[str, list[list[float]]] = {}
+        speeds_time: dict[str, list[list[float]]] = {}
+        origin_queues_time: dict[str, list[float]] = {}
+        onramp_queues_time: dict[str, list[float]] = {}
+        offramp_queues_time: dict[str, list[float]] = {}
 
-        origin_demands_time: dict[str, list] = {}
-        turning_rates_time: dict[str, dict[str, list]] = {}
-        flow_boundary_conditions_time: dict[str, list] = {}
-        density_boundary_conditions_time: dict[str, list] = {}
+        origin_demands_time: dict[str, list[float]] = {}
+        turning_rates_time: dict[str, dict[str, list[float]]] = {}
+        flow_boundary_conditions_time: dict[str, list[float]] = {}
+        density_boundary_conditions_time: dict[str, list[float]] = {}
 
         num_timesteps = state_history.shape[1]
 
@@ -1123,7 +1147,7 @@ class Simulation:
                     )
 
         critical_densities: dict[str, float] = {}
-        link_properties: dict[str, dict] = {}
+        link_properties: JSONDict = {}
 
         for node in self.network.list_nodes():
             for link in node.outgoing:
@@ -1149,7 +1173,7 @@ class Simulation:
                             f"Unknown model type: {type(self.model).__name__}"
                         )
 
-                    critical_densities[link.id] = rho_crit
+                    critical_densities[link.id] = float(rho_crit)
 
                     # extract cell lengths array (cells may have different lengths)
                     cell_lengths = [float(cell.length) for cell in link]
@@ -1165,7 +1189,7 @@ class Simulation:
                     }
 
         # build metadata section
-        metadata = {
+        metadata: JSONDict = {
             "model_type": type(self.model).__name__,
             "simulation_parameters": {
                 "dt": dt,
@@ -1222,7 +1246,7 @@ class Simulation:
 
     @staticmethod
     def _sanitize_cell_lengths(
-        cell_lengths: list | tuple | None,
+        cell_lengths: Sequence[float] | None,
     ) -> list[float] | None:
         """Validate and normalize a candidate sequence of cell lengths.
 
@@ -1241,7 +1265,7 @@ class Simulation:
     @staticmethod
     def _resample_spatial_array(
         arr: NDArray[np.float64] | list[float],
-        src_cell_lengths: list | tuple | None,
+        src_cell_lengths: Sequence[float] | None,
         dst_cell_lengths: list[float],
     ) -> NDArray[np.float64]:
         """Resample a per-cell array onto a different spatial cell layout.
@@ -1308,7 +1332,7 @@ class Simulation:
         flows_t: dict[str, NDArray[np.float64]],
         densities_t: dict[str, NDArray[np.float64]],
         speeds_t: dict[str, NDArray[np.float64]],
-        saved_link_props: dict,
+        saved_link_props: JSONDict,
     ) -> tuple[
         dict[str, NDArray[np.float64]],
         dict[str, NDArray[np.float64]],
@@ -1371,7 +1395,7 @@ class Simulation:
         NDArray[np.float64],
         NDArray[np.float64],
         NDArray[np.float64],
-        dict | None,
+        JSONDict | None,
     ]:
         """Load simulation results from a JSON file with validation.
 
@@ -1774,10 +1798,10 @@ class Simulation:
             # validate numerical data using existing validation (for first timestep)
             if t == 0:
                 network._validate_disturbance_history_numerical(
-                    origin_demands=cast(dict[str, float], origin_demands_t),
-                    turning_rates=cast(dict[str, dict[str, float]], turning_rates_t),
-                    flow_boundary_conditions=cast(dict[str, float], flow_bc_t),
-                    density_boundary_conditions=cast(dict[str, float], density_bc_t),
+                    origin_demands=origin_demands_t,
+                    turning_rates=turning_rates_t,
+                    flow_boundary_conditions=flow_bc_t,
+                    density_boundary_conditions=density_bc_t,
                 )
 
             d_t = network.network_dict_to_disturbance_vec(
@@ -1861,7 +1885,7 @@ class Simulation:
         state_in = data.get("state_time_series", {})
         dist_in = data.get("disturbance_time_series", {})
 
-        new_state = {
+        new_state: dict[str, JSONDict] = {
             k: {}
             for k in (
                 "flows",
@@ -1873,7 +1897,7 @@ class Simulation:
             )
         }
 
-        def _extend_time(t):
+        def _extend_time(t: NDArray[np.float64]) -> NDArray[np.float64]:
             return (
                 t
                 if not extend_allowed
@@ -1882,7 +1906,9 @@ class Simulation:
                 )
             )
 
-        def _interp_2d(list_of_vals, t_old, t_new):
+        def _interp_2d(
+            list_of_vals: ArrayLike, t_old: ArrayLike, t_new: NDArray[np.float64]
+        ) -> NDArray[np.float64]:
             arr = np.asarray(list_of_vals, dtype=np.float64)
             if arr.ndim == 1:
                 arr = arr[:, None]
@@ -1905,7 +1931,12 @@ class Simulation:
                 out[:, j] = np.interp(t_new, t_old_arr, arr[:, j])
             return out
 
-        def _interp_1d(series, t_old, t_new, ref_len=None):
+        def _interp_1d(
+            series: ArrayLike,
+            t_old: ArrayLike,
+            t_new: NDArray[np.float64],
+            ref_len: int | None = None,
+        ) -> NDArray[np.float64]:
             arr = np.asarray(series, dtype=np.float64)
             if arr.size == 1:
                 return np.repeat(arr[0], t_new.shape[0])
@@ -1935,7 +1966,7 @@ class Simulation:
                 new_state[field][k] = [float(x) for x in new_vals.tolist()]
 
         # disturbances: defined on intervals between state timesteps
-        new_dist = {
+        new_dist: dict[str, JSONDict] = {
             k: {}
             for k in (
                 "origin_demands",
@@ -2010,7 +2041,7 @@ class Simulation:
                 for k in dist_in.get(field, {}).keys():
                     new_dist[field].setdefault(k, [])
 
-        out = {
+        out: JSONDict = {
             "metadata": dict(data.get("metadata", {})),
             "time_array": [float(x) for x in new_time.tolist()],
             "state_time_series": new_state,
@@ -2610,13 +2641,13 @@ class Simulation:
     def _plot_node_inflows(
         self,
         node: Node,
-        inflow_components: list,
+        inflow_components: list[Origin | Onramp],
         time_seconds: NDArray[np.float64],
-        flows_over_time: dict,
-        origin_queues_over_time: dict,
-        onramp_queues_over_time: dict,
-        origin_demands_over_time: dict,
-        onramp_demands_over_time: dict,
+        flows_over_time: TimeSeriesById,
+        origin_queues_over_time: TimeSeriesById,
+        onramp_queues_over_time: TimeSeriesById,
+        origin_demands_over_time: TimeSeriesById,
+        onramp_demands_over_time: TimeSeriesById,
         save_dir: str,
     ) -> None:
         """Create inflow plots (demand+flow and queue) for origins at a node."""
@@ -2704,10 +2735,10 @@ class Simulation:
     def _plot_node_outflows(
         self,
         node: Node,
-        outflow_components: list,
+        outflow_components: list[Offramp | Destination],
         time_seconds: NDArray[np.float64],
-        flows_over_time: dict,
-        offramp_queues_over_time: dict,
+        flows_over_time: TimeSeriesById,
+        offramp_queues_over_time: TimeSeriesById,
         save_dir: str,
     ) -> None:
         """Create outflow plots for offramps and destinations at a node."""
@@ -2872,7 +2903,7 @@ class Simulation:
         self,
         node: Node,
         time_seconds: NDArray[np.float64],
-        flows_over_time: dict,
+        flows_over_time: TimeSeriesById,
         save_dir: str,
     ) -> None:
         """Create a summary plot showing all inflows and outflows at a node."""
@@ -2890,7 +2921,7 @@ class Simulation:
 
         # plot incoming flows
         if incoming_links:
-            max_inflow = 0
+            max_inflow = 0.0
             for link in incoming_links:
                 link_id = link.id
                 flow = flows_over_time.get(link_id, np.zeros((1, len(time_seconds))))
@@ -2910,7 +2941,7 @@ class Simulation:
                     label=f"{type(link).__name__} {link_id}",
                 )
                 max_inflow = max(
-                    max_inflow, np.max(flow_to_plot) if len(flow_to_plot) > 0 else 0
+                    max_inflow, np.max(flow_to_plot) if len(flow_to_plot) > 0 else 0.0
                 )
 
             axes[0].grid(True)
@@ -2933,7 +2964,7 @@ class Simulation:
 
         # plot outgoing flows
         if outgoing_links:
-            max_outflow = 0
+            max_outflow = 0.0
             for link in outgoing_links:
                 link_id = link.id
                 flow = flows_over_time.get(link_id, np.zeros((1, len(time_seconds))))
@@ -2953,7 +2984,7 @@ class Simulation:
                     label=f"{type(link).__name__} {link_id}",
                 )
                 max_outflow = max(
-                    max_outflow, np.max(flow_to_plot) if len(flow_to_plot) > 0 else 0
+                    max_outflow, np.max(flow_to_plot) if len(flow_to_plot) > 0 else 0.0
                 )
 
             axes[1].grid(True)
@@ -3198,7 +3229,7 @@ class Simulation:
             raise ValueError("Must provide at least one result file")
 
         # load all simulation results (auto-detect mainline-only reference files)
-        simulations = []
+        simulations: list[_StoredRun] = []
         for filepath in result_filepaths:
             # inspect file metadata first to decide loading mode
             try:
@@ -3521,12 +3552,12 @@ class Simulation:
     def _draw_network_state_on_axes(
         self,
         ax: Axes,
-        flows: dict,
-        densities: dict,
-        onramp_queues: dict,
-        offramp_queues: dict,
+        flows: dict[str, NDArray[np.float64] | casadi.SX],
+        densities: dict[str, NDArray[np.float64] | casadi.SX],
+        onramp_queues: dict[str, float | casadi.SX],
+        offramp_queues: dict[str, float | casadi.SX],
         critical_densities: dict[str, float],
-        link_properties: dict[str, dict],
+        link_properties: JSONDict,
         time_value: float,
         title: str,
         x_bounds: tuple[float, float],
@@ -3647,10 +3678,11 @@ class Simulation:
                         flow = float(flows.get(link.id, [0.0])[0])
                         capacity = link.Qc
                         ratio = min(flow / capacity if capacity > 0 else 0.0, 1.0)
-                        r = 0.6 * (1 - ratio)
-                        g = 1.0 - 0.5 * ratio
-                        b = 0.6 * (1 - ratio)
-                        color = (r, g, b)
+                        color = (
+                            0.6 * (1 - ratio),
+                            1.0 - 0.5 * ratio,
+                            0.6 * (1 - ratio),
+                        )
 
                     # draw full line between origin and destination nodes
                     ax.plot(
@@ -3698,10 +3730,11 @@ class Simulation:
                         flow = float(flows.get(link.id, [0.0])[0])
                         capacity = link.Qc
                         ratio = min(flow / capacity if capacity > 0 else 0.0, 1.0)
-                        r = 0.6 * (1 - ratio)
-                        g = 1.0 - 0.5 * ratio
-                        b = 0.6 * (1 - ratio)
-                        color = (r, g, b)
+                        color = (
+                            0.6 * (1 - ratio),
+                            1.0 - 0.5 * ratio,
+                            0.6 * (1 - ratio),
+                        )
 
                     # draw full line between origin and destination nodes
                     ax.plot(
@@ -3739,7 +3772,7 @@ class Simulation:
         )
 
     @staticmethod
-    def _fig_to_frame(fig: Figure, target_width: int, target_height: int) -> Any:
+    def _fig_to_frame(fig: Figure, target_width: int, target_height: int) -> MatLike:
         """Convert matplotlib figure to OpenCV-compatible BGR frame.
 
         Helper method that converts a matplotlib figure to a numpy array
@@ -3759,7 +3792,7 @@ class Simulation:
         # convert buffer to numpy array (RGBA format)
         img_rgba = np.frombuffer(buf, dtype=np.uint8).reshape(height, width, 4)
         # extract RGB channels (drop alpha)
-        img_rgb = img_rgba[:, :, :3]
+        img_rgb: MatLike = img_rgba[:, :, :3]
 
         # resize to target dimensions if needed
         if (height, width) != (target_height, target_width):

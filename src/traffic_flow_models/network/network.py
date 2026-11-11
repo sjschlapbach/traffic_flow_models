@@ -8,10 +8,14 @@ import numpy as np
 import networkx as nx
 import matplotlib.pyplot as plt
 from numpy.typing import NDArray
+from matplotlib.axes import Axes
+from matplotlib.collections import LineCollection
 from matplotlib.lines import Line2D
+from matplotlib.patches import FancyArrowPatch
 from typing import (
+    Any,
+    cast,
     Iterator,
-    Callable,
     Tuple,
 )
 from collections import deque
@@ -25,6 +29,15 @@ from traffic_flow_models.network import (
     Offramp,
     Destination,
 )
+from traffic_flow_models.types import (
+    Link,
+    PackedVector,
+    TimeProfile,
+    TurningRateProfile,
+)
+
+# a networkx edge with its attribute dict, as returned by ``G.edges(data=True)``
+type _Edge = tuple[str, str, dict[str, Any]]
 
 
 class Network:
@@ -150,9 +163,7 @@ class Network:
 
         return None
 
-    def get_link(
-        self, id: str
-    ) -> MotorwayLink | Origin | Onramp | Offramp | Destination | None:
+    def get_link(self, id: str) -> Link | None:
         """Return the link with the given id, or ``None`` if not present.
 
         Searches all incoming and outgoing links of every node in the network.
@@ -184,7 +195,7 @@ class Network:
 
     def list_links(
         self,
-    ) -> list[MotorwayLink | Origin | Onramp | Offramp | Destination]:
+    ) -> list[Link]:
         """Return a deduplicated list of all links in the network.
 
         Collects every incoming and outgoing link from all nodes and removes
@@ -214,7 +225,7 @@ class Network:
         origin_queue_dict: dict[str, float] | dict[str, casadi.SX],
         onramp_queue_dict: dict[str, float] | dict[str, casadi.SX],
         offramp_queue_dict: dict[str, float] | dict[str, casadi.SX],
-    ):
+    ) -> tuple[PackedVector, int, int, int, int, int, int, int, int]:
         """Convert dictionary-based network state to a packed 1-D state vector.
 
         The network's per-link and per-origin/onramp state is provided as
@@ -409,8 +420,9 @@ class Network:
                             f"Initial flow for destination {link.id} must be an array of length 1."
                         )
 
+        # casadi's SWIG signatures let pyright infer DM, but vertcat with an SX operand returns SX
         return (
-            x,
+            cast(PackedVector, x),
             num_flows,
             num_densities,
             num_speeds,
@@ -427,7 +439,7 @@ class Network:
         turning_rate_dict: dict[str, dict[str, float]],
         flow_boundary_condition_dict: dict[str, float],
         density_boundary_condition_dict: dict[str, float],
-    ):
+    ) -> NDArray[np.float64]:
         """Pack origin demands and node turning rates into a vector.
 
         The disturbance vector contains all exogenous inputs required by the
@@ -545,16 +557,16 @@ class Network:
             )
 
         # helper to find node ids that contain a given motorway link in outgoing/incoming
-        def nodes_with_outgoing_link(link):
+        def nodes_with_outgoing_link(link: Link) -> list[Node]:
             return [n for n in self.list_nodes() if link in n.outgoing]
 
-        def nodes_with_incoming_link(link):
+        def nodes_with_incoming_link(link: Link) -> list[Node]:
             return [n for n in self.list_nodes() if link in n.incoming]
 
         # UPSTREAM: walk upstream along motorway links and collect onramps
         upstream_onramps: list[Onramp] = []
         visited_nodes: set[str] = set()
-        q = deque()
+        q: deque[Node] = deque()
 
         # start from nodes that feed motorway links into the merge node
         for link in merge_node.incoming:
@@ -662,8 +674,15 @@ class Network:
 
     def state_vec_to_network_dict(
         self,
-        x: NDArray[np.float64] | casadi.SX,
-    ):
+        x: PackedVector,
+    ) -> tuple[
+        dict[str, NDArray[np.float64] | casadi.SX],
+        dict[str, NDArray[np.float64] | casadi.SX],
+        dict[str, NDArray[np.float64] | casadi.SX],
+        dict[str, float | casadi.SX],
+        dict[str, float | casadi.SX],
+        dict[str, float | casadi.SX],
+    ]:
         """Unpack a packed state vector into structured dictionaries.
 
         Reverses the packing performed by `network_dict_to_state_vec`. The
@@ -984,7 +1003,7 @@ class Network:
         # consistent with the node topology.
         for node in self.list_nodes():
             for link in node.incoming:
-                if hasattr(link, "destination_node_id"):
+                if not isinstance(link, Destination):
                     if link.destination_node_id is None:
                         raise ValueError(
                             f"Incoming link {getattr(link,'id',repr(link))} has no destination_node_id set for node {node.id}"
@@ -999,7 +1018,7 @@ class Network:
                     )
 
             for link in node.outgoing:
-                if hasattr(link, "origin_node_id"):
+                if not isinstance(link, Origin):
                     if link.origin_node_id is None:
                         raise ValueError(
                             f"Outgoing link {getattr(link,'id',repr(link))} has no origin_node_id set for node {node.id}"
@@ -1182,14 +1201,14 @@ class Network:
 
     def _validate_initial_conditions_numerical(
         self,
-        origin_demands: dict[str, Callable[[float], float]],
-        turning_rates: dict[str, Callable[[float], dict[str, float]]],
-        destination_flow_bc: dict[str, Callable[[float], float]],
-        destination_density_bc: dict[str, Callable[[float], float]],
+        origin_demands: dict[str, TimeProfile],
+        turning_rates: dict[str, TurningRateProfile],
+        destination_flow_bc: dict[str, TimeProfile],
+        destination_density_bc: dict[str, TimeProfile],
         initial_flows: dict[str, float | NDArray[np.float64]] | None = None,
         initial_densities: dict[str, float | NDArray[np.float64]] | None = None,
         initial_speeds: dict[str, float | NDArray[np.float64]] | None = None,
-    ):
+    ) -> None:
         """Validate presence and basic consistency of initial-condition inputs.
 
         Ensures that for each node in the network the required callable demand
@@ -1404,9 +1423,7 @@ class Network:
             f.write("END OF NETWORK STRUCTURE\n")
             f.write("=" * 80 + "\n")
 
-    def _serialize_link(
-        self, link: MotorwayLink | Origin | Onramp | Offramp | Destination
-    ) -> dict:
+    def _serialize_link(self, link: Link) -> dict[str, str | int | float | None]:
         """Serialize a link-like object to a JSON-compatible dictionary.
 
         This helper function converts a link object (MotorwayLink, Origin,
@@ -1484,9 +1501,7 @@ class Network:
         """
 
         # collect unique links across all nodes
-        links_map: dict[str, MotorwayLink | Origin | Onramp | Offramp | Destination] = (
-            {}
-        )
+        links_map: dict[str, Link] = {}
         for node in self.list_nodes():
             for link in node.incoming + node.outgoing:
                 if getattr(link, "id", None) in links_map:
@@ -1529,12 +1544,11 @@ class Network:
         links_data = data.get("links", [])
         nodes_data = data.get("nodes", [])
 
-        links_by_id: dict[
-            str, MotorwayLink | Origin | Onramp | Offramp | Destination
-        ] = {}
+        links_by_id: dict[str, Link] = {}
 
         for entry in links_data:
             l_type = entry.get("type")
+            link_obj: Link
             if l_type == "MotorwayLink":
                 link_obj = MotorwayLink(
                     length=entry["length"],
@@ -1604,7 +1618,7 @@ class Network:
         figsize: tuple[int, int] = (10, 8),
         show: bool = True,
         save_path: str | None = None,
-    ):
+    ) -> Axes:
         """Plot the network topology using the plotting helper.
 
         Args:
@@ -1614,30 +1628,28 @@ class Network:
         """
 
         # simplified plotting: draw static network topology only
-        def _link_style(link):
+        def _link_style(link: Link) -> tuple[str, float, str]:
             if isinstance(link, MotorwayLink):
-                return "#222222", max(1.0, 0.6 * getattr(link, "lanes", 1)), "Motorway"
+                return "#222222", max(1.0, 0.6 * link.lanes), "Motorway"
             if isinstance(link, Onramp):
                 return "#2ca02c", 1.6, "Onramp"
             if isinstance(link, Offramp):
                 return "#d62728", 1.6, "Offramp"
             if isinstance(link, Origin):
                 return "#9467bd", 1.2, "Origin"
-            if isinstance(link, Destination):
-                return "#1f77b4", 1.2, "Destination"
-            return "#888888", 1.0, "Other"
+            return "#1f77b4", 1.2, "Destination"
 
         # calculate scaling factor based on number of nodes
         num_nodes = len(self._nodes)
         scale_factor = max(0.3, 1.0 / math.sqrt(max(1, num_nodes / 4)))
 
-        G = nx.DiGraph()
+        G: nx.DiGraph[str] = nx.DiGraph()
 
         # add node objects
         for node in self.list_nodes():
             G.add_node(node.id, label=node.id, type="junction")
 
-        def _ensure(node_id: str):
+        def _ensure(node_id: str) -> None:
             if node_id not in G:
                 G.add_node(node_id, label=node_id, type="external")
 
@@ -1687,7 +1699,7 @@ class Network:
                 node_positions[node.id] = np.array(node.position, dtype=np.float64)
 
         # if all nodes have positions, use them directly
-        y_offset = 0
+        y_offset = 0.0
         if len(node_positions) == len(self._nodes):
             pos = node_positions
         else:
@@ -1696,7 +1708,7 @@ class Network:
             pos = {}
 
             # build motorway adjacency (u -> list of (v, link))
-            motor_adj: dict[str, list[tuple[str, object]]] = {}
+            motor_adj: dict[str, list[tuple[str, Link | None]]] = {}
             in_deg: dict[str, int] = {n.id: 0 for n in self.list_nodes()}
             for u, v, d in G.edges(data=True):
                 if d.get("ltype") == "Motorway":
@@ -1838,15 +1850,15 @@ class Network:
         )
 
         # draw edges plainly and capture artist
-        edges = list(G.edges(data=True))
+        edges: list[_Edge] = list(G.edges(data=True))
 
         # group edges by type to draw with distinct styles
-        motorway_edges = []
-        onramp_edges = []
-        offramp_edges = []
-        origin_edges = []
-        destination_edges = []
-        other_edges = []
+        motorway_edges: list[_Edge] = []
+        onramp_edges: list[_Edge] = []
+        offramp_edges: list[_Edge] = []
+        origin_edges: list[_Edge] = []
+        destination_edges: list[_Edge] = []
+        other_edges: list[_Edge] = []
 
         for u, v, d in edges:
             ltype = d.get("ltype", "Other")
@@ -1863,9 +1875,16 @@ class Network:
             else:
                 other_edges.append((u, v, d))
 
-        edge_artists = []
+        edge_artists: list[
+            tuple[LineCollection | list[FancyArrowPatch], list[_Edge]]
+        ] = []
 
-        def _draw_group(edge_list, style, base_width, alpha=1.0):
+        def _draw_group(
+            edge_list: list[_Edge],
+            style: str,
+            base_width: float,
+            alpha: float = 1.0,
+        ) -> tuple[LineCollection | list[FancyArrowPatch], list[_Edge]] | None:
             if not edge_list:
                 return None
             et = [(u, v) for u, v, _ in edge_list]

@@ -29,6 +29,11 @@ dependencies = [
 dev = [
   "pytest==9.0.0",
   "pylint==4.0.4",
+  "mypy==2.4.1",
+  "scipy-stubs==1.16.3.3",
+  "numpy-typing-compat==20251206.2.3",
+  "types-networkx==3.5.0.20251106",
+  "types-tqdm==4.67.3.20260518",
   "git-cliff==2.11.0",
   "mkdocs-material>=9.5.5",
   "mkdocstrings[python]>=0.25",
@@ -42,3 +47,25 @@ docs = [
 
 [tool.setuptools]
 package-dir = { "" = "src" }
+
+# ships the PEP 561 marker so type checkers use the package's inline annotations
+[tool.setuptools.package-data]
+traffic_flow_models = ["py.typed"]
+
+[tool.mypy]
+python_version = "3.13"
+strict = true
+mypy_path = "src"
+packages = ["traffic_flow_models"]
+warn_unreachable = true
+
+# casadi ships no type information and no stub package exists
+[[tool.mypy.overrides]]
+module = ["casadi", "casadi.*"]
+ignore_missing_imports = true
+
+# the casadi `# type: ignore`s in the model graphs are for pyright, which infers casadi's
+# incorrect SWIG signatures; mypy sees casadi as Any and would report them as unused
+[[tool.mypy.overrides]]
+module = ["traffic_flow_models.model.ctm", "traffic_flow_models.model.metanet"]
+warn_unused_ignores = false

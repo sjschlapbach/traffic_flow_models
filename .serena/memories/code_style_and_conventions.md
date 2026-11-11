@@ -13,14 +13,29 @@ Follow the conventions of the existing code so that new code reads the same.
   `# pylint: disable=...` or `# type: ignore`, **stop and ask the user** whether to suppress
   the rule on that line, disable it repo-wide in `.pylintrc`, or fix the code. The default is to
   fix the code. Leave the existing `# type: ignore`s in place.
-- **Type annotations** on every new or changed function signature. A few older methods have
-  none, e.g. the CTM calibration-interface stubs. The typing style is mixed: built-in generics
-  and `X | None` (`dict[str, casadi.SX]`, `str | None`) in most modules, `typing`'s
-  `Optional`/`Tuple`/`Union` in some (`model/helpers.py`, `calibrator.py`). Match the
-  surrounding file, and prefer the built-in style in new modules. Use `Literal` for string enums
-  and `NDArray[np.float64]` for numpy arrays. For imports needed only in annotations, use
-  `if TYPE_CHECKING:` with a quoted annotation (`onramp: "Onramp"`); this avoids circular
-  imports between `network/` and `controller/`.
+- **Typing: strict mypy is required.** `mypy` (config in `pyproject.toml`: `strict = true`,
+  `warn_unreachable`, package `traffic_flow_models` only) must report no issues; CI job
+  `typecheck`. The package ships `py.typed`, so its annotations are public API for users' type
+  checkers. Every function, method and nested helper is annotated.
+  - **Avoid `Any`/`object`** wherever the real type is known. Accepted exceptions: raw parsed
+    JSON (`JSONDict`), networkx edge attribute dicts, and everything casadi (it ships no types,
+    so `casadi.SX` is `Any` to mypy, an override in `pyproject.toml` ignores its missing
+    imports).
+  - **Shared types live in `traffic_flow_models/types.py`** as simple `type` aliases (`Link`,
+    `RampController`, `PackedVector`, `TimeProfile`, `TurningRateProfile`, `TimeSeriesById`,
+    `JSONDict`) plus two small TypedDicts (`ModelOptions`, `ParameterSearchRun`). Use them
+    instead of re-spelling the union or callable; add a new one only when a type is passed
+    between several modules. Keep it simple: unions and aliases, no Protocols or class
+    hierarchies when a union works.
+  - Typing style is mixed: built-in generics and `X | None` in most modules, `typing`'s
+    `Optional`/`Tuple`/`Union` in some (`model/helpers.py`, `calibrator.py`). Match the
+    surrounding file, and prefer the built-in style in new code. `Literal` for string enums,
+    `NDArray[np.float64]` for numpy arrays, `ArrayLike` for anything passed to `np.asarray`.
+  - For imports needed only in annotations, use `if TYPE_CHECKING:` with a quoted annotation
+    (`onramp: "Onramp"`); this avoids circular imports between `network/` and `controller/`.
+  - The `# type: ignore`s on `casadi.SX.sym(...)` in `ctm.py`/`metanet.py` are for pyright
+    (Pylance), which infers casadi's wrong SWIG signatures. mypy's unused-ignore warning is off
+    for those two modules only. Keep them.
 - **Imports:** subpackage `__init__.py` files use relative imports; modules import other package
   modules absolutely (`from traffic_flow_models.network.onramp import Onramp`). Tests import the
   public API (`from traffic_flow_models import ...`).

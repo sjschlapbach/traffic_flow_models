@@ -18,5 +18,6 @@ Configured in `.claude/settings.json` (committed):
 - **Hooks**: a `SessionStart` hook reminds you to read the memories. A `Stop` hook
   (`.claude/hooks/ai-tracking-reminder.sh`) blocks if `*.py`, `pyproject.toml`, `mkdocs.yml` or a
   CI workflow changed but neither `.ai/` nor `.serena/memories/` was updated afterwards.
-- **Denied**: `git commit`, `git push`, `git worktree` and the `EnterWorktree` tool. Background-job
-  isolation is off (`worktree.bgIsolation: "none"`).
+- **Denied**: `git commit`, `git push`, `git worktree`, the `EnterWorktree` tool and the release
+  commands (`git-cliff`, `git tag`, `twine`, `python -m twine`, `mkdocs gh-deploy`,
+  `gh release`). Background-job isolation is off (`worktree.bgIsolation: "none"`).

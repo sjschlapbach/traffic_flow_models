@@ -41,3 +41,17 @@ jobs:
               run: pylint src --errors-only
             - name: Run python linting for entire tests directory
               run: pylint tests --errors-only
+    typecheck:
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v5
+            - name: Set up Python 3.13
+              uses: actions/setup-python@v6
+              with:
+                  python-version: 3.13
+            - name: Install dependencies
+              run: |
+                  python -m pip install --upgrade pip
+                  pip install -e ".[dev]"
+            - name: Type check the package with mypy (strict, config in pyproject.toml)
+              run: mypy

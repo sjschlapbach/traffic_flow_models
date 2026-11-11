@@ -8,6 +8,8 @@ traffic_flow_models/
 ├── src/
 │   ├── traffic_flow_models/   installable package (package-dir "" = "src")
 │   │   ├── __init__.py        public API re-exports + __all__
+│   │   ├── types.py           shared type aliases (see below)
+│   │   ├── py.typed           PEP 561 marker: ships the annotations to users
 │   │   ├── model/             CTM, METANET, shared helpers (CasADi symbolic graphs)
 │   │   ├── network/           topology, Simulation, Calibrator
 │   │   └── controller/        ramp-metering controllers (duck-typed, no ABC)
@@ -33,6 +35,16 @@ traffic_flow_models/
 Layout rules: installable code only under `src/traffic_flow_models/`; a new public class or
 function is re-exported from `src/traffic_flow_models/__init__.py` and added to `__all__`
 (`from traffic_flow_models import X`). Do not create new top-level directories unless asked.
+
+## `types.py`: shared types
+
+`Link` (any node link), `RampController` (union of the four controllers), `PackedVector`
+(numeric or symbolic state/disturbance vector), `TimeProfile` (time -> value: demands, boundary
+conditions), `TurningRateProfile` (time -> split per outgoing link), `TimeSeriesById`,
+`JSONDict` (raw results JSON), `ModelOptions` (calibration options TypedDict),
+`ParameterSearchRun` (one multi-start calibration run). The aliases are lazy PEP 695 `type`
+statements, so the network/controller classes are imported only under `TYPE_CHECKING` (no
+import cycle).
 
 ## `model/`: models built as CasADi symbolic graphs
 

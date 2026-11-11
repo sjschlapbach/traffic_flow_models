@@ -32,3 +32,6 @@ jobs:
             - name: Build distribution packages
               run: |
                   python -m build --sdist --wheel --outdir dist/
+
+            - name: Check that the wheel ships the PEP 561 type marker
+              run: unzip -l dist/*.whl | grep -q "traffic_flow_models/py.typed"

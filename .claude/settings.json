@@ -25,6 +25,7 @@
       "Bash(python -m pytest*)",
       "Bash(black *)",
       "Bash(pylint *)",
+      "Bash(mypy*)",
       "Bash(pip install -e*)",
       "Bash(mkdocs build*)",
       "Bash(pip show*)",
@@ -37,7 +38,13 @@
       "Bash(git commit*)",
       "Bash(git commit:*)",
       "Bash(git push*)",
-      "Bash(git push:*)"
+      "Bash(git push:*)",
+      "Bash(git tag*)",
+      "Bash(git-cliff*)",
+      "Bash(twine*)",
+      "Bash(python -m twine*)",
+      "Bash(mkdocs gh-deploy*)",
+      "Bash(gh release*)"
     ]
   },
   "hooks": {

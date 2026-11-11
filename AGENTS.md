@@ -34,8 +34,9 @@ longer", "previously", "was"). Describe what the code does and why. History goes
 
 Always run everything inside the local `venv/` (`source venv/bin/activate`) from the repository
 root. Setup and all commands are in the `suggested_commands` memory. **`pytest` must pass, all
-Python code must be formatted with black (`black --check .`), and `pylint src --errors-only` must
-be clean (CI runs all three); new code adds no pylint warnings.**
+Python code must be formatted with black (`black --check .`), `pylint src --errors-only` must be
+clean and strict `mypy` must report no issues (CI runs all four); new code adds no pylint
+warnings.**
 
 ## Git (hard rules)
 
@@ -43,7 +44,10 @@ be clean (CI runs all three); new code adds no pylint warnings.**
   pushes. Leave changes in the working tree.
 - **Never create a git worktree.** Apply all changes directly to the checked-out branch: `.ai/`
   is git-ignored and does not follow into a worktree, so tracking would split across copies.
-- Never hand-edit `CHANGELOG.md` (git-cliff generates it). Do not start a release unless asked.
+- Never hand-edit `CHANGELOG.md` (git-cliff generates it).
+- **Never run a release command** (`git-cliff`, `git tag`, `twine`, `mkdocs gh-deploy`,
+  `gh release`), even when asked. Releases are run by hand by the maintainers only; an agent may
+  only describe the steps (see the `suggested_commands` memory).
 
 ## Project knowledge (where to look)
 
