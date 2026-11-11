@@ -1,7 +1,16 @@
+import warnings
 import casadi
-from typing import Tuple, Union, Optional
+from typing import Tuple, Union, Optional, cast
 
-from traffic_flow_models.network import Node, Origin, Onramp, Offramp, MotorwayLink
+from traffic_flow_models.network import (
+    Network,
+    Node,
+    Origin,
+    Onramp,
+    Offramp,
+    MotorwayLink,
+)
+from traffic_flow_models.controller import AlineaController, MetalineController
 
 
 def store_and_forward_update(
@@ -141,3 +150,41 @@ def compute_node_outflows(
         )
 
     return node_outflows
+
+
+def configure_queue_control(network: Network, dt: float) -> None:
+    """Pass the queue-control inputs to the controllers of onramps with a `max_queue`.
+
+    For every onramp with `max_queue` set, the ALINEA / METALINE controller receives its
+    update interval (`control_dt`, or `dt` if it is None) and the ID of the origin feeding
+    the onramp (its flow is the ramp arrival flow in both models). Onramps without a
+    controller are skipped, since an unmetered ramp has no metering rate to raise; other
+    controller types ignore the `max_queue` with a warning.
+
+    Args:
+        network: Network whose onramp controllers are configured.
+        dt: Simulation time step.
+    """
+    for link in network.list_links():
+        if not isinstance(link, Onramp) or link.max_queue is None:
+            continue
+
+        controller = link.controller
+        if controller is None:
+            continue
+        if not isinstance(controller, (AlineaController, MetalineController)):
+            warnings.warn(
+                f"Onramp {link.id} has a max_queue, which only ALINEA and METALINE "
+                f"controllers apply; it is ignored for {type(controller).__name__}.",
+                stacklevel=2,
+            )
+            continue
+
+        # network validation guarantees a single origin upstream of every onramp
+        upstream_node = cast(Node, network.get_node(cast(str, link.origin_node_id)))
+        controller.set_queue_control(
+            rate_update_dt=(
+                controller.control_dt if controller.control_dt is not None else dt
+            ),
+            origin_id=upstream_node.incoming[0].id,
+        )

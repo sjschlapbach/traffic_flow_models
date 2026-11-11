@@ -15,6 +15,7 @@ class Onramp:
         Qc: Total onramp capacity in vehicles per hour.
         vf: Free-flow speed in km/h.
         rho_jam: Jam density in vehicles per km per lane.
+        max_queue: Maximum admissible queue length in vehicles (None = unlimited).
     """
 
     def __init__(
@@ -28,6 +29,7 @@ class Onramp:
         controller: RampController | None = None,
         origin_node_id: str | None = None,
         destination_node_id: str | None = None,
+        max_queue: float | None = None,
     ) -> None:
         """Initialize the Onramp parameters.
 
@@ -41,6 +43,10 @@ class Onramp:
             controller: Optional ramp metering controller.
             origin_node_id: Optional ID of the upstream node.
             destination_node_id: Optional ID of the downstream node.
+            max_queue: Optional maximum admissible queue length in vehicles. An ALINEA or
+                METALINE controller on this onramp raises its metering rate as far as needed
+                to keep the queue at or below this value (queue control). None (default)
+                means no limit.
         """
 
         if lanes <= 0:
@@ -57,6 +63,9 @@ class Onramp:
 
         if jam_density <= 0:
             raise ValueError("Jam density must be positive.")
+
+        if max_queue is not None and max_queue < 0:
+            raise ValueError("Maximum queue length must be non-negative.")
 
         self.id: str = (
             id if id is not None else str(uuid.uuid4())
@@ -81,3 +90,4 @@ class Onramp:
 
         self.origin_node_id: str | None = origin_node_id
         self.destination_node_id: str | None = destination_node_id
+        self.max_queue: float | None = max_queue  # in vehicles

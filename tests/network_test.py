@@ -1646,6 +1646,7 @@ class TestNetwork:
             free_flow_speed=100,
             jam_density=180,
             id="onramp_1",
+            max_queue=80.0,
         )
         dest1 = Destination(id="dest_1")
         offramp = Offramp(
@@ -1703,6 +1704,9 @@ class TestNetwork:
             assert "Onramp" in incoming_types
             assert "MotorwayLink" in outgoing_types
             assert "Offramp" in outgoing_types
+            loaded_onramp = loaded_net.get_link("onramp_1")
+            assert isinstance(loaded_onramp, Onramp)
+            assert loaded_onramp.max_queue == 80.0
 
             # verify node3
             assert len(loaded_node3.incoming) == 1

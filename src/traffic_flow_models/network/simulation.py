@@ -2821,6 +2821,19 @@ class Simulation:
             axes[row_idx, 1].plot(
                 time_seconds[:-1], queue[:-1], linewidth=1.5, color="tab:gray"
             )
+
+            # add max queue line if it's an onramp with a defined max queue
+            if isinstance(link, Onramp) and link.max_queue is not None:
+                axes[row_idx, 1].axhline(
+                    link.max_queue,
+                    color="tab:red",
+                    linestyle="--",
+                    linewidth=1.2,
+                    label="Max. queue",
+                )
+                axes[row_idx, 1].legend(fontsize="small", frameon=False)
+                max_queue = max(max_queue, np.float64(link.max_queue * 1.1))
+
             axes[row_idx, 1].grid(True)
             axes[row_idx, 1].set_xlim([0, actual_duration])
             axes[row_idx, 1].set_ylim([0, max_queue])

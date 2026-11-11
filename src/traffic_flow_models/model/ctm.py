@@ -3,7 +3,12 @@ import numpy as np
 from numpy.typing import NDArray
 from typing import TYPE_CHECKING, NoReturn, Tuple, Union
 
-from .helpers import store_and_forward_update, update_queue, compute_node_outflows
+from .helpers import (
+    store_and_forward_update,
+    update_queue,
+    compute_node_outflows,
+    configure_queue_control,
+)
 from traffic_flow_models.network import (
     MotorwayLink,
     Origin,
@@ -706,6 +711,9 @@ class CTM:
         # exogenous metering rates ("exogenous_control" only), in onramp state order
         u = casadi.SX.sym("u", num_onramps, 1)  # type: ignore
         metering_rates = {k: u[i] for i, k in enumerate(onramp_queues)}
+
+        # queue-control inputs of the onramp controllers (update interval, feeding origin)
+        configure_queue_control(network=network, dt=dt)
 
         # initialize next-step state dictionaries
         next_flows: dict[str, casadi.SX] = {}
