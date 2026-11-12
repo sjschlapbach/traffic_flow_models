@@ -48,6 +48,7 @@ Knowledge is split to avoid duplication, and keeping it current is part of every
   | `task_completion_checklist` | the definition of done |
   | `tools_and_skills` | serena, context7, other tools |
   | `ai_tracking_system` | how this split is enforced |
+  | `calibration_literature` | references behind the calibrator design, with verification status |
 
   They are plain markdown. With the [serena](https://github.com/oraios/serena) MCP server, use `list_memories` / `read_memory` / `write_memory`; without it, read and edit the files directly.
 - **`.ai/`** (git-ignored, local): the append-only logs `DECISIONS.md` (ADRs, newest first) and `PROGRESS.md` (dated log, newest first). See `.ai/README.md`. On a fresh clone `.ai/` does not exist; create both files on your first task.

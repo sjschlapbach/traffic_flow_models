@@ -5,6 +5,7 @@ from datetime import datetime
 
 from traffic_flow_models import METANET, METANETParams, Simulation
 from demo.scenarios import (
+    SCENARIO_DURATIONS,
     setup_network_a,
     setup_network_b,
     setup_network_c,
@@ -23,7 +24,6 @@ if __name__ == "__main__":
     alinea_ramp_control = False
     alinea_gain = 5.0
     dt = 10.0 / 3600
-    duration = 5000.0 / 3600
 
     # ! METANET model parameters
     tau = 22 / 3600
@@ -56,6 +56,7 @@ if __name__ == "__main__":
     plot_enabled = not args.no_plot
     generate_video = args.generate_video
     scenario = args.scenario
+    duration = SCENARIO_DURATIONS[scenario]
 
     # select the appropriate scenario functions
     if scenario == "A":

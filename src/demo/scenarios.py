@@ -16,6 +16,23 @@ from traffic_flow_models import (
     CustomController,
 )
 
+# simulation horizon per scenario (hours): the network has emptied (CTM and
+# METANET) shortly before the end; scenario families share one horizon so that
+# their controllers are compared over the same period
+SCENARIO_DURATIONS: dict[str, float] = {
+    "A": 3900 / 3600,
+    "B": 4000 / 3600,
+    "C": 6000 / 3600,
+    "C1": 6000 / 3600,
+    "C2": 6000 / 3600,
+    "C3": 6000 / 3600,
+    "C4": 6000 / 3600,
+    "D": 3800 / 3600,
+    "E": 5700 / 3600,
+    "E1": 5700 / 3600,
+    "E2": 5700 / 3600,
+}
+
 
 def demand(time: float, t1: float, t2: float, end: float, max: float) -> float:
     if time < t1:

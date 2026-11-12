@@ -87,18 +87,22 @@ class METANET:
         """Return default initial parameters for calibration.
 
         These defaults provide reasonable starting values for the optimization
-        procedure when no initial guess is provided.
+        procedure when no initial guess is provided. They are the model
+        parameters of Kotsialos, Papageorgiou, Mangeas and Haj-Salem (2002,
+        Transportation Research Part C 10(1), 65-84, Table 1): ``tau`` 18 s,
+        ``nu`` 60 km^2/h, ``kappa`` 40 veh/km/lane, ``delta`` 0.0122, ``phi``
+        2.98 and ``alpha`` 1.636.
 
         Returns:
             Dictionary of default METANET parameters.
         """
         return METANETParams(
-            tau=10 / 3600,
-            nu=20.0,
-            kappa=20.0,
-            delta=1.0,
-            phi=1.0,
-            alpha=1.0,
+            tau=18 / 3600,
+            nu=60.0,
+            kappa=40.0,
+            delta=0.0122,
+            phi=2.98,
+            alpha=1.636,
         )
 
     def _validate_model_options(
@@ -194,8 +198,13 @@ class METANET:
     ) -> Tuple[NDArray[np.float64], NDArray[np.float64]]:
         """Return default parameter bounds for calibration.
 
-        Provides conservative bounds that ensure physical validity of parameters
-        while allowing sufficient freedom for optimization.
+        The ranges of ``alpha``, ``tau``, ``nu``, ``kappa`` and ``delta`` are the
+        METANET calibration limits of Zhao, Roncoli and Yildirimoglu (2025,
+        "Bounded-METANET", arXiv:2503.17680, Table 1). They note that the lower
+        bound of ``tau`` is set by the simulation time step; the Calibrator
+        raises it to the time step of the data with a warning. ``phi`` has no
+        published range. The default parameters lie strictly inside these
+        bounds.
 
         Args:
             network: Network instance (used to count links for alpha bounds).
@@ -225,24 +234,25 @@ class METANET:
 
         lower_bounds = np.array(
             [
-                5 / 3600,  # tau > 5 seconds (typically around 18 s)
-                10.0,  # nu >= 10 (typically around 60 km^2/h)
-                10,  # kappa > 10 (typically around 40 veh/km/lane)
-                1e-3,  # delta >= 0.001 (typically around 0.1-1)
-                0.01,  # phi >= 0.01 (typically around 0.1-1)
+                5
+                / 3600,  # tau in hours (5 s); raised to the time step by the Calibrator
+                10.0,  # nu in km^2/h
+                5.0,  # kappa in veh/km/lane
+                1e-4,  # delta
+                0.01,  # phi
             ]
-            + [1.0] * num_alpha,  # alpha > 0 for each link (or global)
+            + [0.5] * num_alpha,  # alpha for each link (or global)
             dtype=np.float64,
         )
         upper_bounds = np.array(
             [
-                50 / 3600,  # tau < 50 seconds
-                200.0,  # nu < 200
-                150.0,  # kappa < 150
-                5.0,  # delta < 5
-                15.0,  # phi < 15
+                80 / 3600,  # tau in hours (80 s)
+                90.0,  # nu
+                50.0,  # kappa
+                4.0,  # delta
+                15.0,  # phi
             ]
-            + [6.0] * num_alpha,  # alpha < 5 for each link (or global)
+            + [2.5] * num_alpha,  # alpha for each link (or global)
             dtype=np.float64,
         )
 

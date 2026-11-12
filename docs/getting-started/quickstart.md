@@ -102,10 +102,10 @@ destination_density_bc = {"d_main": lambda t: 0.0}
     model_params: METANETParams = {
         "tau":   22 / 3600,  # relaxation time [h]
         "nu":    15.0,       # anticipation coefficient [km²/h]
-        "kappa": 40.0,       # density smoothing [veh/km/lane]
-        "delta": 0.012,      # on-ramp speed-drop coefficient
-        "phi":   1.0,        # lane-drop anticipation coefficient
-        "alpha": 1.8,        # FD shape exponent
+        "kappa": 10.0,       # density smoothing [veh/km/lane]
+        "delta": 1.4,        # on-ramp speed-drop coefficient
+        "phi":   10.0,       # lane-drop anticipation coefficient
+        "alpha": 2.0,        # FD shape exponent
     }
 
     sim = Simulation(network=net, model=METANET(), model_params=model_params)
