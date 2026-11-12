@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import os
 import math
+import warnings
 import casadi
 import numpy as np
 import matplotlib.pyplot as plt
@@ -35,6 +36,77 @@ from traffic_flow_models.types import (
 
 if TYPE_CHECKING:
     from traffic_flow_models import Network, CTM, METANET, METANETParams
+
+
+def _raise_tau_lower_bound(
+    lower_bounds: NDArray[np.float64],
+    upper_bounds: NDArray[np.float64],
+    param_names: list[str],
+    dt: float,
+) -> NDArray[np.float64]:
+    """Raise the lower bound of the relaxation time ``tau`` to the time step.
+
+    Args:
+        lower_bounds: Lower parameter bounds.
+        upper_bounds: Upper parameter bounds.
+        param_names: Parameter names in vector order.
+        dt: Time step of the ground truth data (same unit as tau).
+
+    Returns:
+        Lower bounds, with the ``tau`` entry raised to dt if it was below.
+
+    Raises:
+        ValueError: If the upper bound of tau is below the time step.
+    """
+    if "tau" not in param_names:
+        return lower_bounds
+
+    i = param_names.index("tau")
+    if lower_bounds[i] >= dt:
+        return lower_bounds
+    if upper_bounds[i] < dt:
+        raise ValueError(
+            f"Upper bound of tau ({upper_bounds[i] * 3600:.1f} s) is below the "
+            f"simulation time step ({dt * 3600:.1f} s)"
+        )
+
+    warnings.warn(
+        f"Lower bound of tau ({lower_bounds[i] * 3600:.1f} s) is below the "
+        f"simulation time step ({dt * 3600:.1f} s), where the relaxation term is "
+        f"unstable; using {dt * 3600:.1f} s instead.",
+        UserWarning,
+        stacklevel=3,
+    )
+    raised = np.array(lower_bounds, dtype=np.float64)
+    raised[i] = dt
+    return raised
+
+
+def _centered_moving_average(
+    states: NDArray[np.float64], k: int
+) -> NDArray[np.float64]:
+    """Centered moving average of every state row over k samples along time.
+
+    Sample t becomes the mean of the samples t - (k-1)/2 ... t + (k-1)/2 that
+    exist, so the window shrinks at both ends of the series.
+
+    Args:
+        states: 2-D array (state_dim x num_timesteps).
+        k: Odd number of samples per average (1 returns an unchanged copy).
+
+    Returns:
+        2-D array of the same shape with the averaged states.
+    """
+    half = k // 2
+
+    # slicing clips the window at the ends of the series
+    return np.stack(
+        [
+            states[:, max(0, t - half) : t + half + 1].mean(axis=1)
+            for t in range(states.shape[1])
+        ],
+        axis=1,
+    )
 
 
 class Calibrator:
@@ -700,6 +772,8 @@ class Calibrator:
         turning_rates_fn: dict[str, TurningRateProfile] | None = None,
         flow_boundary_conditions_fn: dict[str, TimeProfile] | None = None,
         density_boundary_conditions_fn: dict[str, TimeProfile] | None = None,
+        regularization_reference: METANETParams | None = None,
+        initial_state_smoothing: int = 5,
     ) -> Tuple["METANETParams", OptimizeResult, NDArray[np.float64]]:
         """Calibrate model parameters using ground truth simulation data.
 
@@ -730,7 +804,7 @@ class Calibrator:
         ---------------------------------
         1. METANET: Set model_options={'link_specific_alpha': False} to reduce DOF
         2. Increase window_size (e.g., 50-100) to capture more dynamics
-        3. Add regularization (regularization_weight=0.01-0.1) to prevent overfitting
+        3. Add regularization (regularization_weight > 0) to prevent overfitting
         4. Provide good initial_params based on domain knowledge or literature values
         5. Try multiple random initializations and pick best result
         6. Consider filtering/smoothing ground truth data before calibration
@@ -740,7 +814,8 @@ class Calibrator:
                 (must be in the format produced by save_simulation_results_json).
             model: Macroscopic flow model instance. Must implement calibration interface.
             initial_params: Initial guess for model parameters. If None, uses model defaults.
-                Ignored when use_parameter_search=True.
+                When use_parameter_search=True, it is not used as a starting point and
+                only serves as the default regularization reference.
             window_size: Number of timesteps per calibration window. Larger windows capture
                 more dynamics but increase computational cost. Default: 50.
             stride: Stride between consecutive calibration windows. Must be <= window_size to
@@ -753,10 +828,12 @@ class Calibrator:
                 - 'link_specific_alpha' (bool): If True, calibrates separate alpha for each
                   link. If False (default), uses single global alpha. Setting to False
                   reduces degrees of freedom and often improves robustness with noisy data.
-            regularization_weight: L2 regularization weight (lambda) for Ridge regression.
-                Penalizes deviation from initial_params: cost = ||residuals||^2 + lambda*||p-p0||^2.
-                Helps prevent overfitting to noisy data. Typical values: 0.0 (none) to 0.1 (strong).
-                Default: 0.0.
+            regularization_weight: Dimensionless weight lambda of the relative (log-ratio)
+                Tikhonov penalty towards the reference parameters p_ref:
+                cost = ||residuals||^2 + lambda * sum_i log(p_i / p_ref_i)^2, i.e. the MAP
+                penalty of a log-normal prior. A deviation by a factor of 2 in any parameter
+                costs lambda * log(2)^2 (about 0.48 * lambda), independent of its unit.
+                Requires positive parameters and lower bounds. Default: 0.0 (none).
             max_nfev: Maximum number of function evaluations for the optimizer. Default: 1000.
             verbose: If True, print calibration progress and results.
             use_parameter_search: If True, perform multi-start optimization using Latin Hypercube
@@ -782,6 +859,16 @@ class Calibrator:
                 parameter-history plot that shows the value of each optimization
                 parameter across function evaluations and the parameter bounds.
                 Can also be a string specifying the output filename. Default: False.
+            regularization_reference: Reference parameters p_ref of the regularization
+                penalty. If None, initial_params (or the model defaults) are used, also
+                for every run of the multi-start parameter search. Default: None.
+            initial_state_smoothing: Odd number k of samples of the centred moving
+                average that gives the initial state of every window,
+                x_hat(t) = mean(x(t - (k-1)/2), ..., x(t + (k-1)/2)) (shrinking at the
+                ends of the series). The residual targets remain the raw measurements.
+                Starting each window from a noisy measured state biases the estimate
+                (errors-in-variables); the average reduces this noise. Use 1 for
+                noise-free data. Default: 5.
 
         Returns:
             Tuple containing:
@@ -811,6 +898,11 @@ class Calibrator:
             )
         if stride < 1:
             raise ValueError(f"stride ({stride}) must be >= 1")
+        if initial_state_smoothing < 1 or initial_state_smoothing % 2 == 0:
+            raise ValueError(
+                f"initial_state_smoothing ({initial_state_smoothing}) must be an "
+                "odd integer >= 1"
+            )
 
         # ! Multi-Start Parameter Search Mode: Use LHS to explore parameter space
         if use_parameter_search:
@@ -832,6 +924,20 @@ class Calibrator:
             else:
                 lower_bounds, upper_bounds = param_bounds
 
+            # tau must not fall below the time step of the data
+            time_array_search = Simulation.load_results(
+                filepath=ground_truth_filepath,
+                network=self.network,
+                load_mainline_only=(not use_disturbance_from_file),
+            )[0]
+            if len(time_array_search) > 1:
+                lower_bounds = _raise_tau_lower_bound(
+                    lower_bounds,
+                    upper_bounds,
+                    self._infer_param_names(model=model, model_options=model_options),
+                    float(time_array_search[1] - time_array_search[0]),
+                )
+
             n_params = len(lower_bounds)
 
             # determine number of LHS samples
@@ -846,6 +952,14 @@ class Calibrator:
                 print(f"  Number of samples: {total_configs}")
                 print(f"  Max iterations per run: {max_nfev}")
                 print()
+
+            # every run is regularized towards the same reference, not its random start
+            if regularization_reference is None:
+                regularization_reference = (
+                    initial_params
+                    if initial_params is not None
+                    else model.get_default_calibration_params()
+                )
 
             # generate parameter names using the model's authoritative method
             param_names = self._infer_param_names(
@@ -907,6 +1021,8 @@ class Calibrator:
                             turning_rates_fn=turning_rates_fn,
                             flow_boundary_conditions_fn=flow_boundary_conditions_fn,
                             density_boundary_conditions_fn=density_boundary_conditions_fn,
+                            regularization_reference=regularization_reference,
+                            initial_state_smoothing=initial_state_smoothing,
                         )
                     )
 
@@ -1146,6 +1262,13 @@ class Calibrator:
         measurable_states, index_map = self.extract_measurable_states(state_history)
         num_measurable = measurable_states.shape[0]
 
+        # initial states of the windows (residual targets stay the raw measurements)
+        window_initial_states = (
+            _centered_moving_average(state_history, initial_state_smoothing)
+            if initial_state_smoothing > 1
+            else state_history
+        )
+
         if verbose:
             print(f"  Extracted {num_measurable} measurable state components")
             print(
@@ -1179,6 +1302,42 @@ class Calibrator:
             lower_bounds, upper_bounds = param_bounds
             if verbose:
                 print("  Using provided parameter bounds")
+
+        # tau must not fall below the time step of the data
+        if len(time_array) > 1:
+            lower_bounds = _raise_tau_lower_bound(
+                lower_bounds,
+                upper_bounds,
+                self._infer_param_names(model=model, model_options=model_options),
+                float(time_array[1] - time_array[0]),
+            )
+
+        # reference of the regularization penalty
+        reference_param_vec = (
+            initial_param_vec
+            if regularization_reference is None
+            else model.prepare_calibration_params(
+                params=regularization_reference,
+                network=self.network,
+                model_options=model_options,
+            )
+        )
+        if regularization_weight > 0 and (
+            np.any(reference_param_vec <= 0) or np.any(lower_bounds <= 0)
+        ):
+            raise ValueError(
+                "The log-ratio regularization requires positive reference parameters "
+                "and positive lower bounds"
+            )
+
+        # start strictly inside the bounds: the trust region reflective method
+        # truncates its steps at an active bound and then stalls
+        bound_margin = 0.001 * (upper_bounds - lower_bounds)
+        initial_param_vec = np.clip(
+            initial_param_vec,
+            lower_bounds + bound_margin,
+            upper_bounds - bound_margin,
+        )
 
         if verbose:
             print(f"  Parameter vector size: {len(initial_param_vec)}")
@@ -1284,7 +1443,7 @@ class Calibrator:
                     param_vec=param_vec,
                     model=model,
                     system=system,
-                    ground_truth_states=state_history,
+                    ground_truth_states=window_initial_states,
                     ground_truth_disturbances=disturbance_history,
                     measurable_indices=measurable_states,
                     window_indices=window_indices,
@@ -1294,11 +1453,11 @@ class Calibrator:
 
             residuals = np.concatenate(all_residuals) if all_residuals else np.array([])
 
-            # add Tikhonov regularization term if requested
+            # add relative (log-ratio) Tikhonov regularization term if requested
             if regularization_weight > 0:
-                # penalize deviation from initial parameters
-                regularization_term = np.sqrt(regularization_weight) * (
-                    param_vec - initial_param_vec
+                # log(p / p_ref) makes the penalty independent of parameter units
+                regularization_term = np.sqrt(regularization_weight) * np.log(
+                    param_vec / reference_param_vec
                 )
                 residuals = np.concatenate([residuals, regularization_term])
 

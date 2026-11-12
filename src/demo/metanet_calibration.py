@@ -8,7 +8,7 @@ A and C from metanet_simulation.py) with four data conditions each:
 
 1. **Exact Calibration**: Ground truth data with no noise
 2. **Noisy Calibration (no regularization)**: Realistic measurement noise
-3. **Noisy Calibration (with regularization)**: Noisy data + Tikhonov regularization
+3. **Noisy Calibration (with regularization)**: Noisy data + relative (log-ratio) Tikhonov regularization
 4. **Noisy Calibration (link-specific alpha)**: Link-specific alpha parameters with regularization
 
 Total: 8 calibration experiments (2 scenarios × 4 conditions)
@@ -17,8 +17,13 @@ The script demonstrates:
 - Model-agnostic calibration interface
 - Multi-start parameter search using Latin Hypercube Sampling (optional)
 - METANET-specific options (global vs. link-specific alpha)
-- Robustness strategies for noisy data (Tikhonov regularization)
+- Robustness strategies for noisy data (smoothed window-initial states, relative Tikhonov regularization)
 - Performance comparison across different network topologies
+
+Scenario C (onramp merge and lane drop, free flow and congestion) makes all six
+parameters identifiable. Scenario A (free flow only, no lane drop) is the
+counterexample: phi has no effect there and tau, nu, kappa are only weakly
+identifiable, so their errors stay large regardless of the method.
 """
 
 import os
@@ -34,6 +39,7 @@ from numpy.typing import NDArray
 
 from traffic_flow_models import METANET, METANETParams, Network, Calibrator, Simulation
 from demo.scenarios import (
+    SCENARIO_DURATIONS,
     mainline_demand_a,
     mainline_demand_c,
     onramp_demand_a,
@@ -345,8 +351,8 @@ def run_calibration_experiment(
     Performs 4 calibration experiments for the given scenario:
     1. Exact ground truth data (optional multi-start with 40 LHS samples)
     2. Noisy data without regularization (optional multi-start with 40 LHS samples)
-    3. Noisy data with Tikhonov regularization (λ=0.01)
-    4. Noisy data with link-specific alpha parameters (λ=0.01)
+    3. Noisy data with Tikhonov regularization (λ=0.1)
+    4. Noisy data with link-specific alpha parameters (λ=0.1)
 
     Also generates comparison plots and convergence analysis.
 
@@ -441,6 +447,7 @@ def run_calibration_experiment(
             stride=15,
             model_options={"link_specific_alpha": False},
             regularization_weight=0.0,
+            initial_state_smoothing=1,  # noise-free data: windows start from the exact states
             max_nfev=150 if use_parameter_search else 200,
             use_parameter_search=use_parameter_search,
             n_samples=40 if use_parameter_search else 0,
@@ -634,7 +641,7 @@ def run_calibration_experiment(
             stride=15,
             use_parameter_search=False,  # do not use parameter search for regularized case to isolate effect of regularization
             model_options={"link_specific_alpha": False},
-            regularization_weight=0.01,
+            regularization_weight=0.1,
             plot_correlation="noisy_reg_parameter_correlation.png",
             plot_param_history="noisy_reg_param_history.png",
             save_dir=scenario_dir,
@@ -682,7 +689,7 @@ def run_calibration_experiment(
             stride=15,
             use_parameter_search=False,  # do not use parameter search for link-specific alpha case due to complexity limitations
             model_options={"link_specific_alpha": True},
-            regularization_weight=0.01,
+            regularization_weight=0.1,
             plot_correlation="link_specific_alpha_parameter_correlation.png",
             plot_param_history="link_specific_alpha_param_history.png",
             save_dir=scenario_dir,
@@ -883,14 +890,14 @@ def run_calibration_experiment(
     print(f"    Mean param error:  {mean_error_noreg:.2f}%")
     print(f"    Error range:       [{min_error_noreg:.2f}%, {max_error_noreg:.2f}%]")
 
-    print("\n  Noisy data - With regularization (λ=0.01):")
+    print("\n  Noisy data - With regularization (λ=0.1):")
     print(f"    Final cost:        {result_noisy_reg.cost:.6e}")
     print(f"    Iterations:        {result_noisy_reg.nfev}")
     print(f"    Success:           {result_noisy_reg.success}")
     print(f"    Mean param error:  {mean_error_reg:.2f}%")
     print(f"    Error range:       [{min_error_reg:.2f}%, {max_error_reg:.2f}%]")
 
-    print("\n  Noisy data - Link-specific alpha (λ=0.01):")
+    print("\n  Noisy data - Link-specific alpha (λ=0.1):")
     print(f"    Final cost:        {result_noisy_link_alpha.cost:.6e}")
     print(f"    Iterations:        {result_noisy_link_alpha.nfev}")
     print(f"    Success:           {result_noisy_link_alpha.success}")
@@ -949,7 +956,6 @@ def main():
 
     # common simulation parameters
     dt = 10.0 / 3600  # hours (10 seconds)
-    duration = 5000.0 / 3600  # hours
     preferred_cell_size = 0.5  # km
 
     # ground truth METANET parameters (same for both scenarios)
@@ -962,15 +968,8 @@ def main():
         "alpha": 2.0,
     }
 
-    # initial guess (slightly perturbed)
-    initial_params: METANETParams = {
-        "tau": 10.0 / 3600,
-        "nu": 20.0,
-        "kappa": 20.0,
-        "delta": 1.0,
-        "phi": 1.0,
-        "alpha": 1.0,
-    }
+    # initial guess: the model's literature start values (strictly inside the bounds)
+    initial_params: METANETParams = METANET().get_default_calibration_params()
 
     print("\nTrue parameters:")
     print(f"  tau   = {true_params['tau']:.6f}")
@@ -984,6 +983,10 @@ def main():
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
     # ! Scenario A
+    print(
+        "\nScenario A (free flow only, no lane drop) illustrates practical "
+        "non-identifiability: phi has no effect and tau, nu, kappa are weakly identifiable."
+    )
     network_a, metadata_a, _ = setup_network_a()
     run_calibration_experiment(
         scenario_name="Scenario A",
@@ -994,7 +997,7 @@ def main():
         true_params=true_params,
         initial_params=initial_params,
         dt=dt,
-        duration=duration,
+        duration=SCENARIO_DURATIONS["A"],
         preferred_cell_size=preferred_cell_size,
         timestamp=timestamp,
         use_parameter_search=args.parameter_search,
@@ -1012,7 +1015,7 @@ def main():
         true_params=true_params,
         initial_params=initial_params,
         dt=dt,
-        duration=duration,
+        duration=SCENARIO_DURATIONS["C"],
         preferred_cell_size=preferred_cell_size,
         timestamp=timestamp,
         use_parameter_search=args.parameter_search,

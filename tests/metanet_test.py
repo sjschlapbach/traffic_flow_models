@@ -689,12 +689,12 @@ class TestMETANET:
         # get_default_calibration_params: documented defaults
         defaults = model.get_default_calibration_params()
         assert defaults == {
-            "tau": 10 / 3600,
-            "nu": 20.0,
-            "kappa": 20.0,
-            "delta": 1.0,
-            "phi": 1.0,
-            "alpha": 1.0,
+            "tau": 18 / 3600,
+            "nu": 60.0,
+            "kappa": 40.0,
+            "delta": 0.0122,
+            "phi": 2.98,
+            "alpha": 1.636,
         }
 
         # get_calibration_param_names: global alpha -> single "alpha" name
@@ -713,6 +713,12 @@ class TestMETANET:
         assert lb_global.shape == (6,)
         assert ub_global.shape == (6,)
         assert np.all(lb_global <= ub_global)
+
+        # the default start lies strictly inside the bounds (TRF stalls on a bound)
+        default_vec = model.prepare_calibration_params(defaults, network)
+        margin = 0.001 * (ub_global - lb_global)
+        assert np.all(default_vec > lb_global + margin)
+        assert np.all(default_vec < ub_global - margin)
 
         lb_link, ub_link = model.get_calibration_bounds(
             network, model_options={"link_specific_alpha": True}

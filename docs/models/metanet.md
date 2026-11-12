@@ -102,24 +102,26 @@ from traffic_flow_models import METANET, METANETParams
 model_params: METANETParams = {
     "tau":   22 / 3600,  # relaxation time [h]  (~18–30 s)
     "nu":    15.0,       # anticipation coefficient [km²/h]
-    "kappa": 40.0,       # density smoothing [veh/km/lane]
-    "delta": 0.012,      # on-ramp speed-drop coefficient [-]
-    "phi":   1.0,        # lane-drop anticipation coefficient [-]
-    "alpha": 1.8,        # FD shape exponent [-]
+    "kappa": 10.0,       # density smoothing [veh/km/lane]
+    "delta": 1.4,        # on-ramp speed-drop coefficient [-]
+    "phi":   10.0,       # lane-drop anticipation coefficient [-]
+    "alpha": 2.0,        # FD shape exponent [-]
 }
 metanet = METANET()
 ```
 
 ### Parameter reference
 
-| Parameter | Symbol     | Unit        | Typical range  | Effect                                         |
-| --------- | ---------- | ----------- | -------------- | ---------------------------------------------- |
-| `tau`     | \(\tau\)   | h           | 5–30 s (÷3600) | Speed relaxation rate; larger → slower         |
-| `nu`      | \(\nu\)    | km²/h       | 10–60          | Anticipation strength; larger → stronger       |
-| `kappa`   | \(\kappa\) | veh/km/lane | 10–60          | Prevents division by zero in anticipation term |
-| `delta`   | \(\delta\) | —           | 0.005–0.02     | On-ramp merging speed reduction                |
-| `phi`     | \(\phi\)   | —           | 0–2            | Lane-drop anticipation magnitude               |
-| `alpha`   | \(\alpha\) | —           | 1.5–2.5        | FD shape; 1.8 is a common default              |
+| Parameter | Symbol     | Unit        | Standard value | Calibration range | Effect                                         |
+| --------- | ---------- | ----------- | -------------- | ----------------- | ---------------------------------------------- |
+| `tau`     | \(\tau\)   | h           | 18 s (÷3600)   | 5–80 s (÷3600)    | Speed relaxation rate; larger → slower         |
+| `nu`      | \(\nu\)    | km²/h       | 60             | 10–90             | Anticipation strength; larger → stronger       |
+| `kappa`   | \(\kappa\) | veh/km/lane | 40             | 5–50              | Prevents division by zero in anticipation term |
+| `delta`   | \(\delta\) | —           | 0.0122         | 0.0001–4          | On-ramp merging speed reduction                |
+| `phi`     | \(\phi\)   | —           | 2.98           | 0.01–15           | Lane-drop anticipation magnitude               |
+| `alpha`   | \(\alpha\) | —           | 1.636          | 0.5–2.5           | FD shape                                       |
+
+Standard values: Kotsialos, Papageorgiou, Mangeas and Haj-Salem (2002, Transportation Research Part C 10(1), 65–84, Table 1); they are the calibration start values (`METANET().get_default_calibration_params()`). Calibration ranges: Zhao, Roncoli and Yildirimoglu (2025, Bounded-METANET, Table 1), except \(\varphi\), which has no published range; they are the default calibration bounds. The examples and demo scenarios use \(\tau = 22\) s, \(\nu = 15\), \(\kappa = 10\), \(\delta = 1.4\), \(\varphi = 10\), \(\alpha = 2\), which keep the flow through the demo lane drops at capacity.
 
 !!! tip "Calibration sensitivity"
 
@@ -133,8 +135,8 @@ metanet = METANET()
 from traffic_flow_models import METANET, METANETParams, Simulation
 
 model_params: METANETParams = {
-    "tau": 22/3600, "nu": 15.0, "kappa": 40.0,
-    "delta": 0.012, "phi": 1.0, "alpha": 1.8,
+    "tau": 22/3600, "nu": 15.0, "kappa": 10.0,
+    "delta": 1.4, "phi": 10.0, "alpha": 2.0,
 }
 sim = Simulation(network=net, model=METANET(), model_params=model_params)
 time_arr, states, disturbances = sim.run(

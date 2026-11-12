@@ -40,7 +40,7 @@ from traffic_flow_models import CTM, METANET, METANETParams, Simulation
 
 ctm_sim  = Simulation(network=net, model=CTM())
 meta_sim = Simulation(network=net, model=METANET(), model_params=METANETParams(
-    tau=22/3600, nu=15.0, kappa=40.0, delta=0.012, phi=1.0, alpha=1.8,
+    tau=22/3600, nu=15.0, kappa=10.0, delta=1.4, phi=10.0, alpha=2.0,
 ))
 
 run_kwargs = dict(

@@ -26,14 +26,14 @@ The calibration workflow:
 ```python
 from traffic_flow_models import Calibrator, METANET, METANETParams
 
-# Initial parameter guess
+# Initial parameter guess (the model's literature start values)
 initial_params: METANETParams = {
-    "tau": 10.0 / 3600,
-    "nu": 20.0,
-    "kappa": 20.0,
-    "delta": 1.0,
-    "phi": 1.0,
-    "alpha": 1.0,
+    "tau": 18.0 / 3600,
+    "nu": 60.0,
+    "kappa": 40.0,
+    "delta": 0.0122,
+    "phi": 2.98,
+    "alpha": 1.636,
 }
 
 metanet = METANET()
@@ -107,6 +107,8 @@ The ground truth is a JSON file with the same layout that `Simulation.save_resul
 
 ## Custom bounds
 
+The default start values are the model parameters of Kotsialos, Papageorgiou, Mangeas and Haj-Salem (2002, Transportation Research Part C 10(1), 65–84, Table 1): $\tau = 18$ s, $\nu = 60$ km²/h, $\kappa = 40$ veh/km/lane, $\delta = 0.0122$, $\varphi = 2.98$ and $a = 1.636$. The default bounds are the METANET calibration limits of Zhao, Roncoli and Yildirimoglu (2025, Bounded-METANET, Table 1): $a \in [0.5, 2.5]$, $\tau \in [5, 80]$ s, $\nu \in [10, 90]$ km²/h, $\kappa \in [5, 50]$ veh/km/lane, $\delta \in [10^{-4}, 4]$, with $\varphi \in [0.01, 15]$ (no published range). The explicit relaxation term is unstable for $\tau$ below the time step $T$ (Zhao et al. note that the lower bound of $\tau$ is set by the time step), so the calibrator raises a lower bound of $\tau$ below $T$ to $T$ and issues a warning; this applies to the default bounds and to `param_bounds`. Start values and true values should lie strictly inside the bounds.
+
 Retrieve the model's default bounds and optionally override them:
 
 ```python
@@ -115,8 +117,8 @@ import numpy as np
 lower, upper = METANET().get_calibration_bounds(network=net)
 
 # Override specific bounds (order: tau, nu, kappa, delta, phi, alpha)
-lower[0] = 5.0 / 3600  # tau ≥ 5 s
-upper[1] = 100.0        # nu ≤ 100
+lower[0] = 20.0 / 3600  # tau ≥ 20 s
+upper[1] = 60.0         # nu ≤ 60
 
 calibrated_params, result, param_history = calibrator.calibrate_model_params(
     ground_truth_filepath="results/ground_truth/simulation_results.json",
@@ -184,14 +186,16 @@ If a pair is strongly correlated, consider fixing one parameter to a physically 
 
 ## Regularization and noisy data
 
-For noisy real-world data, three strategies improve robustness:
+Each calibration window starts from the recorded state at its first time step and is predicted forward with the candidate parameters. With noisy data, this initial state is itself noisy, which biases the estimate. The calibrator therefore starts every window from a centered moving average of the recorded states, $\hat{x}(t) = \frac{1}{|N_t|} \sum_{j \in N_t} x(j)$ with $N_t = \{t - \tfrac{k-1}{2}, \dots, t + \tfrac{k-1}{2}\}$ restricted to the recorded time steps (`initial_state_smoothing` $k$, odd, default 5; with 10 s steps about a 1-minute aggregation). The residuals still compare with the raw measurements. Use `initial_state_smoothing=1` for noise-free data. The starting point is moved 0.1 % of the bound range inside the parameter bounds, because the trust region reflective method stalls when it starts on a bound.
+
+For noisy real-world data, three further strategies improve robustness:
 
 1. **Disable link-specific alpha** (`link_specific_alpha: False`) to reduce the number of free parameters.
-2. **Add Tikhonov regularization** (`regularization_weight`) to penalise deviation from `initial_params`.
+2. **Add relative Tikhonov regularization** (`regularization_weight` $\lambda$) to penalize deviation from the reference parameters $p^{\mathrm{ref}}$ (`regularization_reference`, default `initial_params`; with multi-start every run uses the same reference). The calibrator minimizes $\lVert r(p) \rVert^2 + \lambda \sum_i \log^2(p_i / p_i^{\mathrm{ref}})$, the MAP objective of independent log-normal priors. The penalty is unit-free, so a deviation by a factor of 2 costs $\lambda \log^2 2 \approx 0.48\,\lambda$ for every parameter (e.g. `tau` in hours and `nu` in km²/h alike). It requires positive parameters and lower bounds.
 3. **Use multi-start search** to avoid local minima introduced by noise.
 
 ```python
-# Experiment: noisy data with Tikhonov regularization (no multi-start)
+# Experiment: noisy data with relative Tikhonov regularization (no multi-start)
 calibrated_params_reg, result_reg, param_history_reg = calibrator.calibrate_model_params(
     ground_truth_filepath="results/noisy/simulation_results.json",
     model=metanet,
@@ -199,7 +203,7 @@ calibrated_params_reg, result_reg, param_history_reg = calibrator.calibrate_mode
     window_size=30,
     stride=15,
     model_options={"link_specific_alpha": False},
-    regularization_weight=0.01,    # L2 ridge penalty
+    regularization_weight=0.1,     # relative (log-ratio) Tikhonov penalty
     use_parameter_search=False,
     save_dir="results/calibration",
     plot_correlation="noisy_reg_correlation.png",
@@ -222,7 +226,7 @@ calibrated_params_link, result_link, param_history_link = calibrator.calibrate_m
     window_size=30,
     stride=15,
     model_options={"link_specific_alpha": True},
-    regularization_weight=0.01,
+    regularization_weight=0.1,
     use_parameter_search=False,
     save_dir="results/calibration",
     plot_correlation="link_alpha_correlation.png",
