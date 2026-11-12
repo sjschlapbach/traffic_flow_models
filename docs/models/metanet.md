@@ -118,10 +118,10 @@ metanet = METANET()
 | `nu`      | \(\nu\)    | km²/h       | 60             | 10–90             | Anticipation strength; larger → stronger       |
 | `kappa`   | \(\kappa\) | veh/km/lane | 40             | 5–50              | Prevents division by zero in anticipation term |
 | `delta`   | \(\delta\) | —           | 0.0122         | 0.0001–4          | On-ramp merging speed reduction                |
-| `phi`     | \(\phi\)   | —           | 2.98           | —                 | Lane-drop anticipation magnitude               |
+| `phi`     | \(\phi\)   | —           | 2.98           | 0.01–15           | Lane-drop anticipation magnitude               |
 | `alpha`   | \(\alpha\) | —           | 1.636          | 0.5–2.5           | FD shape                                       |
 
-Standard values: Kotsialos, Papageorgiou, Mangeas and Haj-Salem (2002, Transportation Research Part C 10(1), 65–84, Table 1); they are the calibration start values (`METANET().get_default_calibration_params()`). Calibration ranges: Zhao, Roncoli and Yildirimoglu (2025, Bounded-METANET, Table 1); they are the default calibration bounds. The examples and demo scenarios use \(\tau = 22\) s, \(\nu = 15\), \(\kappa = 10\), \(\delta = 1.4\), \(\varphi = 10\), \(\alpha = 2\), which keep the flow through the demo lane drops at capacity.
+Standard values: Kotsialos, Papageorgiou, Mangeas and Haj-Salem (2002, Transportation Research Part C 10(1), 65–84, Table 1); they are the calibration start values (`METANET().get_default_calibration_params()`). Calibration ranges: Zhao, Roncoli and Yildirimoglu (2025, Bounded-METANET, Table 1), except \(\varphi\), which has no published range; they are the default calibration bounds. The examples and demo scenarios use \(\tau = 22\) s, \(\nu = 15\), \(\kappa = 10\), \(\delta = 1.4\), \(\varphi = 10\), \(\alpha = 2\), which keep the flow through the demo lane drops at capacity.
 
 !!! tip "Calibration sensitivity"
 
