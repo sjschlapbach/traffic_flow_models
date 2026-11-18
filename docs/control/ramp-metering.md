@@ -45,7 +45,7 @@ onramp.controller = AlineaController(
 The model step has two formulations, selected with `network_update_function(..., dynamics=...)` (type `DynamicsFormulation`):
 
 - `"closed_form"` (default): the controllers are part of the dynamics, `f(params, x, d)`.
-- `"exogenous_control"`: the controllers are ignored and the metering rates are an input, `f(params, x, d, u)`, with one entry per on-ramp in the state-vector order of the on-ramp queues (`inf` = unmetered). `Simulation` uses it only when a controller sets `control_dt`.
+- `"exogenous_control"`: the controllers are ignored and the metering rates are an input, `f(params, x, d, u)`, with one entry per on-ramp in the state-vector order of the on-ramp queues (`inf` = unmetered). `Simulation` uses it only when a controller sets `control_dt`, and so does the `Calibrator`, which replays the held metering rates from the recorded states (see [Calibration](../experimental/calibration.md#ground-truth-file-format)).
 
 ---
 
