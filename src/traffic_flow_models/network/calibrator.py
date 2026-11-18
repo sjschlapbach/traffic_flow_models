@@ -963,6 +963,20 @@ class Calibrator:
                 "odd integer >= 1"
             )
 
+        # controllers with a control_dt held their rate in the data, which needs the
+        # exogenous-control formulation with the rates replayed from the recorded states
+        held_control = any(
+            isinstance(link, Onramp)
+            and link.controller is not None
+            and link.controller.control_dt is not None
+            for link in self.network.list_links()
+        )
+        if held_control and not use_disturbance_from_file:
+            raise ValueError(
+                "Controllers with a control_dt need the full recorded states "
+                "(use_disturbance_from_file=True) to replay their metering rates"
+            )
+
         # ! Multi-Start Parameter Search Mode: Use LHS to explore parameter space
         if use_parameter_search:
             if verbose:
@@ -1459,20 +1473,6 @@ class Calibrator:
 
         # construct the system update function for the chosen model and network structure
         dt = float(time_array[1] - time_array[0]) if len(time_array) > 1 else 0.01
-
-        # controllers with a control_dt held their rate in the data, which needs the
-        # exogenous-control formulation with the rates replayed from the recorded states
-        held_control = any(
-            isinstance(link, Onramp)
-            and link.controller is not None
-            and link.controller.control_dt is not None
-            for link in self.network.list_links()
-        )
-        if held_control and not use_disturbance_from_file:
-            raise ValueError(
-                "Controllers with a control_dt need the full recorded states "
-                "(use_disturbance_from_file=True) to replay their metering rates"
-            )
 
         system = model.network_update_function(
             network=self.network,
