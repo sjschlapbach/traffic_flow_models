@@ -27,6 +27,7 @@ from traffic_flow_models.network import (
     Destination,
     Simulation,
 )
+from traffic_flow_models.network.simulation import _metering_evaluation
 from traffic_flow_models.types import (
     ModelOptions,
     ParameterSearchRun,
@@ -106,6 +107,59 @@ def _centered_moving_average(
             for t in range(states.shape[1])
         ],
         axis=1,
+    )
+
+
+def _replay_held_metering(
+    network: "Network",
+    system: casadi.Function,
+    state_history: NDArray[np.float64],
+    disturbance_history: NDArray[np.float64],
+    dt: float,
+) -> tuple[casadi.Function, NDArray[np.float64]]:
+    """Reconstruct the held metering rates of the data and append them to the disturbances.
+
+    The onramp controllers are evaluated on the recorded states and their rates are held
+    for ``control_dt / dt`` steps, as in `Simulation.run`; the recorded series must start
+    at a controller update.
+
+    Args:
+        network: Network whose onramp controllers produced the data.
+        system: Model step built with ``dynamics="exogenous_control"``.
+        state_history: 2-D array of recorded states (state_dim x num_timesteps).
+        disturbance_history: 2-D array of disturbances (disturbance_dim x num_timesteps-1).
+        dt: Time step of the data.
+
+    Returns:
+        Tuple ``(step, disturbances)``: ``step(p, x, [d; u])`` is `system` with the metering
+        rates ``u`` appended to the disturbance input, and ``disturbances`` the disturbance
+        history with the metering rates appended as extra rows.
+
+    Raises:
+        ValueError: If a controller's `control_dt` is not an integer multiple of `dt`.
+    """
+    metering_fn, update_intervals = _metering_evaluation(network, system, dt)
+
+    u_history = np.zeros((len(update_intervals), disturbance_history.shape[1]))
+    u = np.full(len(update_intervals), np.inf)
+    for t in range(disturbance_history.shape[1]):
+        due = np.equal(t % update_intervals, 0)
+        if due.any():
+            u[due] = np.array(metering_fn(state_history[:, t])).flatten()[due]
+        u_history[:, t] = u
+
+    # the step uses the rate only through fmin, so the largest float acts as unmetered (inf);
+    # nan and -inf stay for the finite-value check of the residuals
+    u_history[np.isposinf(u_history)] = np.finfo(np.float64).max
+
+    p, x, d, u_sym = system.sx_in()
+    return (
+        casadi.Function(
+            "calibration_step",
+            [p, x, casadi.vertcat(d, u_sym)],
+            [system(p, x, d, u_sym)],
+        ),
+        np.vstack([disturbance_history, u_history]),
     )
 
 
@@ -793,6 +847,13 @@ class Calibrator:
         - prepare_calibration_params(): Convert params to optimization vector
         - parse_calibration_params(): Convert optimization vector to params
 
+        Onramp controllers are evaluated inside the model step on the predicted states. If any
+        controller sets `control_dt`, the metering rates of all onramps are instead
+        reconstructed once from the recorded states (the ``"exogenous_control"`` step takes
+        every rate as an input): controllers with a `control_dt` are held for it as in
+        `Simulation.run`, starting with a controller update at the first recorded time step,
+        and controllers without one are updated at every step.
+
         Multi-Start Parameter Search Mode:
         -----------------------------------
         When use_parameter_search=True, the method uses Latin Hypercube Sampling (LHS)
@@ -880,7 +941,8 @@ class Calibrator:
 
         Raises:
             NotImplementedError: If model does not support parameter calibration.
-            ValueError: If ground truth file is invalid or incompatible with network structure.
+            ValueError: If ground truth file is invalid or incompatible with network structure,
+                or a controller sets `control_dt` while use_disturbance_from_file=False.
             FileNotFoundError: If ground_truth_filepath does not exist.
         """
         if model_options is None:
@@ -902,6 +964,20 @@ class Calibrator:
             raise ValueError(
                 f"initial_state_smoothing ({initial_state_smoothing}) must be an "
                 "odd integer >= 1"
+            )
+
+        # controllers with a control_dt held their rate in the data, which needs the
+        # exogenous-control formulation with the rates replayed from the recorded states
+        held_control = any(
+            isinstance(link, Onramp)
+            and link.controller is not None
+            and link.controller.control_dt is not None
+            for link in self.network.list_links()
+        )
+        if held_control and not use_disturbance_from_file:
+            raise ValueError(
+                "Controllers with a control_dt need the full recorded states "
+                "(use_disturbance_from_file=True) to replay their metering rates"
             )
 
         # ! Multi-Start Parameter Search Mode: Use LHS to explore parameter space
@@ -1400,6 +1476,7 @@ class Calibrator:
 
         # construct the system update function for the chosen model and network structure
         dt = float(time_array[1] - time_array[0]) if len(time_array) > 1 else 0.01
+
         system = model.network_update_function(
             network=self.network,
             num_flows=num_flows,
@@ -1411,7 +1488,13 @@ class Calibrator:
             num_splits=num_splits,
             num_destinations=num_destinations,
             dt=dt,
+            dynamics="exogenous_control" if held_control else "closed_form",
         )
+
+        if held_control:
+            system, disturbance_history = _replay_held_metering(
+                self.network, system, state_history, disturbance_history, dt
+            )
 
         if verbose:
             print("  System function built successfully")
