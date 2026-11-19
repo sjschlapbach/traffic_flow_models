@@ -50,6 +50,17 @@ python -m src.demo.metanet_calibration                        # --parameter-sear
 
 Outputs go to `results/` (git-ignored); delete test runs afterwards.
 
+## Paper figures and tables
+
+```bash
+python -m paper.fig_model_comparison     # same for fig_ramp_metering, table_ramp_metering, fig_calibration, table_calibration
+PYTHONPATH=. pylint paper                # not in CI; paper/ must stay at 10.00
+mypy --strict --explicit-package-bases paper
+/tmp/pyright-venv/bin/pyright --pythonpath venv/bin/python paper
+```
+
+Run from the repo root. Stored runs go to `paper/results/` (git-ignored); figures and tables to `paper/figures/` and `paper/tables/` (committed, byte-stable). CI covers `paper/` only through `black --check .`. Full clean run: about one minute.
+
 ## Docs
 
 ```bash

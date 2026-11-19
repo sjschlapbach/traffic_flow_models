@@ -503,7 +503,7 @@ def run_calibration_experiment(
     print("    Densities: Gaussian noise with std = 10% of mean (constant variance)")
     print("    Speeds:    Gaussian noise with std = 5% of mean (constant variance)")
 
-    np.random.seed(42)  # for reproducibility
+    np.random.seed(100)  # for reproducibility
     noisy_data = ground_truth_data.copy()
 
     # add noise to flows (constant variance over time)

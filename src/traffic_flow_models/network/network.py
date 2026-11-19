@@ -1754,7 +1754,7 @@ class Network:
                     y_offset -= 1.0
             else:
                 # fallback to spring layout if no motorway structure
-                pos = nx.spring_layout(G, seed=42)
+                pos = nx.spring_layout(G, seed=100)
 
         # place externals (SRC:/DEST:) very close to junctions for compact layout
         for n in G.nodes():
