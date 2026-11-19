@@ -148,8 +148,9 @@ def _replay_held_metering(
             u[due] = np.array(metering_fn(state_history[:, t])).flatten()[due]
         u_history[:, t] = u
 
-    # the step uses the rate only through fmin, so the largest float acts as unmetered (inf)
-    u_history = np.nan_to_num(u_history, posinf=float(np.finfo(np.float64).max))
+    # the step uses the rate only through fmin, so the largest float acts as unmetered (inf);
+    # nan and -inf stay for the finite-value check of the residuals
+    u_history[np.isposinf(u_history)] = np.finfo(np.float64).max
 
     p, x, d, u_sym = system.sx_in()
     return (
@@ -846,10 +847,12 @@ class Calibrator:
         - prepare_calibration_params(): Convert params to optimization vector
         - parse_calibration_params(): Convert optimization vector to params
 
-        Onramp controllers are evaluated inside the model step on the predicted states. If a
-        controller sets `control_dt`, the metering rates are instead reconstructed once from
-        the recorded states and held for `control_dt` as in `Simulation.run`, starting with a
-        controller update at the first recorded time step.
+        Onramp controllers are evaluated inside the model step on the predicted states. If any
+        controller sets `control_dt`, the metering rates of all onramps are instead
+        reconstructed once from the recorded states (the ``"exogenous_control"`` step takes
+        every rate as an input): controllers with a `control_dt` are held for it as in
+        `Simulation.run`, starting with a controller update at the first recorded time step,
+        and controllers without one are updated at every step.
 
         Multi-Start Parameter Search Mode:
         -----------------------------------
