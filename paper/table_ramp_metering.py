@@ -22,18 +22,31 @@ CONTROL_INTERVAL_RUNS = {
     "sim_e1_alinea_tc_metanet": "",
     "sim_e1_alinea_tc_gain_metanet": " (retuned)",
 }
+RETUNED_RUN = "sim_e1_alinea_tc_gain_metanet"
 BASELINE = "no control"
 
-# (CSV column, TeX header, unit, TeX number format)
+# (CSV column, TeX number format)
 COLUMNS = [
-    ("total_time_spent_veh_h", "TTS", r"veh\,h", "{:.1f}"),
-    ("tts_change_percent", r"$\Delta$TTS", r"\%", "${:+.1f}$"),
-    ("motorway_vht_veh_h", "VHT", r"veh\,h", "{:.1f}"),
-    ("queue_time_veh_h", "queues", r"veh\,h", "{:.1f}"),
-    ("mean_speed_km_h", r"$\bar v$", "km/h", "{:.1f}"),
-    ("max_density_veh_km_lane", r"$\max \rho$", "veh/km/lane", "{:.1f}"),
-    ("max_onramp_queue_veh", r"$\max N_m$ (on-ramps)", "veh", "{:.1f}"),
-    ("max_origin_queue_veh", r"$\max N_m$ (origin)", "veh", "{:.1f}"),
+    ("total_time_spent_veh_h", "{:.1f}"),
+    ("tts_change_percent", "${:+.1f}$"),
+    ("motorway_vht_veh_h", "{:.1f}"),
+    ("queue_time_veh_h", "{:.1f}"),
+    ("mean_speed_km_h", "{:.1f}"),
+    ("max_density_veh_km_lane", "{:.1f}"),
+    ("max_onramp_queue_veh", "{:.1f}"),
+    ("max_origin_queue_veh", "{:.1f}"),
+]
+TEX_HEADER = [
+    r"\fontsize{10.5}{12.6}\selectfont",
+    r"\setlength{\tabcolsep}{4pt}",
+    r"\begin{tabular}{@{}l r r r r r r r r@{}}",
+    r"\toprule",
+    r" & \multicolumn{2}{c}{TTS} & VHT & Queue & $\bar v$ & $\max \rho$ & "
+    r"\multicolumn{2}{c}{$\max N_m$ (veh)} \\",
+    r"\cmidrule(lr){2-3}\cmidrule(l){8-9}",
+    r"Variant & (veh\,h) & (\%) & (veh\,h) & (veh\,h) & (km/h) & (veh/km/lane) & "
+    r"ramps & origin \\",
+    r"\midrule",
 ]
 
 
@@ -49,34 +62,51 @@ def main() -> None:
     for label, rid in rows_by_label.items():
         tts, *rest = _values(rid)
         values[label] = [tts, 100.0 * (tts - baseline) / baseline, *rest]
-
-    tex = [
-        r"\begin{tabular}{l" + " r" * len(COLUMNS) + "}",
-        r"\toprule",
-        " & ".join(["Variant"] + [c[1] for c in COLUMNS]) + r" \\",
-        " & ".join([""] + [f"({c[2]})" for c in COLUMNS]) + r" \\",
-        r"\midrule",
-    ]
-    for label, row in values.items():
-        cells = [c[3].format(value) for c, value in zip(COLUMNS, row)]
-        if label == BASELINE:
-            cells[1] = "--"
-        tex.append(" & ".join([label.replace(" s,", r"\,s,"), *cells]) + r" \\")
-    tex += [r"\bottomrule", r"\end{tabular}", ""]
     rows: list[list[object]] = [["variant", "run", *[c[0] for c in COLUMNS]]]
     rows += [[label, rows_by_label[label], *row] for label, row in values.items()]
+
+    # TeX order: the ALINEA variants as indented sub-rows of ALINEA, then METALINE
+    tex_labels = {
+        BASELINE: BASELINE,
+        "ALINEA": "ALINEA",
+        r"ALINEA, $N_m^{\max}$": r"\quad with $N_m^{\max}$",
+        **{
+            _label(rid)
+            + suffix: rf"\quad with $T_c$, $K_I' = {_controller(rid)[0].gain:g}$"
+            + (r"\textsuperscript{a}" if rid == RETUNED_RUN else "")
+            for rid, suffix in CONTROL_INTERVAL_RUNS.items()
+        },
+        "METALINE": "METALINE",
+    }
+    tex = list(TEX_HEADER)
+    for label, tex_label in tex_labels.items():
+        cells = [c[1].format(value) for c, value in zip(COLUMNS, values[label])]
+        if label == BASELINE:
+            cells[1] = "--"
+        tex.append(" & ".join([tex_label, *cells]) + r" \\")
+    control_interval_s = _controller(RETUNED_RUN)[1]
+    tex += [
+        r"\bottomrule",
+        rf"\multicolumn{{{len(COLUMNS) + 1}}}{{@{{}}l}}{{\footnotesize "
+        rf"\textsuperscript{{a}}gain retuned for $T_c = {control_interval_s:g}$\,s}} \\",
+        r"\end{tabular}",
+        "",
+    ]
     save_table(TABLE_NAME, rows, "\n".join(tex))
 
 
-def _label(rid: str) -> str:
-    """Return the row label of an ALINEA run with a control interval."""
+def _controller(rid: str) -> tuple[AlineaController, float]:
+    """Return the ALINEA controller of a run and its control interval in s."""
     controller = onramps(*build_network(RUNS[rid])[:2])[0].controller
     if not isinstance(controller, AlineaController) or controller.control_dt is None:
         raise TypeError(f"run {rid} needs ALINEA with a control interval")
-    return (
-        rf"ALINEA, $T_c = {controller.control_dt * 3600:g}$ s, "
-        rf"$K_I' = {controller.gain:g}$"
-    )
+    return controller, controller.control_dt * 3600
+
+
+def _label(rid: str) -> str:
+    """Return the CSV row label of an ALINEA run with a control interval."""
+    controller, control_interval_s = _controller(rid)
+    return rf"ALINEA, $T_c = {control_interval_s:g}$ s, $K_I' = {controller.gain:g}$"
 
 
 def _values(rid: str) -> list[float]:
