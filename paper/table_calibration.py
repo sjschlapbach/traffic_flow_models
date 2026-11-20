@@ -63,7 +63,7 @@ def main() -> None:
     columns = len(names) + 2
     tex = [
         r"\fontsize{10.5}{12.6}\selectfont",
-        r"\begin{tabular}{@{}l" + " r" * (columns - 1) + "@{}}",
+        r"\begin{tabular}{@{}l" + " c" * (columns - 1) + "@{}}",
         r"\toprule",
         " & ".join(["", *(PARAMETER_SYMBOLS[name] for name in names), "Evaluations"])
         + r" \\",

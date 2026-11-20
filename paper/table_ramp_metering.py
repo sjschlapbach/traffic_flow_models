@@ -39,7 +39,7 @@ COLUMNS = [
 TEX_HEADER = [
     r"\fontsize{10.5}{12.6}\selectfont",
     r"\setlength{\tabcolsep}{4pt}",
-    r"\begin{tabular}{@{}l r r r r r r r r@{}}",
+    r"\begin{tabular}{@{}l c c c c c c c c@{}}",
     r"\toprule",
     r" & \multicolumn{2}{c}{TTS} & VHT & Queue & $\bar v$ & $\max \rho$ & "
     r"\multicolumn{2}{c}{$\max N_m$ (veh)} \\",
