@@ -231,11 +231,10 @@ class Network:
         The network's per-link and per-origin/onramp state is provided as
         dictionaries keyed by link/origin ids. This helper concatenates those
         arrays/values into a single 1-D array in the deterministic node-
-        and link-ordering used by the simulator. The packing order is:
-        - For each node: incoming origin/onramp flows and queues (one value each)
-        - For each node: outgoing motorway link flows, densities, speeds (values for each cell)
-        - For each node: outgoing offramp flow and queue
-        - For each node: outgoing destination flow
+        and link-ordering used by the simulator. For each node, the packing order is:
+        - incoming origin/onramp flows and queues (one value each)
+        - then the outgoing links in order: motorway link flows, densities, speeds
+          (values for each cell), offramp flow and queue, destination flow
 
         Args:
             flow_dict: Mapping link id -> per-cell flow array (veh/h).
@@ -257,7 +256,7 @@ class Network:
         """
 
         # combine state from separate arrays into single state vector if required by model
-        # structure: [ flows | densities | speeds | origin_queues | onramp_queues ]
+        # structure per node: see the packing order in the docstring
         x = (
             np.array([], dtype=np.float64)
             if isinstance(next(iter(flow_dict.values())), np.ndarray)
@@ -440,18 +439,20 @@ class Network:
         flow_boundary_condition_dict: dict[str, float],
         density_boundary_condition_dict: dict[str, float],
     ) -> NDArray[np.float64]:
-        """Pack origin demands and node turning rates into a vector.
+        """Pack turning rates, origin demands and boundary conditions into a vector.
 
         The disturbance vector contains all exogenous inputs required by the
-        simulator: origin demands and per-node turning rates for outgoing
-        links. The function iterates nodes in the network and concatenates
-        the values in a deterministic order.
+        simulator: per-node turning rates for outgoing links, origin demands
+        and destination boundary conditions. The function iterates nodes in the
+        network and concatenates the values in a deterministic order.
 
         Args:
             origin_demand_dict: Mapping origin id -> scalar demand (veh/h).
             turning_rate_dict: Mapping node id -> mapping outgoing link id -> turn rate.
-            flow_boundary_condition_dict: Mapping destination id -> downstream flow (veh/h).
-            density_boundary_condition_dict: Mapping destination id -> downstream density (veh/km/lane).
+            flow_boundary_condition_dict: Mapping destination id ->
+                downstream flow (veh/h).
+            density_boundary_condition_dict: Mapping destination id ->
+                downstream density (veh/km/lane).
 
         Returns:
             Disturbance vector containing all exogenous inputs for simulation.
@@ -462,7 +463,8 @@ class Network:
         """
 
         # "disturbance" variables = network inflows and turning rates
-        # structure: [ origin_demands | turning_rates ]
+        # structure per node:
+        # [ turning_rates | origin_demands | flow and density boundary conditions ]
         d = np.array([], dtype=np.float64)
 
         for node in self.list_nodes():
@@ -810,10 +812,12 @@ class Network:
         with the network topology.
 
         Args:
-            d: 1-D NumPy array or CasADi SX column vector containing the packed disturbances.
+            d: 1-D NumPy array or CasADi SX column vector containing the
+                packed disturbances.
 
         Returns:
-            Tuple of four dictionaries: ``(origin_demands, turning_rates, flow_boundary_conditions, density_boundary_conditions)``.
+            Tuple of four dictionaries: ``(origin_demands, turning_rates,
+            flow_boundary_conditions, density_boundary_conditions)``.
 
         Raises:
             ValueError: If the disturbance vector is too short for the network
@@ -894,8 +898,8 @@ class Network:
             - Each network must have at least one origin link
             - Each network must have at least one destination
             - Each offramp needs to be connected to a destination through a node
-            - A node connected to an origin may only have one outgoing link (motorway link or onramp)
-            - Each onramp needs to be connected to an origin through a node upstream
+            - A node connected to an origin may only have one outgoing
+              link (motorway link or onramp)
             - Each node needs to have at least one incoming and one outgoing link
             - All nodes in the network must be connected through links
 
@@ -1222,12 +1226,16 @@ class Network:
             turning_rates: Mapping node id -> callable(time) -> dict[outgoing->rate].
             destination_flow_bc: Mapping destination id -> callable(time) -> flow.
             destination_density_bc: Mapping destination id -> callable(time) -> density.
-            initial_flows: Optional mapping link id -> scalar or per-cell array for initial flows.
-            initial_densities: Optional mapping link id -> scalar or per-cell array for initial densities.
-            initial_speeds: Optional mapping link id -> scalar or per-cell array for initial speeds.
+            initial_flows: Optional mapping link id -> scalar or
+                per-cell array for initial flows.
+            initial_densities: Optional mapping link id -> scalar or
+                per-cell array for initial densities.
+            initial_speeds: Optional mapping link id -> scalar or
+                per-cell array for initial speeds.
 
         Raises:
-            ValueError: If required functions or initial arrays are missing or inconsistent.
+            ValueError: If required functions or initial arrays are
+                missing or inconsistent.
         """
 
         for node in self.list_nodes():

@@ -77,7 +77,7 @@ v_0^m(k) = \frac{\sum_{\mu \in I_n} v_{N_\mu}^\mu(k) \cdot q_{N_\mu}^\mu(k)}
                    {\sum_{\mu \in I_n} q_{N_\mu}^\mu(k)}
 $$
 
-A flow-weighted average of the last-cell speeds of all incoming links. Without upstream flow (empty or stopped links) the library uses their plain mean instead, which keeps \(v_0^m\) continuous as the flow vanishes: a stopped last cell gives 0, an empty one its free-flow speed.
+A flow-weighted average of the last-cell speeds of all incoming motorway links. Without upstream flow (empty or stopped links) the library uses their plain mean instead, which keeps \(v_0^m\) continuous as the flow vanishes: a stopped last cell gives 0, an empty one its free-flow speed.
 
 **Virtual downstream density** (at the last cell of an incoming link, diverge node):
 
@@ -86,7 +86,7 @@ $$
                             {\sum_{\mu \in O_n} \rho_1^\mu(k)}
 $$
 
-A contraharmonic mean of the first-cell densities of all outgoing links. Both quantities are computed automatically by the library.
+A contraharmonic mean of the first-cell densities of all outgoing motorway links (an outgoing `Destination` contributes its density boundary condition, off-ramps are left out). Both quantities are computed automatically by the library.
 
 ---
 

@@ -20,12 +20,12 @@ pytest
 Run a specific test file:
 
 ```bash
-pytest tests/test_ctm.py -v
+pytest tests/ctm_test.py -v
 ```
 
 ## Code style
 
-The project uses [Black](https://black.readthedocs.io/) for linting and formatting:
+The project uses [Black](https://black.readthedocs.io/) for formatting:
 
 ```bash
 black .

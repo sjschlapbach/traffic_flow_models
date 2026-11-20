@@ -38,7 +38,7 @@ Control inputs applied at each time step:
 | ------------------ | ---------- | ---------------------------------------------------- |
 | Ramp metering rate | \(r_m(k)\) | Maximum allowed inflow through on-ramp \(m\) (veh/h) |
 
-When no controller is attached, \(r_m(k) = \infty\) (no metering).
+When no controller is attached, \(r_m(k) = \infty\) (no metering). In the default `"closed_form"` step the controllers compute \(r_m(k)\) inside \(f\); only the `"exogenous_control"` step takes \(u(k)\) as an explicit input (see [Ramp Metering](../control/ramp-metering.md#control-interval)).
 
 ## Disturbance vector \(d(k)\)
 
@@ -48,8 +48,8 @@ Exogenous quantities that drive the simulation and are not controlled. The distu
 | -------------------------- | ------------------- | ---------------------------------------------------------------------------------------------------- |
 | Turning rates              | \(\beta_n^m(k)\)    | Fraction of flow at node \(n\) directed towards outgoing link \(m\) (one per outgoing link per node) |
 | Origin demand              | \(d_o(k)\)          | Time-varying arrival demand at each `Origin` (veh/h)                                                 |
-| Flow boundary condition    | \(q\_{bc}^m(k)\)    | Maximum exit flow at each `Destination` (veh/h)                                                      |
-| Density boundary condition | \(\rho\_{bc}^m(k)\) | Downstream density at each `Destination` — used by METANET's speed equation (veh/km/lane)            |
+| Flow boundary condition    | \(q\_{bc}^m(k)\)    | Maximum exit flow at each `Destination`, used by CTM (veh/h)                                         |
+| Density boundary condition | \(\rho\_{bc}^m(k)\) | Downstream density at each `Destination` — used by METANET's speed equation and off-ramp supply (veh/km/lane) |
 
 ## Parameter vector \(\theta\)
 
@@ -76,4 +76,4 @@ At \(k=0\), the default initial state is **free-flow with no vehicles**:
 
 $$q_i^m(0) = 0, \quad \rho_i^m(0) = 0, \quad v_i^m(0) = v_f^m, \quad N^m(0) = 0$$
 
-A custom initial state \(x_0\) can be passed to `Simulation.run()` for warm-starting.
+A custom initial state can be passed to `Simulation.run()` for warm-starting (`initial_flows`, `initial_densities`, `initial_speeds`, `initial_origin_queues`, `initial_onramp_queues`, `initial_offramp_queues`).

@@ -9,9 +9,8 @@ Commands assume a POSIX shell. The maintainer's machine is macOS (zsh, BSD userl
 ```bash
 python3.13 -m venv venv          # only if venv/ does not exist yet
 source venv/bin/activate
-pip install -e ".[dev]"          # editable install: runtime + pytest, pylint, mypy + stubs,
+pip install -e ".[dev]"          # editable install: runtime + pytest, pylint, black, mypy + stubs,
                                  # git-cliff, mkdocs
-pip install black                # black is a CI gate but is not in the dev extra
 ```
 
 Every shell (each agent Bash call is a fresh one) starts with `source venv/bin/activate`.

@@ -14,9 +14,9 @@ class FlowController:
         Args:
             onramp: Onramp object to which the controller is attached.
             flow: value of the ramp metering flow that should be applied as the limit
-            control_dt: Optional control interval (same time unit as the simulation `dt`, an
-                integer multiple of it); the metering rate is held between updates. None
-                (default) updates it at every simulation step.
+            control_dt: Optional control interval (same time unit as the simulation
+                `dt`, an integer multiple of it); the metering rate is held between
+                updates. None (default) updates it at every simulation step.
         """
         if flow < 0.0:
             raise ValueError("Flow must be non-negative.")
@@ -34,9 +34,11 @@ class FlowController:
         """Return the fixed regulated onramp flow.
 
         Args:
-            onramp_queues: Dictionary mapping on-ramp IDs to their current queue values (Casadi SX).
+            onramp_queues: Dictionary mapping on-ramp IDs to their
+                current queue values (Casadi SX).
             flows: Dictionary mapping link IDs to their current flow values (Casadi SX).
-            densities: Dictionary mapping link IDs to their current density values (Casadi SX).
+            densities: Dictionary mapping link IDs to their current
+                density values (Casadi SX).
 
         Returns:
             The regulated onramp flow (vehicles per time unit).

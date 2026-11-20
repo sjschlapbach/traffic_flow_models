@@ -52,7 +52,8 @@ class METANETParams(TypedDict):
 
 
 class METANETSymbolicParams(TypedDict):
-    """Symbolic parameter dictionary for the METANET model, supporting CasADi SX expressions.
+    """Symbolic parameter dictionary for the METANET model, supporting
+    CasADi SX expressions.
 
     Identical in structure to :class:`METANETParams` but each value may be either a
     plain Python float or a CasADi SX symbolic variable, enabling mixed
@@ -154,8 +155,8 @@ class METANET:
         :meth:`model_params_to_vec` and :meth:`model_params_vec_to_dict`.
 
         Args:
-            network: Network instance used to determine the ordering of
-                per-link alpha entries when `model_options['link_specific_alpha']` is True.
+            network: Network instance used to determine the ordering of per-link
+                alpha entries when `model_options['link_specific_alpha']` is True.
             model_options: Model options (supports the boolean key
                 ``'link_specific_alpha'``). If False, a single global ``alpha``
                 parameter name is returned; if True, one ``alpha_<linkid>``
@@ -380,16 +381,17 @@ class METANET:
 
         Args:
             param_vec: 1-D calibration parameter vector. If link_specific_alpha=False,
-                      this should have 6 elements (tau, nu, kappa, delta, phi, alpha_global).
-                      If True, it should have (5 + num_links) elements with per-link alphas.
+                this should have 6 elements (tau, nu, kappa, delta, phi, alpha_global).
+                If True, it should have (5 + num_links) elements with per-link alphas.
             network: Network instance (used to count links for alpha expansion).
             model_options: Dictionary of METANET-specific calibration options:
                 - 'link_specific_alpha' (bool): If False, param_vec contains a single
                   global alpha that will be replicated for all links. Default: False.
 
         Returns:
-            System parameter vector ready to be passed to the CasADi system function.
-            Always has format: [tau, nu, kappa, delta, phi, alpha_1, alpha_2, ..., alpha_n]
+            System parameter vector ready to be passed to the CasADi
+            system function. Always has format:
+            [tau, nu, kappa, delta, phi, alpha_1, alpha_2, ..., alpha_n]
         """
         model_options = self._validate_model_options(model_options)
         link_specific_alpha = model_options.get("link_specific_alpha", False)
@@ -795,9 +797,9 @@ class METANET:
         - For an `Onramp`: the density is set to zero (free-flow conditions)
           in order not to influence the inflow from the virtual upstream
           origin onto the store-and-forward onramp link
-        - For an `Offramp`: the connected destination's boundary condition
-          is used (offramps do not carry internal density in the
-          store-and-forward representation).
+        - For an `Offramp`: it is left out (offramps do not carry internal
+          density in the store-and-forward representation); a single
+          outgoing offramp gives zero (free-flow conditions).
         - For a `Destination`: the provided boundary condition is used.
 
         If multiple motorway or destination densities are present they are
@@ -814,10 +816,12 @@ class METANET:
                 destination id to boundary density (CasADi SX).
 
         Returns:
-            Tuple[casadi.SX, Union[casadi.SX, None], Union[casadi.SX, None]]: A tuple containing:
+            Tuple[casadi.SX, Union[casadi.SX, None], Union[casadi.SX, None]]: A tuple
+                containing:
                 - The virtual downstream density of the node (CasADi SX).
                 - The virtual downstream jam density of the node (CasADi SX or None).
-                - The virtual downstream backward wave speed of the node (CasADi SX or None).
+                - The virtual downstream backward wave speed of the node
+                  (CasADi SX or None).
 
         Raises:
             ValueError: If the node has no outgoing links or an offramp has
@@ -931,12 +935,11 @@ class METANET:
     ) -> casadi.SX:
         """Compute the virtual upstream speed for METANET updates.
 
-        The method computes the total available flow into the node by summing
-        the last cell flows of all incoming motorway links as well as the
-        flows from origins and onramps. Based on the total available flow and
-        the provided split ratios, the method computes the outflows for each
-        outgoing link. Additionally, the method computes the virtual upstream speed
-        used in the speed update equations for outgoing motorway links.
+        The virtual upstream speed, used in the speed update equations for
+        outgoing motorway links, is the flow-weighted mean of the last-cell
+        speeds of all incoming motorway links (their plain mean without
+        upstream flow). Nodes without incoming motorway links use a free-flow
+        speed instead.
 
         Args:
             node (Node): Network node for which to compute the virtual upstream speed.
@@ -1043,9 +1046,6 @@ class METANET:
             where `next_outflow` is the offramp outflow (vehicles/time) into
             the connected destination, and `next_queue` is the updated queue
             length on the offramp (vehicles).
-
-        Raises:
-            ValueError: If the `offramp` does not have a `destination` defined.
         """
         mainline_outflow = node_outflows[
             offramp.id
@@ -1258,7 +1258,8 @@ class METANET:
             / (previous_density + params["kappa"])
         )
 
-        # if the considered cell is the last downstream cell of a link into a node with onramp inflows, reduce the speed accordingly
+        # if the considered cell is the first cell of a link leaving a node with onramp
+        # inflows, reduce the speed accordingly
         if upstream_onramp_inflows is not None:
             speed -= (
                 (dt * params["delta"])
@@ -1333,15 +1334,17 @@ class METANET:
                 vector.
             num_speeds (int): Length of the speed portion of the state vector.
             num_origins (int): Number of origin links (state/disturbance size).
-            num_onramps (int): Number of onramp links (state/disturbance size).
-            num_offramps (int): Number of offramp links (state/disturbance size).
+            num_onramps (int): Number of onramp links (state size).
+            num_offramps (int): Number of offramp links (state size).
             num_splits (int): Number of split-ratio disturbance entries.
-            num_destinations (int): Number of boundary-condition disturbance entries.
+            num_destinations (int): Number of destinations (two boundary-condition
+                disturbance entries each).
             dt (float): Simulation timestep.
-            dynamics (DynamicsFormulation): ``"closed_form"`` (default) evaluates the onramp
-                controllers inside the step. ``"exogenous_control"`` ignores them and takes the
-                metering rates as an extra input ``u`` (one entry per onramp, in the order of
-                the onramp queues in the state vector; ``inf`` means unmetered).
+            dynamics (DynamicsFormulation): ``"closed_form"`` (default) evaluates
+                the onramp controllers inside the step. ``"exogenous_control"``
+                ignores them and takes the metering rates as an extra input ``u``
+                (one entry per onramp, in the order of the onramp queues in the
+                state vector; ``inf`` means unmetered).
 
         Returns:
             casadi.Function: A CasADi function `f(params, x, d) -> x_next`
@@ -1365,8 +1368,8 @@ class METANET:
 
         # ! Set up variables for state update and cast types to be correct
         # set up state and disturbance vectors
-        # state: flows, densities, speeds, origin, onramp
-        # disturbances: origin_demands, offramp_split_ratios
+        # state: flows, densities, speeds, origin, onramp and offramp queues
+        # disturbances: turning rates, origin demands, destination boundary conditions
         # CasADi type stubs are incorrect - sym() does accept string as first arg
         x = casadi.SX.sym(  # type: ignore
             "x",  # type: ignore

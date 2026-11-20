@@ -53,7 +53,7 @@ The model step has two formulations, selected with `network_update_function(...,
 
 ALINEA is a **local I-type feedback controller**. It regulates the density at a detector location on the mainline to a set point (typically the critical density \(\rho\_{cr}\) for maximum throughput):
 
-$$r_m(k+1) = q_m^r(k) + K'_I \bigl[\rho_j^\mu(k) - \rho_{set}^\mu\bigr]$$
+$$r_m(k+1) = q_m^r(k) + K'_I \bigl[\rho_{set}^\mu - \rho_j^\mu(k)\bigr]$$
 
 where \(K'\_I = K_I L_j^\mu / \Delta t\) is the gain (transformed from the original occupancy-based formulation to density units).
 
@@ -81,7 +81,7 @@ onramp.controller = AlineaController(
 
 METALINE distributes control effort across **multiple on-ramps** simultaneously, using density measurements from several relevant locations. This reduces the myopia of local controllers:
 
-$$r_m(k+1) = q_m^r(k) + K_{METALINE}^m \cdot \bigl[\boldsymbol{\rho}(k) - \boldsymbol{\rho}_{set}\bigr]$$
+$$r_m(k+1) = q_m^r(k) - K_{METALINE}^m \cdot \bigl[\boldsymbol{\rho}(k) - \boldsymbol{\rho}_{set}\bigr]$$
 
 where \(K\_{METALINE}^m\) is the \(m\)-th row of the gain matrix. A purely diagonal gain matrix reduces to uncoordinated ALINEA-style control.
 

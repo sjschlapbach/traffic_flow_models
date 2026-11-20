@@ -10,7 +10,7 @@ class MotorwayLink:
 
     The MotorwayLink class stores mainline `Cell` instances as a bidirectional
     linked list arranged from upstream to downstream. It provides convenience
-    methods to add cells and attach or detach on-/off-ramps. The MotorwayLink does
+    methods to add cells. The MotorwayLink does
     not perform simulation — it only manages the topology and basic
     validation when linking objects together. Link-level physical
     parameters (e.g. lane capacity, free-flow speed, jam density) are
@@ -161,7 +161,7 @@ class MotorwayLink:
         self._tail = None
         self._cell_count = 0
 
-        # determine maximum allowable cell size from CFL condition
+        # determine minimum allowable cell size from CFL condition
         min_cell_length = self.vf * dt
         valid_cell_size = max(preferred_cell_size, min_cell_length + 0.001)
         num_cells = int(self.length // valid_cell_size)

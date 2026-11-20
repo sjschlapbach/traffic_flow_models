@@ -4,15 +4,15 @@ A `Network` is a directed graph of **links** and **nodes**. The same topology is
 
 ## Link types
 
-| Class          | Role                           | Models state                                         |
-| -------------- | ------------------------------ | ---------------------------------------------------- |
-| `MotorwayLink` | Homogeneous highway segment    | density \(\rho\), speed \(v\), flow \(q\) per cell   |
-| `Onramp`       | Merging link from surface road | flow \(q\), virtual queue \(N\)                      |
-| `Offramp`      | Diverging link to surface road | flow \(q\), virtual queue \(N\)                      |
-| `Origin`       | Virtual demand source          | demand \(d(k)\), virtual queue \(N\)                 |
-| `Destination`  | Virtual flow sink              | boundary condition \(q_{bc}(k)\) or \(\rho_{bc}(k)\) |
+| Class          | Role                           | Models state                                                     |
+| -------------- | ------------------------------ | ---------------------------------------------------------------- |
+| `MotorwayLink` | Homogeneous highway segment    | density \(\rho\), speed \(v\), flow \(q\) per cell               |
+| `Onramp`       | Merging link from surface road | flow \(q\), virtual queue \(N\)                                  |
+| `Offramp`      | Diverging link to surface road | flow \(q\), virtual queue \(N\)                                  |
+| `Origin`       | Virtual demand source          | flow \(q\), virtual queue \(N\) (demand \(d(k)\))                 |
+| `Destination`  | Virtual flow sink              | flow \(q\) (boundary conditions \(q_{bc}(k)\) and \(\rho_{bc}(k)\)) |
 
-`Origin`, `Onramp`, and `Offramp` are all modelled as **store-and-forward** links: they accept arbitrary inflow and store excess traffic in a virtual queue \(N(k)\), so highway backpressure is captured without enforcing hard capacity on the ramp itself. This is consistent with the network-level METANET formulation proposed by A. Kotsialos, M. Papageorgiou, et al. (2002).
+`Origin`, `Onramp`, and `Offramp` are all modelled as **store-and-forward** links: they accept arbitrary inflow and store excess traffic in a virtual queue \(N(k)\), so highway backpressure is captured in the queue. On- and off-ramp outflows are limited by the ramp capacity; origins have no capacity limit. This is consistent with the network-level METANET formulation proposed by A. Kotsialos, M. Papageorgiou, et al. (2002).
 
 ## Nodes
 
@@ -45,17 +45,17 @@ merge_node = Node(
 
 $$L_i^m \;\geq\; \Delta t \cdot v_f^m$$
 
-This prevents vehicles from travelling across more than one cell per time step and guarantees numerical stability. A desired cell size \(L\_{des}\) can be passed as a constructor argument; the library adjusts it upward if necessary to satisfy the CFL condition for the given time step and free-flow speed.
+This prevents vehicles from travelling across more than one cell per time step and guarantees numerical stability. A desired cell size \(L\_{des}\) can be passed as `preferred_cell_size` to `Simulation.run()` (default 0.5 km); the library adjusts it upward if necessary to satisfy the CFL condition for the given time step and free-flow speed.
 
 ## Regularity assumptions
 
 The following structural rules are enforced during `Network` validation:
 
-- Every `Origin` or `Destination` node has exactly **one** connected link.
+- Every `Origin` node has the origin as its only incoming link and exactly **one** outgoing link (motorway link or on-ramp).
 - `Origin` nodes directly connected to a highway link or an on-ramp act as store-and-forward links; no spillback from the ramp is modelled.
-- `Offramp` nodes are connected to exactly one upstream motorway link and one downstream `Destination`.
+- The node downstream of an `Offramp` has the off-ramp as its only incoming link and exactly one outgoing `Destination`.
 
-These assumptions simplify the model equations and ensure a well-posed network topology for both CTM and METANET. They are validated during the construction of the non-linear model equation system and will raise an error if violated.
+These assumptions simplify the model equations and ensure a well-posed network topology for both CTM and METANET. `Network.validate()` checks them and raises an error if they are violated; the construction of the non-linear model equation system also raises an error for some violations.
 
 ## Full network example
 

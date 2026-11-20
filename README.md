@@ -217,7 +217,7 @@ print(f"Average Speed: {avg_speed:.2f} km/h")
 
 # Generate video visualization
 sim.visualize(
-    results_filepath="results/simulation_results.json",
+    results_filepath="results/metanet_run/simulation_results.json",
     output_filepath="results/simulation.avi",
     fps=30,
     subsampling=1

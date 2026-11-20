@@ -22,7 +22,8 @@ class Origin:
 
         Args:
             id: Identifier for the origin link (for demand assignment).
-            destination_node_id: Identifier of the `Node` to which this origin is connected.
+            destination_node_id: Identifier of the `Node` to which this
+                origin is connected.
         """
 
         self.id: str = (

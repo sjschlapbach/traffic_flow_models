@@ -73,7 +73,7 @@ The calibration targets the six `METANETParams` fields: `tau`, `nu`, `kappa`, `d
 | ------------------- | ---------------------- | --------------------------------------------------------------------------------------- |
 | `calibrated_params` | `METANETParams`        | Calibrated parameter dict                                                               |
 | `result`            | `scipy.OptimizeResult` | Full optimizer state (`result.cost`, `result.success`, `result.nfev`, `result.message`) |
-| `param_history`     | `NDArray[float]`       | 2-D array `(n_evals × n_params)` — parameter vector at each function evaluation         |
+| `param_history`     | `NDArray[float]`       | 2-D array `(n_evals × n_params)` — parameter vector at each residual evaluation         |
 
 ---
 
@@ -100,7 +100,7 @@ The ground truth is a JSON file with the same layout that `Simulation.save_resul
 
 - `time_array` is in hours. State series hold one entry per time step (per-cell lists for motorway links). Disturbance series hold one entry fewer, since they apply between steps.
 - **Full files** (`use_disturbance_from_file=True`, the default) must contain all state fields (including the queue fields) and all four disturbance fields.
-- **Mainline-only files** (`use_disturbance_from_file=False`) only need `flows`, `densities` and `speeds` for the mainline motorway links, plus the two boundary-condition fields. Queues, demands and turning rates are not read from the file. Instead, all four disturbance callables (`origin_demands_fn`, `turning_rates_fn`, `flow_boundary_conditions_fn`, `density_boundary_conditions_fn`) must be passed. Set `metadata.model_type` to `"MICRO"` so that `Simulation.visualize` and `visualize_comparison` also load the file in mainline-only mode.
+- **Mainline-only files** (`use_disturbance_from_file=False`) only need `flows`, `densities` and `speeds` for the mainline motorway links, plus the two boundary-condition fields. Queues are optional (zero when absent); demands and turning rates are not read from the file. Instead, all four disturbance callables (`origin_demands_fn`, `turning_rates_fn`, `flow_boundary_conditions_fn`, `density_boundary_conditions_fn`) must be passed. Set `metadata.model_type` to `"MICRO"` so that `Simulation.visualize` and `visualize_comparison` also load the file in mainline-only mode.
 - **Ramp metering**: On-ramp controllers of the network are evaluated inside the model step on the predicted states. If a controller sets `control_dt` (see [Ramp metering](../control/ramp-metering.md#control-interval)), the calibrator instead reconstructs the metering rates of all on-ramps once from the recorded states, since the model step then takes every rate as an input: rates of controllers with a `control_dt` are held for it, as `Simulation.run` does, and controllers without one are updated at every step. This needs a full file, a time step that divides `control_dt`, and a series that starts with a controller update (as files from `Simulation.save_results` do).
 - If the number of cells per link in the file differs from the network partitioning, the per-cell arrays are resampled spatially, using `metadata.link_properties[<id>].cell_lengths` when present (uniform cells otherwise). Use `Simulation.resample_results_file` to resample a file to a different time grid.
 
@@ -166,7 +166,7 @@ calibrated_params, result, param_history = calibrator.calibrate_model_params(
 
 ## Correlation analysis
 
-High off-diagonal correlations (> 0.8) indicate parameter pairs that cannot be identified simultaneously. The analysis is triggered automatically during `calibrate_model_params()` when `plot_correlation` is set. It can also be run standalone on a result returned from a previous call:
+High off-diagonal correlations (> 0.8) indicate parameter pairs that cannot be identified simultaneously. The analysis is triggered automatically during `calibrate_model_params()` when `plot_correlation` and `save_dir` are set. It can also be run standalone on a result returned from a previous call:
 
 ```python
 param_names = METANET().get_calibration_param_names(network=net)
@@ -181,7 +181,7 @@ calibrator.analyze_parameter_correlation(
 )
 ```
 
-If a pair is strongly correlated, consider fixing one parameter to a physically motivated value by setting its lower and upper bounds to the same value, then re-running.
+If a pair is strongly correlated, consider fixing one parameter to a physically motivated value by narrowing its bounds to a small interval around that value, then re-running.
 
 ---
 

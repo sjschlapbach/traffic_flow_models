@@ -4,7 +4,7 @@ This guide walks through a complete CTM simulation, introducing the main buildin
 
 ## 1. Build a network
 
-A network consists of **links** connected by **nodes**. Virtual `Origin` and `Destination` nodes represent demand sources and sinks at the boundary of the modelled area.
+A network consists of **links** connected by **nodes**. Virtual `Origin` and `Destination` links represent demand sources and sinks at the boundary of the modelled area.
 
 The example below models a simple motorway stretch with a bottleneck (lane drop in the middle) and an on-ramp.
 
@@ -148,11 +148,11 @@ time_arr, states, disturbances = sim.run(
 )
 ```
 
-To generate a basic video from saved results:
+To generate a basic video from saved results (every node needs a `position`, see [Visualization](../simulation/visualization.md)):
 
 ```python
 sim.visualize(
-    results_filepath="results/quickstart/results.json",
+    results_filepath="results/quickstart/simulation_results.json",
     output_filepath="results/quickstart/simulation.avi",
     fps=10,
 )
