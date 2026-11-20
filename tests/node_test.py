@@ -107,7 +107,7 @@ class TestNode:
 
         # completely unrelated type
         with pytest.raises(TypeError):
-            n.add_incoming(123)
+            n.add_incoming(123)  # type: ignore
 
     def test_remove_and_set_methods(self):
         m1 = MotorwayLink(

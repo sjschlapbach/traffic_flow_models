@@ -58,22 +58,21 @@ def main() -> None:
     ]
     rows = [header]
     tex = [
-        r"\begin{tabular}{ll" + " r" * len(names) + " r r r}",
+        r"\begin{tabular}{ll" + " r" * len(names) + " r}",
         r"\toprule",
         " & ".join(
             ["Scenario", "Data"]
             + [PARAMETER_SYMBOLS[name] for name in names]
-            + ["Cost", r"$n_\mathrm{fev}$", "Status"]
+            + ["Evaluations"]
         )
         + r" \\",
-        " & ".join(["", ""] + [f"({UNITS[name]})" for name in names] + ["", "", ""])
-        + r" \\",
+        " & ".join(["", ""] + [f"({UNITS[name]})" for name in names] + [""]) + r" \\",
         r"\midrule",
     ]
     for label, key in [("true", "true_params"), ("start", "initial_params")]:
         values = [f"{_display(name, first[key][name]):.4g}" for name in names]
         tex.append(rf"\multicolumn{{2}}{{l}}{{{label}}} & " + " & ".join(values))
-        tex[-1] += r" & & & \\"
+        tex[-1] += r" & \\"
     tex.append(r"\midrule")
 
     for (scenario, condition), rid in CALIBRATION_RUNS.items():
@@ -100,7 +99,7 @@ def _run_rows(
         rows.append([scenario, condition, name, UNITS[name], true, start, estimate])
         rows[-1] += [error, cal["cost"], cal["nfev"], cal["status"], cal["message"]]
         cells.append(f"{estimate:.4g} ({error:.1f})")
-    fit = [_tex_number(cal["cost"]), str(cal["nfev"]), str(cal["status"])]
+    fit = [str(cal["nfev"])]
     line = " & ".join([scenario, CONDITION_LABELS[condition], *cells, *fit]) + r" \\"
     return rows, line
 
@@ -108,15 +107,6 @@ def _run_rows(
 def _display(name: str, value: float) -> float:
     """Return a parameter value in the unit of the table (tau in seconds)."""
     return value * SECONDS_PER_HOUR if name == "tau" else value
-
-
-def _tex_number(value: float) -> str:
-    """Format a number with three significant digits, powers of ten in math mode."""
-    text = f"{value:.3g}"
-    if "e" not in text:
-        return text
-    mantissa, exponent = text.split("e")
-    return rf"${mantissa} \times 10^{{{int(exponent)}}}$"
 
 
 if __name__ == "__main__":

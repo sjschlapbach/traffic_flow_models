@@ -1,9 +1,9 @@
 """Fig. 4: ramp metering on scenario E (three on-ramps) under METANET.
 
 Top row: space-time density maps without control, with ALINEA at every on-ramp, with
-METALINE and with ALINEA plus a maximum queue N^max, on one colour scale. Bottom row:
-queue at the mainline origin and at each on-ramp, one line per variant, with N^max as
-reference. Run with ``python -m paper.fig_ramp_metering``.
+METALINE and with ALINEA plus a maximum queue N_m^max, on one colour scale. Bottom
+row: queue at the mainline origin and at each on-ramp, one line per variant, with
+N_m^max as reference. Run with ``python -m paper.fig_ramp_metering``.
 """
 
 import matplotlib.pyplot as plt
@@ -20,7 +20,7 @@ VARIANTS = {
     "no control": "sim_e_none_metanet",
     "ALINEA": "sim_e1_alinea_metanet",
     "METALINE": "sim_e2_metaline_metanet",
-    r"ALINEA, $N^\mathrm{max}$": "sim_e1_alinea_nmax_metanet",
+    r"ALINEA, $N_m^{\max}$": "sim_e1_alinea_nmax_metanet",
 }
 FIGURE_NAME = "fig_ramp_metering"
 FIGURE_HEIGHT_MM = 105
@@ -98,7 +98,7 @@ def _draw_queues(queues: list[Axes], onramp_ids: list[str]) -> list[Line2D]:
         style.time_axis(ax)
     for ax in queues[1:]:
         style.reference_line(ax, MAX_QUEUE_VEH, None)
-    style.margin_label(queues[-1], MAX_QUEUE_VEH, r"$N^\mathrm{max}$")
+    style.margin_label(queues[-1], MAX_QUEUE_VEH, r"$N_m^{\max}$")
     queues[0].set_ylabel(style.QUEUE_LABEL)
     queues[0].set_ylim(bottom=0.0)
     return handles

@@ -981,29 +981,30 @@ class METANET:
                 node_upstream_speed = casadi.SX(node.outgoing[0].vf)
 
         else:
-            # keep track of the minimum free-flow speed of incoming motorway links
-            # -> in case upstream flow is zero, use this value as upstream speed
-            min_vf: float = np.inf
-
+            speed_terms = []
             numer_terms = []
             denom_terms = []
             for inc in node.incoming:
                 if isinstance(inc, MotorwayLink):
                     # motorway link: use the last cell speed and flow for upstream speed
+                    speed_terms.append(speeds[inc.id][-1])
                     numer_terms.append(speeds[inc.id][-1] * flows[inc.id][-1])
                     denom_terms.append(flows[inc.id][-1])
-                    min_vf = min(min_vf, inc.vf)
 
             # catch the case where no values were measured -> should not happen
-            if len(numer_terms) == 0 or len(denom_terms) == 0 or np.isinf(min_vf):
+            if len(speed_terms) == 0:
                 raise ValueError(
                     f"No incoming motorway links with defined speeds/flows for node {node.id}."
                 )
 
+            # flow-weighted mean of the last cell speeds; without upstream flow (empty
+            # or stopped links) the plain mean, which equals the speed of a single
+            # incoming link and keeps the upstream speed continuous as the flow vanishes
             numer_sum = casadi.sum(casadi.vertcat(*numer_terms))
             denom_sum = casadi.sum(casadi.vertcat(*denom_terms))
+            mean_speed = casadi.sum(casadi.vertcat(*speed_terms)) / len(speed_terms)
             node_upstream_speed = casadi.if_else(
-                denom_sum == 0, min_vf, numer_sum / denom_sum
+                denom_sum == 0, mean_speed, numer_sum / denom_sum
             )
 
         return node_upstream_speed

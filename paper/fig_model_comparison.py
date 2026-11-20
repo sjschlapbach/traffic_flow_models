@@ -109,7 +109,7 @@ def _draw_series(panels: list[Axes], bottleneck: MotorwayLink) -> list[Line2D]:
         label="on-ramp demand",
         **style.DEMAND_STYLE,
     )
-    style.reference_line(panels[0], bottleneck.Qc, r"$Q_\mathrm{c}$")
+    style.reference_line(panels[0], bottleneck.Qc, r"$Q_c$")
     for ax, label in zip(
         panels, [style.FLOW_LABEL, style.FLOW_LABEL, style.QUEUE_LABEL]
     ):

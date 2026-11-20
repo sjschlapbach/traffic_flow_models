@@ -70,7 +70,7 @@ CONTROLLER_STYLES: dict[str, dict[str, Any]] = {
     "no control": {"color": "#000000", "linestyle": "-"},
     "ALINEA": {"color": "#009E73", "linestyle": "-", "marker": "o"},
     "METALINE": {"color": "#CC79A7", "linestyle": "-", "marker": "^"},
-    r"ALINEA, $N^\mathrm{max}$": {"color": "#E69F00", "linestyle": "-", "marker": "D"},
+    r"ALINEA, $N_m^{\max}$": {"color": "#E69F00", "linestyle": "-", "marker": "D"},
 }
 MARK_EVERY = 30  # one marker per 30 stored samples (5 min at dt = 10 s)
 
@@ -80,7 +80,7 @@ MEASUREMENT_STYLE: dict[str, Any] = {
     "marker": ".",
     "markersize": 1.5,
 }
-REFERENCE_COLOUR = "#404040"  # reference lines (capacity, set point, N^max)
+REFERENCE_COLOUR = "#404040"  # reference lines (capacity, maximum queue)
 DEMAND_STYLE: dict[str, Any] = {"color": REFERENCE_COLOUR, "linewidth": 0.6}
 DENSITY_COLORMAP = "viridis"
 MAP_MARKER_COLOUR = "white"  # marked positions and labels inside density maps
@@ -92,7 +92,7 @@ POSITION_LABEL = "Position (km)"
 FLOW_LABEL = r"Flow $q$ (veh/h)"
 DENSITY_LABEL = r"Density $\rho$ (veh/km/lane)"
 SPEED_LABEL = r"Speed $v$ (km/h)"
-QUEUE_LABEL = r"Queue $N$ (veh)"
+QUEUE_LABEL = r"Queue $N_m$ (veh)"
 
 TIME_TICK_MIN = 30.0
 

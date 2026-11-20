@@ -784,8 +784,52 @@ class TestMETANET:
 
         # unknown option keys should raise
         with pytest.raises(ValueError):
-            model._validate_model_options({"unknown_key": True})
+            # invalid input on purpose
+            model._validate_model_options({"unknown_key": True})  # type: ignore
 
         # non-bool link_specific_alpha should raise
         with pytest.raises(ValueError):
-            model._validate_model_options({"link_specific_alpha": "yes"})
+            # invalid input on purpose
+            model._validate_model_options({"link_specific_alpha": "yes"})  # type: ignore
+
+    def test_node_upstream_speed_continuous_without_upstream_flow(self):
+        # a stopped upstream cell (speed and flow 0) gives upstream speed 0 and an empty
+        # one its free-flow speed, so the upstream speed is continuous as the flow vanishes
+        model = METANET()
+        upstream = MotorwayLink(
+            id="up",
+            length=1.0,
+            lanes=3,
+            lane_capacity=2000,
+            free_flow_speed=100,
+            jam_density=180,
+        )
+        downstream = MotorwayLink(
+            id="down",
+            length=1.0,
+            lanes=3,
+            lane_capacity=2000,
+            free_flow_speed=100,
+            jam_density=180,
+        )
+        node = Node(id="n", incoming=[upstream], outgoing=[downstream])
+        speed = casadi.SX.sym("speed")  # type: ignore
+        flow = casadi.SX.sym("flow")  # type: ignore
+        upstream_speed = casadi.Function(
+            "upstream_speed",
+            [speed, flow],
+            [model._compute_node_upstream_speed(node, {"up": flow}, {"up": speed})],
+        )
+
+        stopped, empty, slow, slow_without_flow = (
+            np.array(upstream_speed(speed_value, flow_value)).flatten()[0]
+            for speed_value, flow_value in [
+                (0.0, 0.0),
+                (100.0, 0.0),
+                (1e-6, 1e-4),
+                (1e-6, 0.0),
+            ]
+        )
+        assert stopped == 0.0
+        assert empty == 100.0
+        assert np.isclose(slow, slow_without_flow)

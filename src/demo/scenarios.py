@@ -291,7 +291,8 @@ def setup_network_c2() -> tuple[Network, dict, dict]:
 
     An instance of the AlineaController will be attached to the onramp, regulating
     the inflow from the on-ramp into the mainline segment based on the current density
-    in the first cell of the downstream motorway link (m2) and a target critical density.
+    in the last cell of the downstream motorway link (m2), directly upstream of the lane
+    drop, and a target critical density.
 
     The target critical density is fixed to an estimated value of 30 veh/km/lane here.
     The feedback gain is set to a value of 5.0 to avoid oscillations.
@@ -313,7 +314,8 @@ def setup_network_c2() -> tuple[Network, dict, dict]:
     onramp.controller = AlineaController(
         onramp=onramp,
         measurement_link_id="m2",
-        measurement_cell_idx=0,
+        # last of the two 0.5 km cells of m2, directly upstream of the lane drop
+        measurement_cell_idx=1,
         gain=5.0,
         density_setpoint=30.0,
     )
@@ -512,6 +514,18 @@ def setup_network_d() -> tuple[Network, dict, dict]:
     return net, metadata, origin_demands
 
 
+def mainline_demand_e(time: float) -> float:
+    """Mainline demand of scenario E [veh/h] at ``time`` [h]."""
+    return demand(time, 300 / 3600, 1800 / 3600, 3600 / 3600, 3500)
+
+
+def onramp_demand_e(time: float) -> float:
+    """Demand of each onramp of scenario E [veh/h] at ``time`` [h]."""
+    # peak at 75 % of the onramp capacity (1 lane x 2000 veh/h/lane), so that an onramp
+    # only queues when its merge is congested or its controller holds vehicles back
+    return demand(time, 900 / 3600, 2700 / 3600, 3600 / 3600, 1500)
+
+
 def setup_network_e() -> tuple[Network, dict, dict]:
     """
     Scenario E base: mainline with three sequential onramps.
@@ -635,12 +649,12 @@ def setup_network_e() -> tuple[Network, dict, dict]:
         "splits": splits,
     }
 
-    # use a mix of demand profiles for the three onramps
+    # the same demand profile for the three onramps
     origin_demands = {
-        origin.id: mainline_demand_d,
-        origin_onr1.id: onramp_demand_a,
-        origin_onr2.id: onramp_demand_b,
-        origin_onr3.id: onramp_demand_c,
+        origin.id: mainline_demand_e,
+        origin_onr1.id: onramp_demand_e,
+        origin_onr2.id: onramp_demand_e,
+        origin_onr3.id: onramp_demand_e,
     }
 
     return net, metadata, origin_demands
@@ -678,10 +692,11 @@ def setup_network_e2() -> tuple[Network, dict, dict]:
     measurement_cells = [("m2", 0), ("m3", 0), ("m4", 0)]
     density_setpoints = [("m2", 0, 30.0), ("m3", 0, 30.0), ("m4", 0, 30.0)]
 
-    # example coordinated gain matrix with coupling
+    # coordinated gain matrix: the upstream onramps also respond to the density downstream
+    # of the last onramp (m4), which carries all traffic
     gain_matrix = {
-        "onr1": np.array([[5.0, 10.0, 1.0]], dtype=np.float64),
-        "onr2": np.array([[1.0, 5.0, 3.0]], dtype=np.float64),
+        "onr1": np.array([[5.0, 10.0, 10.0]], dtype=np.float64),
+        "onr2": np.array([[1.0, 5.0, 10.0]], dtype=np.float64),
         "onr3": np.array([[1.0, 1.0, 5.0]], dtype=np.float64),
     }
 

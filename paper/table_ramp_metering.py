@@ -17,26 +17,34 @@ from paper.runs import RUNS, build_network, ensure_runs, load_json, onramps
 
 RERUN_SIMULATION: bool = False
 TABLE_NAME = "table_ramp_metering"
-CONTROL_INTERVAL_RUNS = ["sim_e1_alinea_tc_metanet", "sim_e1_alinea_tc_gain_metanet"]
+# ALINEA with a control interval: demo gain, and gain retuned for the interval
+CONTROL_INTERVAL_RUNS = {
+    "sim_e1_alinea_tc_metanet": "",
+    "sim_e1_alinea_tc_gain_metanet": " (retuned)",
+}
+BASELINE = "no control"
 
 # (CSV column, TeX header, unit, TeX number format)
 COLUMNS = [
     ("total_time_spent_veh_h", "TTS", r"veh\,h", "{:.1f}"),
-    ("tts_change_percent", r"$\Delta$TTS", r"\%", "{:+.1f}"),
+    ("tts_change_percent", r"$\Delta$TTS", r"\%", "${:+.1f}$"),
     ("motorway_vht_veh_h", "VHT", r"veh\,h", "{:.1f}"),
     ("queue_time_veh_h", "queues", r"veh\,h", "{:.1f}"),
     ("mean_speed_km_h", r"$\bar v$", "km/h", "{:.1f}"),
     ("max_density_veh_km_lane", r"$\max \rho$", "veh/km/lane", "{:.1f}"),
-    ("max_onramp_queue_veh", r"$\max N_\mathrm{r}$", "veh", "{:.1f}"),
-    ("max_origin_queue_veh", r"$\max N_\mathrm{o}$", "veh", "{:.1f}"),
+    ("max_onramp_queue_veh", r"$\max N_m$ (on-ramps)", "veh", "{:.1f}"),
+    ("max_origin_queue_veh", r"$\max N_m$ (origin)", "veh", "{:.1f}"),
 ]
 
 
 def main() -> None:
     """Build Table 2 from the stored runs."""
-    ensure_runs(list(VARIANTS.values()) + CONTROL_INTERVAL_RUNS, rerun=RERUN_SIMULATION)
-    rows_by_label = {**VARIANTS, **{_label(rid): rid for rid in CONTROL_INTERVAL_RUNS}}
-    baseline = _values(VARIANTS["no control"])[0]
+    ensure_runs([*VARIANTS.values(), *CONTROL_INTERVAL_RUNS], rerun=RERUN_SIMULATION)
+    rows_by_label = {
+        **VARIANTS,
+        **{_label(rid) + suffix: rid for rid, suffix in CONTROL_INTERVAL_RUNS.items()},
+    }
+    baseline = _values(VARIANTS[BASELINE])[0]
     values = {}
     for label, rid in rows_by_label.items():
         tts, *rest = _values(rid)
@@ -51,6 +59,8 @@ def main() -> None:
     ]
     for label, row in values.items():
         cells = [c[3].format(value) for c, value in zip(COLUMNS, row)]
+        if label == BASELINE:
+            cells[1] = "--"
         tex.append(" & ".join([label.replace(" s,", r"\,s,"), *cells]) + r" \\")
     tex += [r"\bottomrule", r"\end{tabular}", ""]
     rows: list[list[object]] = [["variant", "run", *[c[0] for c in COLUMNS]]]
@@ -64,8 +74,8 @@ def _label(rid: str) -> str:
     if not isinstance(controller, AlineaController) or controller.control_dt is None:
         raise TypeError(f"run {rid} needs ALINEA with a control interval")
     return (
-        rf"ALINEA, $T_\mathrm{{c}} = {controller.control_dt * 3600:g}$ s, "
-        rf"$K = {controller.gain:g}$"
+        rf"ALINEA, $T_c = {controller.control_dt * 3600:g}$ s, "
+        rf"$K_I' = {controller.gain:g}$"
     )
 
 
