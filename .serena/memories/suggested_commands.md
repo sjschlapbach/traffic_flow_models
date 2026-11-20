@@ -35,7 +35,7 @@ python3 -m venv /tmp/pyright-venv && /tmp/pyright-venv/bin/pip install -q pyrigh
 /tmp/pyright-venv/bin/pyright --pythonpath venv/bin/python src tests
 ```
 
-Known casadi false positive: SWIG defines `SX.sym(*args)` / `MX.sym(*args)` so that pyright reads the arguments as SX/MX. Put `# type: ignore` on such CasADi lines (allowed without asking; mypy's unused-ignore warning is off only for `model.ctm` / `model.metanet`). Pre-existing pyright errors outside the touched code (tests that pass invalid input on purpose) are not yours to fix unless asked.
+Known casadi false positive: SWIG defines `SX.sym(*args)` / `MX.sym(*args)` so that pyright reads the arguments as SX/MX. Put `# type: ignore` on such CasADi lines (allowed without asking; mypy's unused-ignore warning is off only for `model.ctm` / `model.metanet`). pyright reports no errors on `src tests paper`; the one warning (wildcard re-export in `src/__init__.py`) is kept on purpose.
 
 The stub pins in the dev extra follow the runtime pins: `scipy-stubs` 1.16.3.x for scipy 1.16.3, `types-networkx` 3.5.x, `types-tqdm` 4.67.x, and `numpy-typing-compat` 20251206.2.3 (the numpy 2.3 line; a newer release would upgrade numpy). Bump them together with the library.
 
@@ -49,6 +49,17 @@ python -m src.demo.metanet_calibration                        # --parameter-sear
 ```
 
 Outputs go to `results/` (git-ignored); delete test runs afterwards.
+
+## Paper figures and tables
+
+```bash
+python -m paper.fig_model_comparison     # same for fig_ramp_metering, table_ramp_metering, fig_calibration, table_calibration
+PYTHONPATH=. pylint paper                # not in CI; paper/ must stay at 10.00
+mypy --strict --explicit-package-bases paper
+/tmp/pyright-venv/bin/pyright --pythonpath venv/bin/python paper
+```
+
+Run from the repo root. Stored runs go to `paper/results/` (git-ignored); figures and tables to `paper/figures/` and `paper/tables/` (committed, byte-stable). CI covers `paper/` only through `black --check .`. Full clean run: about one minute.
 
 ## Docs
 
@@ -70,6 +81,7 @@ MkDocs Material, `mkdocstrings` python handler (`paths: [src]`, Google docstring
 | `scripts_basics.yml` | `src.demo.plot_demo_network --no-plot` |
 | `scripts_ctm_simulation.yml` / `scripts_metanet_simulation.yml` | demo scenarios A, B, C, C1–C4, D |
 | `scripts_metanet_calibration.yml` | `src.demo.metanet_calibration` |
+| `scripts_paper.yml` (only when `src/`, `paper/` or the workflow change) | deletes `paper/results`, runs the five `python -m paper.<script>`, reports (informational) whether figures and tables are byte-identical to the committed ones, uploads them as artifact `paper-outputs` |
 | `docs_release.yml` (tag) | `mkdocs gh-deploy --force` to GitHub Pages |
 | `release.yml` (tag `v*.*.*`) | checks tag == `pyproject.toml` == changelog version, builds, publishes to PyPI, commits `CHANGELOG.md` to `master`, creates a GitHub Release |
 

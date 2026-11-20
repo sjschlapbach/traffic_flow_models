@@ -1,0 +1,59 @@
+name: Publication Scripts
+
+on:
+  push:
+    branches:
+      - master
+      - dev
+    paths:
+      - "src/**"
+      - "paper/**"
+      - ".github/workflows/scripts_paper.yml"
+  pull_request:
+    types: [opened, synchronize]
+    paths:
+      - "src/**"
+      - "paper/**"
+      - ".github/workflows/scripts_paper.yml"
+
+jobs:
+  run-script:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: [3.13]
+    steps:
+      - uses: actions/checkout@v5
+      - name: Set up Python 3.13
+        uses: actions/setup-python@v6
+        with:
+          python-version: 3.13
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+      - name: Generate all paper figures and tables from a clean state
+        run: |
+          rm -rf paper/results
+          python -m paper.fig_model_comparison
+          python -m paper.fig_ramp_metering
+          python -m paper.table_ramp_metering
+          python -m paper.fig_calibration
+          python -m paper.table_calibration
+      - name: Compare with the committed outputs (informational)
+        run: |
+          if git diff --quiet -- paper/figures paper/tables; then
+            echo "Generated figures and tables are byte-identical to the committed ones."
+          else
+            echo "Generated outputs differ from the committed ones:"
+            git diff --stat -- paper/figures paper/tables
+            git diff -- paper/tables
+          fi
+      - name: Upload figures and tables
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: paper-outputs
+          path: |
+            paper/figures
+            paper/tables

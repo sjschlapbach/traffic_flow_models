@@ -1,0 +1,26 @@
+\fontsize{10.5}{12.6}\selectfont
+\begin{tabular}{@{}l r r r r r r r@{}}
+\toprule
+ & $\tau$ & $\nu$ & $\kappa$ & $\delta$ & $\phi$ & $\alpha$ & Evaluations \\
+Data & (s) & (km$^2$/h) & (veh/km/lane) &  &  &  &  \\
+\midrule
+true values & 22.00 & 15.00 & 10.00 & 1.4000 & 10.00 & 2.000 &  \\
+start values & 18.00 & 60.00 & 40.00 & 0.0122 & 2.98 & 1.636 &  \\
+\midrule
+\multicolumn{8}{@{}l}{\textit{Scenario 1}} \\
+\quad exact & 22.00 & 15.00 & 10.00 & 1.4000 & 10.00 & 2.000 & 18 \\
+ & {\footnotesize(0.0)} & {\footnotesize(0.0)} & {\footnotesize(0.0)} & {\footnotesize(0.0)} & {\footnotesize(0.0)} & {\footnotesize(0.0)} &  \\[2pt]
+\quad noisy & 22.59 & 14.28 & 7.60 & 1.0434 & 8.89 & 1.988 & 25 \\
+ & {\footnotesize(2.7)} & {\footnotesize(4.8)} & {\footnotesize(24.0)} & {\footnotesize(25.5)} & {\footnotesize(11.1)} & {\footnotesize(0.6)} &  \\[2pt]
+\quad noisy, $\lambda = 0.1$ & 22.60 & 14.28 & 7.59 & 1.0072 & 8.90 & 1.988 & 25 \\
+ & {\footnotesize(2.7)} & {\footnotesize(4.8)} & {\footnotesize(24.1)} & {\footnotesize(28.1)} & {\footnotesize(11.0)} & {\footnotesize(0.6)} &  \\[2pt]
+\midrule
+\multicolumn{8}{@{}l}{\textit{Scenario 1 with ALINEA}} \\
+\quad exact & 22.00 & 15.00 & 10.00 & 1.4000 & 10.00 & 2.000 & 12 \\
+ & {\footnotesize(0.0)} & {\footnotesize(0.0)} & {\footnotesize(0.0)} & {\footnotesize(0.0)} & {\footnotesize(0.0)} & {\footnotesize(0.0)} &  \\[2pt]
+\quad noisy & 23.67 & 16.04 & 9.53 & 1.3059 & 9.06 & 2.066 & 12 \\
+ & {\footnotesize(7.6)} & {\footnotesize(6.9)} & {\footnotesize(4.7)} & {\footnotesize(6.7)} & {\footnotesize(9.4)} & {\footnotesize(3.3)} &  \\[2pt]
+\quad noisy, $\lambda = 0.1$ & 23.75 & 16.03 & 9.38 & 1.2654 & 9.03 & 2.067 & 10 \\
+ & {\footnotesize(8.0)} & {\footnotesize(6.9)} & {\footnotesize(6.2)} & {\footnotesize(9.6)} & {\footnotesize(9.7)} & {\footnotesize(3.4)} &  \\[2pt]
+\bottomrule
+\end{tabular}

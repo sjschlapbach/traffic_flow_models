@@ -3,8 +3,8 @@ from traffic_flow_models import Destination, Node
 
 class TestDestination:
     def test_id_assignment_when_provided(self):
-        d = Destination(id="dest-42")
-        assert d.id == "dest-42"
+        d = Destination(id="dest-1")
+        assert d.id == "dest-1"
 
     def test_id_generated_when_none_or_empty(self):
         d = Destination(id=None)

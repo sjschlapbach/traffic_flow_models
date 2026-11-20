@@ -427,7 +427,8 @@ class TestCTM:
             model.get_calibration_bounds(network)
 
         with pytest.raises(NotImplementedError):
-            model.prepare_calibration_params({}, network)
+            # invalid input on purpose
+            model.prepare_calibration_params({}, network)  # type: ignore
 
         with pytest.raises(NotImplementedError):
             model.parse_calibration_params(np.array([]), network)

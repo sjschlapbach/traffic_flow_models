@@ -1,0 +1,37 @@
+scenario,condition,parameter,unit,true,start,estimate,relative_error_percent,cost,nfev,status,message
+1,exact,tau,s,22.0,18.0,22.000000000002068,9.398542550281325e-12,7.981353534756443e-23,18,1,`gtol` termination condition is satisfied.
+1,exact,nu,km$^2$/h,15.0,60.0,15.00000000000068,4.5356311299353065e-12,7.981353534756443e-23,18,1,`gtol` termination condition is satisfied.
+1,exact,kappa,veh/km/lane,10.0,40.0,10.000000000001346,1.3464784842653899e-11,7.981353534756443e-23,18,1,`gtol` termination condition is satisfied.
+1,exact,delta,-,1.4,0.0122,1.4000000000006474,4.624871914009938e-11,7.981353534756443e-23,18,1,`gtol` termination condition is satisfied.
+1,exact,phi,-,10.0,2.98,10.000000000000316,3.161915174132446e-12,7.981353534756443e-23,18,1,`gtol` termination condition is satisfied.
+1,exact,alpha,-,2.0,1.636,1.9999999999999507,2.4646951146678475e-12,7.981353534756443e-23,18,1,`gtol` termination condition is satisfied.
+1,noisy,tau,s,22.0,18.0,22.5944103496328,2.701865225603632,577.8823213173846,25,2,`ftol` termination condition is satisfied.
+1,noisy,nu,km$^2$/h,15.0,60.0,14.275905843459045,4.827294376939703,577.8823213173846,25,2,`ftol` termination condition is satisfied.
+1,noisy,kappa,veh/km/lane,10.0,40.0,7.601419825063941,23.985801749360594,577.8823213173846,25,2,`ftol` termination condition is satisfied.
+1,noisy,delta,-,1.4,0.0122,1.043401312976681,25.47133478737992,577.8823213173846,25,2,`ftol` termination condition is satisfied.
+1,noisy,phi,-,10.0,2.98,8.887821339241553,11.121786607584472,577.8823213173846,25,2,`ftol` termination condition is satisfied.
+1,noisy,alpha,-,2.0,1.636,1.9876711541891574,0.6164422905421296,577.8823213173846,25,2,`ftol` termination condition is satisfied.
+1,noisy_reg,tau,s,22.0,18.0,22.59720105179049,2.714550235411311,579.169461451394,25,2,`ftol` termination condition is satisfied.
+1,noisy_reg,nu,km$^2$/h,15.0,60.0,14.277282683572563,4.818115442849576,579.169461451394,25,2,`ftol` termination condition is satisfied.
+1,noisy_reg,kappa,veh/km/lane,10.0,40.0,7.591758417875428,24.08241582124572,579.169461451394,25,2,`ftol` termination condition is satisfied.
+1,noisy_reg,delta,-,1.4,0.0122,1.0072380259981082,28.054426714420842,579.169461451394,25,2,`ftol` termination condition is satisfied.
+1,noisy_reg,phi,-,10.0,2.98,8.896869340029973,11.031306599700272,579.169461451394,25,2,`ftol` termination condition is satisfied.
+1,noisy_reg,alpha,-,2.0,1.636,1.9876530136815327,0.6173493159233656,579.169461451394,25,2,`ftol` termination condition is satisfied.
+1 + ALINEA,exact,tau,s,22.0,18.0,22.00000000004949,2.249513706622317e-10,1.3881338651346904e-21,12,1,`gtol` termination condition is satisfied.
+1 + ALINEA,exact,nu,km$^2$/h,15.0,60.0,15.000000000065823,4.3881935122650856e-10,1.3881338651346904e-21,12,1,`gtol` termination condition is satisfied.
+1 + ALINEA,exact,kappa,veh/km/lane,10.0,40.0,10.000000000050624,5.062439356606774e-10,1.3881338651346904e-21,12,1,`gtol` termination condition is satisfied.
+1 + ALINEA,exact,delta,-,1.4,0.0122,1.4000000000039157,2.796969005609234e-10,1.3881338651346904e-21,12,1,`gtol` termination condition is satisfied.
+1 + ALINEA,exact,phi,-,10.0,2.98,9.999999999953413,4.658673447011097e-10,1.3881338651346904e-21,12,1,`gtol` termination condition is satisfied.
+1 + ALINEA,exact,alpha,-,2.0,1.636,2.0000000000032885,1.6442402994698568e-10,1.3881338651346904e-21,12,1,`gtol` termination condition is satisfied.
+1 + ALINEA,noisy,tau,s,22.0,18.0,23.66682723964188,7.5764874529176325,488.4014749987971,12,2,`ftol` termination condition is satisfied.
+1 + ALINEA,noisy,nu,km$^2$/h,15.0,60.0,16.036827604924273,6.912184032828487,488.4014749987971,12,2,`ftol` termination condition is satisfied.
+1 + ALINEA,noisy,kappa,veh/km/lane,10.0,40.0,9.528827700533217,4.711722994667831,488.4014749987971,12,2,`ftol` termination condition is satisfied.
+1 + ALINEA,noisy,delta,-,1.4,0.0122,1.3059017988601478,6.7213000814180095,488.4014749987971,12,2,`ftol` termination condition is satisfied.
+1 + ALINEA,noisy,phi,-,10.0,2.98,9.058847500909044,9.411524990909559,488.4014749987971,12,2,`ftol` termination condition is satisfied.
+1 + ALINEA,noisy,alpha,-,2.0,1.636,2.0662396509565837,3.311982547829184,488.4014749987971,12,2,`ftol` termination condition is satisfied.
+1 + ALINEA,noisy_reg,tau,s,22.0,18.0,23.7540902020062,7.973137281846363,489.7453389740763,10,2,`ftol` termination condition is satisfied.
+1 + ALINEA,noisy_reg,nu,km$^2$/h,15.0,60.0,16.03257225657578,6.883815043838529,489.7453389740763,10,2,`ftol` termination condition is satisfied.
+1 + ALINEA,noisy_reg,kappa,veh/km/lane,10.0,40.0,9.378660604423967,6.213393955760331,489.7453389740763,10,2,`ftol` termination condition is satisfied.
+1 + ALINEA,noisy_reg,delta,-,1.4,0.0122,1.2653609716936682,9.617073450452262,489.7453389740763,10,2,`ftol` termination condition is satisfied.
+1 + ALINEA,noisy_reg,phi,-,10.0,2.98,9.026441380950219,9.73558619049781,489.7453389740763,10,2,`ftol` termination condition is satisfied.
+1 + ALINEA,noisy_reg,alpha,-,2.0,1.636,2.067069483752857,3.3534741876428464,489.7453389740763,10,2,`ftol` termination condition is satisfied.

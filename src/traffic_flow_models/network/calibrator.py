@@ -1043,7 +1043,7 @@ class Calibrator:
             )
 
             # generate Latin Hypercube samples in [0, 1]^n_params
-            rng = np.random.default_rng(seed=42)
+            rng = np.random.default_rng(seed=100)
             sampler = qmc.LatinHypercube(d=n_params, rng=rng)
             lhs_samples = sampler.random(n=n_samples)
 
