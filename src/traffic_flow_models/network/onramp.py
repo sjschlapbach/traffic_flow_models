@@ -43,10 +43,10 @@ class Onramp:
             controller: Optional ramp metering controller.
             origin_node_id: Optional ID of the upstream node.
             destination_node_id: Optional ID of the downstream node.
-            max_queue: Optional maximum admissible queue length in vehicles. An ALINEA or
-                METALINE controller on this onramp raises its metering rate as far as needed
-                to keep the queue at or below this value (queue control). None (default)
-                means no limit.
+            max_queue: Optional maximum admissible queue length in vehicles.
+                An ALINEA or METALINE controller on this onramp raises its
+                metering rate as far as needed to keep the queue at or below
+                this value (queue control). None (default) means no limit.
         """
 
         if lanes <= 0:

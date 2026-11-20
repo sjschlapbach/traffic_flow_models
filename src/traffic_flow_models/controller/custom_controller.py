@@ -32,9 +32,9 @@ class CustomController:
                 optional fourth ``params`` argument (positional or keyword).
             params: Optional dictionary of parameters forwarded to
                 ``controller_fn`` at each call. Defaults to an empty dict.
-            control_dt: Optional control interval (same time unit as the simulation `dt`, an
-                integer multiple of it); the metering rate is held between updates. None
-                (default) updates it at every simulation step.
+            control_dt: Optional control interval (same time unit as the simulation
+                `dt`, an integer multiple of it); the metering rate is held between
+                updates. None (default) updates it at every simulation step.
 
         Raises:
             TypeError: If ``controller_fn`` is not callable.
@@ -58,9 +58,11 @@ class CustomController:
         """Call the user-supplied function to compute the metering rate.
 
         Args:
-            onramp_queues: Dictionary mapping on-ramp IDs to their current queue values (Casadi SX).
+            onramp_queues: Dictionary mapping on-ramp IDs to their
+                current queue values (Casadi SX).
             flows: Dictionary mapping link IDs to their current flow values (Casadi SX).
-            densities: Dictionary mapping link IDs to their current density values (Casadi SX).
+            densities: Dictionary mapping link IDs to their current
+                density values (Casadi SX).
 
         Returns:
             CasADi SX expression representing the metering rate.

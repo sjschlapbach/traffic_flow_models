@@ -52,7 +52,8 @@ class METANETParams(TypedDict):
 
 
 class METANETSymbolicParams(TypedDict):
-    """Symbolic parameter dictionary for the METANET model, supporting CasADi SX expressions.
+    """Symbolic parameter dictionary for the METANET model, supporting
+    CasADi SX expressions.
 
     Identical in structure to :class:`METANETParams` but each value may be either a
     plain Python float or a CasADi SX symbolic variable, enabling mixed
@@ -154,8 +155,8 @@ class METANET:
         :meth:`model_params_to_vec` and :meth:`model_params_vec_to_dict`.
 
         Args:
-            network: Network instance used to determine the ordering of
-                per-link alpha entries when `model_options['link_specific_alpha']` is True.
+            network: Network instance used to determine the ordering of per-link
+                alpha entries when `model_options['link_specific_alpha']` is True.
             model_options: Model options (supports the boolean key
                 ``'link_specific_alpha'``). If False, a single global ``alpha``
                 parameter name is returned; if True, one ``alpha_<linkid>``
@@ -380,16 +381,17 @@ class METANET:
 
         Args:
             param_vec: 1-D calibration parameter vector. If link_specific_alpha=False,
-                      this should have 6 elements (tau, nu, kappa, delta, phi, alpha_global).
-                      If True, it should have (5 + num_links) elements with per-link alphas.
+                this should have 6 elements (tau, nu, kappa, delta, phi, alpha_global).
+                If True, it should have (5 + num_links) elements with per-link alphas.
             network: Network instance (used to count links for alpha expansion).
             model_options: Dictionary of METANET-specific calibration options:
                 - 'link_specific_alpha' (bool): If False, param_vec contains a single
                   global alpha that will be replicated for all links. Default: False.
 
         Returns:
-            System parameter vector ready to be passed to the CasADi system function.
-            Always has format: [tau, nu, kappa, delta, phi, alpha_1, alpha_2, ..., alpha_n]
+            System parameter vector ready to be passed to the CasADi
+            system function. Always has format:
+            [tau, nu, kappa, delta, phi, alpha_1, alpha_2, ..., alpha_n]
         """
         model_options = self._validate_model_options(model_options)
         link_specific_alpha = model_options.get("link_specific_alpha", False)
@@ -814,10 +816,12 @@ class METANET:
                 destination id to boundary density (CasADi SX).
 
         Returns:
-            Tuple[casadi.SX, Union[casadi.SX, None], Union[casadi.SX, None]]: A tuple containing:
+            Tuple[casadi.SX, Union[casadi.SX, None], Union[casadi.SX, None]]: A tuple
+                containing:
                 - The virtual downstream density of the node (CasADi SX).
                 - The virtual downstream jam density of the node (CasADi SX or None).
-                - The virtual downstream backward wave speed of the node (CasADi SX or None).
+                - The virtual downstream backward wave speed of the node
+                  (CasADi SX or None).
 
         Raises:
             ValueError: If the node has no outgoing links or an offramp has
@@ -1336,10 +1340,11 @@ class METANET:
             num_destinations (int): Number of destinations (two boundary-condition
                 disturbance entries each).
             dt (float): Simulation timestep.
-            dynamics (DynamicsFormulation): ``"closed_form"`` (default) evaluates the onramp
-                controllers inside the step. ``"exogenous_control"`` ignores them and takes the
-                metering rates as an extra input ``u`` (one entry per onramp, in the order of
-                the onramp queues in the state vector; ``inf`` means unmetered).
+            dynamics (DynamicsFormulation): ``"closed_form"`` (default) evaluates
+                the onramp controllers inside the step. ``"exogenous_control"``
+                ignores them and takes the metering rates as an extra input ``u``
+                (one entry per onramp, in the order of the onramp queues in the
+                state vector; ``inf`` means unmetered).
 
         Returns:
             casadi.Function: A CasADi function `f(params, x, d) -> x_next`

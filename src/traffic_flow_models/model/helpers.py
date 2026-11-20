@@ -43,8 +43,8 @@ def store_and_forward_update(
     Returns:
         A tuple ``(inflow, updated_queue)`` where:
         - ``inflow`` (CasADi SX): computed inflow entering the segment
-          (vehicles / time) equal to
-          ``min(capacity, demand + queue/dt, backward_wave_speed*(jam_density - density))``.
+          (vehicles / time) equal to ``min(capacity, demand + queue/dt,
+          backward_wave_speed*(jam_density - density))``.
         - ``updated_queue`` (CasADi SX): new virtual queue after applying the
           inflow over the timestep, computed as ``queue + dt*(demand - inflow)``.
     """
@@ -155,11 +155,11 @@ def compute_node_outflows(
 def configure_queue_control(network: Network, dt: float) -> None:
     """Pass the queue-control inputs to the controllers of onramps with a `max_queue`.
 
-    For every onramp with `max_queue` set, the ALINEA / METALINE controller receives its
-    update interval (`control_dt`, or `dt` if it is None) and the ID of the origin feeding
-    the onramp (its flow is the ramp arrival flow in both models). Onramps without a
-    controller are skipped, since an unmetered ramp has no metering rate to raise; other
-    controller types ignore the `max_queue` with a warning.
+    For every onramp with `max_queue` set, the ALINEA / METALINE controller receives
+    its update interval (`control_dt`, or `dt` if it is None) and the ID of the
+    origin feeding the onramp (its flow is the ramp arrival flow in both models).
+    Onramps without a controller are skipped, since an unmetered ramp has no metering
+    rate to raise; other controller types ignore the `max_queue` with a warning.
 
     Args:
         network: Network whose onramp controllers are configured.

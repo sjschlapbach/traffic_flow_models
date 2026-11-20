@@ -117,23 +117,25 @@ def _replay_held_metering(
     disturbance_history: NDArray[np.float64],
     dt: float,
 ) -> tuple[casadi.Function, NDArray[np.float64]]:
-    """Reconstruct the held metering rates of the data and append them to the disturbances.
+    """Reconstruct the held metering rates of the data and append them
+    to the disturbances.
 
-    The onramp controllers are evaluated on the recorded states and their rates are held
-    for ``control_dt / dt`` steps, as in `Simulation.run`; the recorded series must start
-    at a controller update.
+    The onramp controllers are evaluated on the recorded states and their
+    rates are held for ``control_dt / dt`` steps, as in `Simulation.run`;
+    the recorded series must start at a controller update.
 
     Args:
         network: Network whose onramp controllers produced the data.
         system: Model step built with ``dynamics="exogenous_control"``.
         state_history: 2-D array of recorded states (state_dim x num_timesteps).
-        disturbance_history: 2-D array of disturbances (disturbance_dim x num_timesteps-1).
+        disturbance_history: 2-D array of disturbances (disturbance_dim
+            x num_timesteps-1).
         dt: Time step of the data.
 
     Returns:
-        Tuple ``(step, disturbances)``: ``step(p, x, [d; u])`` is `system` with the metering
-        rates ``u`` appended to the disturbance input, and ``disturbances`` the disturbance
-        history with the metering rates appended as extra rows.
+        Tuple ``(step, disturbances)``: ``step(p, x, [d; u])`` is `system` with the
+        metering rates ``u`` appended to the disturbance input, and ``disturbances``
+        the disturbance history with the metering rates appended as extra rows.
 
     Raises:
         ValueError: If a controller's `control_dt` is not an integer multiple of `dt`.
@@ -165,7 +167,8 @@ def _replay_held_metering(
 
 class Calibrator:
     """
-    Calibrator class providing helper methods for traffic flow model parameter estimation.
+    Calibrator class providing helper methods for traffic flow model
+    parameter estimation.
 
     It is instantiated with a reference to the network being calibrated.
 
@@ -233,8 +236,10 @@ class Calibrator:
             result: scipy OptimizeResult from least_squares calibration
             param_names: List of parameter names in order
             save_dir: Directory to save plots
-            filename: Name of the output file (default: "parameter_correlation_analysis.png")
-            title: Optional title for the plot (default: "Parameter Correlation Analysis")
+            filename: Name of the output file (default:
+                "parameter_correlation_analysis.png")
+            title: Optional title for the plot (default: "Parameter
+                Correlation Analysis")
         """
 
         print("\n" + "-" * 80)
@@ -380,8 +385,10 @@ class Calibrator:
         Args:
             results_list: List of dictionaries with parameter search results
             save_dir: Directory to save plots
-            filename: Name of the output file (default: "parameter_search_convergence.png")
-            title: Optional title for the plot (default: "Multi-Start Parameter Search Convergence")
+            filename: Name of the output file (default:
+                "parameter_search_convergence.png")
+            title: Optional title for the plot (default: "Multi-Start
+                Parameter Search Convergence")
         """
         print("\n  Creating parameter search convergence plot...")
 
@@ -560,19 +567,22 @@ class Calibrator:
     ) -> Tuple[NDArray[np.float64], list[Tuple[str, str, int]]]:
         """Extract measurable quantities (flows, densities, speeds) from state history.
 
-        This helper method extracts only the measurable state components from the
-        full state history, excluding queue states which are not observable in measured or
-        reference data. The extracted states include per-cell flows, densities,
-        and speeds for all motorway links.
+        This helper method extracts only the measurable state components from
+        the full state history, excluding queue states which are not
+        observable in measured or reference data. The extracted states
+        include per-cell flows, densities, and speeds for all motorway links.
 
         Args:
-            state_history: 2-D array of state vectors over time (state_dim x num_timesteps).
+            state_history: 2-D array of state vectors over time
+                (state_dim x num_timesteps).
 
         Returns:
             Tuple containing:
-            - measurable_states: 2-D array of measurable state components (measurable_dim x num_timesteps)
-            - index_map: List of tuples (link_id, quantity_type, cell_index) describing
-              the ordering of measurable states, where quantity_type is 'flow', 'density', or 'speed'.
+            - measurable_states: 2-D array of measurable state
+                components (measurable_dim x num_timesteps)
+            - index_map: List of tuples (link_id, quantity_type,
+                cell_index) describing the ordering of measurable states,
+                where quantity_type is 'flow', 'density', or 'speed'.
 
         Raises:
             ValueError: If state_history dimensions are invalid.
@@ -637,7 +647,8 @@ class Calibrator:
         window_indices: list[int],
         model_options: ModelOptions | None = None,
     ) -> NDArray[np.float64]:
-        """Compute residuals between model predictions and ground truth over a time window.
+        """Compute residuals between model predictions and ground truth
+        over a time window.
 
         This method simulates the model forward in time using the provided parameters
         and compares the predicted measurable states (flows, densities, speeds) with
@@ -648,9 +659,12 @@ class Calibrator:
             param_vec: 1-D array of calibration parameters in model-specific format.
             model: Macroscopic traffic flow model.
             system: CasADi function implementing the network update step.
-            ground_truth_states: 2-D array of full ground truth state vectors (state_dim x num_timesteps).
-            ground_truth_disturbances: 2-D array of disturbances (disturbance_dim x num_timesteps-1).
-            measurable_indices: 2-D array of measurable ground truth states (measurable_dim x num_timesteps).
+            ground_truth_states: 2-D array of full ground truth state
+                vectors (state_dim x num_timesteps).
+            ground_truth_disturbances: 2-D array of disturbances
+                (disturbance_dim x num_timesteps-1).
+            measurable_indices: 2-D array of measurable ground truth
+                states (measurable_dim x num_timesteps).
             window_indices: List of timestep indices defining the calibration window.
             model_options: Dictionary of model-specific options passed to the model's
                           prepare_system_params method.
@@ -832,10 +846,10 @@ class Calibrator:
         """Calibrate model parameters using ground truth simulation data.
 
         This method performs parameter estimation by minimizing the prediction error
-        between the model and provided ground truth data (e.g. measured or reference data). It uses a
-        sliding window approach to balance computational efficiency with capturing
-        multi-step dynamics. Only measurable quantities (flows, densities, speeds)
-        are used for calibration, excluding queue states.
+        between the model and provided ground truth data (e.g. measured or reference
+        data). It uses a sliding window approach to balance computational efficiency
+        with capturing multi-step dynamics. Only measurable quantities (flows,
+        densities, speeds) are used for calibration, excluding queue states.
 
         The optimization is performed using scipy's Trust Region Reflective algorithm
         (least_squares with method='trf'), which handles bounded nonlinear least squares
@@ -847,19 +861,19 @@ class Calibrator:
         - prepare_calibration_params(): Convert params to optimization vector
         - parse_calibration_params(): Convert optimization vector to params
 
-        Onramp controllers are evaluated inside the model step on the predicted states. If any
-        controller sets `control_dt`, the metering rates of all onramps are instead
-        reconstructed once from the recorded states (the ``"exogenous_control"`` step takes
-        every rate as an input): controllers with a `control_dt` are held for it as in
-        `Simulation.run`, starting with a controller update at the first recorded time step,
-        and controllers without one are updated at every step.
+        Onramp controllers are evaluated inside the model step on the predicted states.
+        If any controller sets `control_dt`, the metering rates of all onramps are
+        instead reconstructed once from the recorded states (the ``"exogenous_control"``
+        step takes every rate as an input): controllers with a `control_dt` are held for
+        it as in `Simulation.run`, starting with a controller update at the first
+        recorded time step, and controllers without one are updated at every step.
 
         Multi-Start Parameter Search Mode:
         -----------------------------------
         When use_parameter_search=True, the method uses Latin Hypercube Sampling (LHS)
-        to generate diverse initial parameter configurations within the parameter bounds.
-        This multi-start approach helps avoid local minima by exploring the parameter
-        space efficiently. The best solution across all runs is returned.
+        to generate diverse initial parameter configurations within the parameter
+        bounds. This multi-start approach helps avoid local minima by exploring the
+        parameter space efficiently. The best solution across all runs is returned.
 
         Performance Tips for Noisy Data:
         ---------------------------------
@@ -871,49 +885,56 @@ class Calibrator:
         6. Consider filtering/smoothing ground truth data before calibration
 
         Args:
-            ground_truth_filepath: Path to JSON file containing ground truth simulation results
-                (must be in the format produced by Simulation.save_results).
-            model: Macroscopic flow model instance. Must implement calibration interface.
-            initial_params: Initial guess for model parameters. If None, uses model defaults.
-                When use_parameter_search=True, it is not used as a starting point and
-                only serves as the default regularization reference.
-            window_size: Number of timesteps per calibration window. Larger windows capture
-                more dynamics but increase computational cost. Default: 50.
-            stride: Stride between consecutive calibration windows. Must be <= window_size to
-                avoid ignoring data points. If None, defaults to window_size // 2 (50% overlap).
-                Smaller stride values increase overlap and computational cost but may improve
+            ground_truth_filepath: Path to JSON file containing ground truth simulation
+                results (must be in the format produced by Simulation.save_results).
+            model: Macroscopic flow model instance. Must implement
+                calibration interface.
+            initial_params: Initial guess for model parameters. If None, uses model
+                defaults. When use_parameter_search=True, it is not used as a starting
+                point and only serves as the default regularization reference.
+            window_size: Number of timesteps per calibration window. Larger windows
+                capture more dynamics but increase computational cost. Default: 50.
+            stride: Stride between consecutive calibration windows. Must be <=
+                window_size to avoid ignoring data points. If None, defaults
+                to window_size // 2 (50% overlap). Smaller stride values
+                increase overlap and computational cost but may improve
                 calibration accuracy. Default: None (window_size // 2).
-            param_bounds: Optional tuple of (lower_bounds, upper_bounds) as numpy arrays.
-                If None, uses model's default bounds.
-            model_options: Dictionary of model-specific calibration options. For METANET:
-                - 'link_specific_alpha' (bool): If True, calibrates separate alpha for each
-                  link. If False (default), uses single global alpha. Setting to False
-                  reduces degrees of freedom and often improves robustness with noisy data.
-            regularization_weight: Dimensionless weight lambda of the relative (log-ratio)
-                Tikhonov penalty towards the reference parameters p_ref:
-                cost = ||residuals||^2 + lambda * sum_i log(p_i / p_ref_i)^2, i.e. the MAP
-                penalty of a log-normal prior. A deviation by a factor of 2 in any parameter
-                costs lambda * log(2)^2 (about 0.48 * lambda), independent of its unit.
-                Requires positive parameters and lower bounds. Default: 0.0 (none).
-            max_nfev: Maximum number of function evaluations for the optimizer. Default: 1000.
+            param_bounds: Optional tuple of (lower_bounds, upper_bounds)
+                as numpy arrays. If None, uses model's default bounds.
+            model_options: Dictionary of model-specific calibration
+                options. For METANET:
+                - 'link_specific_alpha' (bool): If True, calibrates
+                  separate alpha for each link. If False (default), uses
+                  single global alpha. Setting to False reduces degrees of
+                  freedom and often improves robustness with noisy data.
+            regularization_weight: Dimensionless weight lambda of the relative
+                (log-ratio) Tikhonov penalty towards the reference parameters p_ref:
+                cost = ||residuals||^2 + lambda * sum_i log(p_i / p_ref_i)^2,
+                i.e. the MAP penalty of a log-normal prior. A deviation by a factor
+                of 2 in any parameter costs lambda * log(2)^2 (about 0.48 * lambda),
+                independent of its unit. Requires positive parameters and lower
+                bounds. Default: 0.0 (none).
+            max_nfev: Maximum number of function evaluations for the
+                optimizer. Default: 1000.
             verbose: If True, print calibration progress and results.
-            use_parameter_search: If True, perform multi-start optimization using Latin Hypercube
-                Sampling to generate initial parameter configurations. If False, use single
-                initial_params. Default: False.
-            n_samples: Number of Latin Hypercube samples when use_parameter_search=True. If None,
-                defaults to min(20, 2^n_params) to balance exploration and computational cost.
-                Default: None.
-            plot_convergence: If True and use_parameter_search=True and save_dir is provided,
-                generate convergence plot showing cost, evaluations, and optimality across
-                parameter search runs. Can also be a string specifying the output filename.
-                Default: False.
-            plot_correlation: If True and save_dir is provided, generate parameter correlation
-                analysis plot showing correlation matrix and singular values. Can also be a
-                string specifying the output filename. Default: False.
+            use_parameter_search: If True, perform multi-start optimization using
+                Latin Hypercube Sampling to generate initial parameter
+                configurations. If False, use single initial_params. Default: False.
+            n_samples: Number of Latin Hypercube samples when
+                use_parameter_search=True. If None, defaults to min(20, 2^n_params)
+                to balance exploration and computational cost. Default: None.
+            plot_convergence: If True and use_parameter_search=True and save_dir
+                is provided, generate convergence plot showing cost,
+                evaluations, and optimality across parameter search runs. Can
+                also be a string specifying the output filename. Default: False.
+            plot_correlation: If True and save_dir is provided, generate
+                parameter correlation analysis plot showing correlation
+                matrix and singular values. Can also be a string
+                specifying the output filename. Default: False.
             save_dir: Directory to save diagnostic plots. If None, no plots are saved.
                 Default: None.
-            convergence_title: Optional custom title for parameter search convergence plot.
-                Default: None.
+            convergence_title: Optional custom title for parameter
+                search convergence plot. Default: None.
             correlation_title: Optional custom title for parameter correlation plot.
                 Default: None.
             plot_param_history: If True and `save_dir` is provided, save a single
@@ -935,14 +956,15 @@ class Calibrator:
             Tuple containing:
             - calibrated_params: Dictionary of calibrated model parameters.
             - result: scipy OptimizeResult object with detailed optimization information
-              (cost, iterations, termination status, etc.).
+                (cost, iterations, termination status, etc.).
             - param_history: 2-D array of the parameter vectors of every residual
-              evaluation (shape: num_evaluations x num_parameters).
+                evaluation (shape: num_evaluations x num_parameters).
 
         Raises:
             NotImplementedError: If model does not support parameter calibration.
-            ValueError: If ground truth file is invalid or incompatible with network structure,
-                or a controller sets `control_dt` while use_disturbance_from_file=False.
+            ValueError: If ground truth file is invalid or incompatible
+                with network structure, or a controller sets
+                `control_dt` while use_disturbance_from_file=False.
             FileNotFoundError: If ground_truth_filepath does not exist.
         """
         if model_options is None:

@@ -22,12 +22,15 @@ class MetalineController:
 
         Args:
             onramp: The on-ramp for which to control flow.
-            measurement_cells: A list of tuples (link_id, cell_idx) indicating the cells to measure.
-            gain_matrix: A dictionary mapping link IDs to their corresponding gain matrices.
-            density_setpoints: A list of tuples (link_id, cell_idx, setpoint) indicating the desired densities.
-            control_dt: Optional control interval (same time unit as the simulation `dt`, an
-                integer multiple of it); the metering rate is held between updates. None
-                (default) updates it at every simulation step.
+            measurement_cells: A list of tuples (link_id, cell_idx)
+                indicating the cells to measure.
+            gain_matrix: A dictionary mapping link IDs to their
+                corresponding gain matrices.
+            density_setpoints: A list of tuples (link_id, cell_idx,
+                setpoint) indicating the desired densities.
+            control_dt: Optional control interval (same time unit as the simulation
+                `dt`, an integer multiple of it); the metering rate is held between
+                updates. None (default) updates it at every simulation step.
         """
         # verify that density setpoins are specified for each measurement cell
         for link_id, cell_idx in measurement_cells:
@@ -74,14 +77,16 @@ class MetalineController:
         self._origin_id: str | None = None
 
     def set_queue_control(self, rate_update_dt: float, origin_id: str) -> None:
-        """Set the inputs of the queue-control law (called automatically by the library).
+        """Set the inputs of the queue-control law (called automatically
+        by the library).
 
         The models call this for onramps with a `max_queue` when they build the step.
 
         Args:
             rate_update_dt: Update interval of the controller (`control_dt`, or the
                 simulation `dt` if it is None).
-            origin_id: ID of the origin feeding the onramp (its flow is the ramp arrival flow).
+            origin_id: ID of the origin feeding the onramp (its flow is
+                the ramp arrival flow).
         """
         self._rate_update_dt = rate_update_dt
         self._origin_id = origin_id
@@ -96,7 +101,8 @@ class MetalineController:
         Compute the regulated onramp flow using the Metaline feedback law.
 
         Args:
-            onramp_queues: A dictionary mapping onramp IDs to their respective queue states.
+            onramp_queues: A dictionary mapping onramp IDs to their
+                respective queue states.
             flows: A dictionary mapping link IDs to their respective flow states.
             densities: A dictionary mapping link IDs to their respective density states.
 

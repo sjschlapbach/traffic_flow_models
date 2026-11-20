@@ -124,7 +124,8 @@ class CTM:
         """CTM has no calibratable parameters.
 
         Args:
-            param_vec: Calibration parameter vector (unused; CTM has no calibratable parameters).
+            param_vec: Calibration parameter vector (unused; CTM has no
+                calibratable parameters).
             network: Network instance (unused).
             model_options: Model-specific options (unused).
 
@@ -643,10 +644,11 @@ class CTM:
             num_destinations (int): Number of destinations (two boundary-condition
                 disturbance entries each).
             dt (float): Simulation timestep.
-            dynamics (DynamicsFormulation): ``"closed_form"`` (default) evaluates the onramp
-                controllers inside the step. ``"exogenous_control"`` ignores them and takes the
-                metering rates as an extra input ``u`` (one entry per onramp, in the order of
-                the onramp queues in the state vector; ``inf`` means unmetered).
+            dynamics (DynamicsFormulation): ``"closed_form"`` (default) evaluates
+                the onramp controllers inside the step. ``"exogenous_control"``
+                ignores them and takes the metering rates as an extra input ``u``
+                (one entry per onramp, in the order of the onramp queues in the
+                state vector; ``inf`` means unmetered).
 
         Returns:
             casadi.Function: A CasADi function `f(params, x, d) -> x_next`

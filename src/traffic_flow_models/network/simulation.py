@@ -64,10 +64,10 @@ def _metering_evaluation(
         dt: Simulation time step.
 
     Returns:
-        Tuple ``(metering_fn, update_intervals)``: ``metering_fn(x) -> u`` gives the metering
-        rate of every onramp in state order (``inf`` without controller), and
-        ``update_intervals`` (same length as ``u``) the number of simulation steps between two
-        updates of each entry (``control_dt / dt``, 1 = every step).
+        Tuple ``(metering_fn, update_intervals)``: ``metering_fn(x) -> u`` gives the
+        metering rate of every onramp in state order (``inf`` without controller), and
+        ``update_intervals`` (same length as ``u``) the number of simulation steps
+        between two updates of each entry (``control_dt / dt``, 1 = every step).
 
     Raises:
         ValueError: If a controller's `control_dt` is not an integer multiple of `dt`.
@@ -152,7 +152,8 @@ class Simulation:
         Args:
             network: Network instance containing the traffic network topology.
             model: Traffic flow model to use (CTM or METANET).
-            model_params: Model parameters for METANET (required for METANET, must be None for CTM).
+            model_params: Model parameters for METANET (required for
+                METANET, must be None for CTM).
 
         Raises:
             ValueError: If model_params is provided for CTM or missing for METANET.
@@ -317,12 +318,16 @@ class Simulation:
             turning_rates: Mapping node id -> callable(time) -> dict[outgoing->rate].
             destination_flow_bc: Mapping destination id -> callable(time) -> flow.
             destination_density_bc: Mapping destination id -> callable(time) -> density.
-            initial_flows: Optional mapping link id -> scalar or per-cell array for initial flows.
-            initial_densities: Optional mapping link id -> scalar or per-cell array for initial densities.
-            initial_speeds: Optional mapping link id -> scalar or per-cell array for initial speeds.
+            initial_flows: Optional mapping link id -> scalar or
+                per-cell array for initial flows.
+            initial_densities: Optional mapping link id -> scalar or
+                per-cell array for initial densities.
+            initial_speeds: Optional mapping link id -> scalar or
+                per-cell array for initial speeds.
 
         Raises:
-            ValueError: If required functions or initial arrays are missing or inconsistent.
+            ValueError: If required functions or initial arrays are
+                missing or inconsistent.
         """
 
         for node in self.network.list_nodes():
@@ -424,15 +429,20 @@ class Simulation:
         tuple with the initialized dictionaries used by the simulator.
 
         Args:
-            initial_flows: Optional mapping link id -> scalar or per-cell array for initial flows.
-            initial_densities: Optional mapping link id -> scalar or per-cell array for initial densities.
-            initial_speeds: Optional mapping link id -> scalar or per-cell array for initial speeds.
+            initial_flows: Optional mapping link id -> scalar or
+                per-cell array for initial flows.
+            initial_densities: Optional mapping link id -> scalar or
+                per-cell array for initial densities.
+            initial_speeds: Optional mapping link id -> scalar or
+                per-cell array for initial speeds.
             initial_origin_queues: Optional mapping origin id -> initial queue length.
             initial_onramp_queues: Optional mapping onramp id -> initial queue length.
             initial_offramp_queues: Optional mapping offramp id -> initial queue length.
             turning_rates: Mapping node id -> callable(time) -> turning-rate dict.
-            destination_flow_bc: Mapping destination id -> callable(time) -> downstream flow.
-            destination_density_bc: Mapping destination id -> callable(time) -> downstream density.
+            destination_flow_bc: Mapping destination id ->
+                callable(time) -> downstream flow.
+            destination_density_bc: Mapping destination id ->
+                callable(time) -> downstream density.
 
         Returns:
             Tuple containing:
@@ -442,9 +452,11 @@ class Simulation:
             - origin_queues_dict: mapping origin id -> scalar queue
             - onramp_queues_dict: mapping onramp id -> scalar queue
             - offramp_queues_dict: mapping offramp id -> scalar queue
-            - turning_rates_dict: mapping node id -> callable(time) -> dict[outgoing->rate]
+            - turning_rates_dict: mapping node id -> callable(time) ->
+              dict[outgoing->rate]
             - destination_flow_bc_dict: mapping destination id -> callable(time) -> flow
-            - destination_density_bc_dict: mapping destination id -> callable(time) -> density
+            - destination_density_bc_dict: mapping destination id ->
+              callable(time) -> density
 
         Raises:
             ValueError: If an offramp lacks a connected destination.
@@ -711,27 +723,32 @@ class Simulation:
 
         Args:
             system: CasADi function implementing the network state update.
-            metering_fn: None for a ``"closed_form"`` `system`; otherwise the function
-                ``x -> u`` of `_metering_evaluation` for an ``"exogenous_control"`` `system`.
-            update_intervals: Number of simulation steps between two updates of each entry of
-                ``u`` (empty for ``"closed_form"``); between updates the metering rate is held.
+            metering_fn: None for a ``"closed_form"`` `system`; otherwise
+                the function ``x -> u`` of `_metering_evaluation` for an
+                ``"exogenous_control"`` `system`.
+            update_intervals: Number of simulation steps between two updates
+                of each entry of ``u`` (empty for ``"closed_form"``);
+                between updates the metering rate is held.
             duration: Total simulation time (same units as `dt`).
             dt: Time-step for integration.
             x0: Initial packed state vector (NumPy array).
             num_origins: Number of origin queue entries in disturbance vector.
             num_splits: Number of turning-rate scalars per time step.
             num_destinations: Number of destination boundary condition entries.
-            origin_queues_dict: Mapping origin id -> initial queue (used to order disturbances).
+            origin_queues_dict: Mapping origin id -> initial queue (used
+                to order disturbances).
             turning_rates_dict: Mapping node id -> callable(time) -> turning-rate dict.
             destination_flow_bc_dict: Mapping destination id -> callable(time) -> flow.
-            destination_density_bc_dict: Mapping destination id -> callable(time) -> density.
+            destination_density_bc_dict: Mapping destination id ->
+                callable(time) -> density.
             origin_demands: Mapping origin id -> callable(time) -> demand.
 
         Returns:
             Tuple `(time_array, state_history, disturbance_history)` where
             - `time_array` is a 1-D NumPy array of time points,
             - `state_history` is a 2-D NumPy array of packed states over time,
-            - `disturbance_history` is a 2-D NumPy array of packed disturbances over time.
+            - `disturbance_history` is a 2-D NumPy array of packed
+              disturbances over time.
         """
 
         time_array: NDArray[np.float64] = np.arange(
@@ -857,35 +874,50 @@ class Simulation:
         update the state, and optionally plot and save results.
 
         Args:
-            duration: Total simulation time (same units as demand functions, e.g. hours).
+            duration: Total simulation time (same units as demand
+                functions, e.g. hours).
             dt: Simulation time step (same units as `duration`).
             origin_demands: Mapping origin id -> callable(time) -> demand (veh/h).
-            turning_rates: Mapping node id -> callable(time) -> dict[outgoing_link_id -> split rate].
+            turning_rates: Mapping node id -> callable(time) ->
+                dict[outgoing_link_id -> split rate].
             destination_flow_bc: Mapping destination id -> callable(time) -> downstream
                 flow (veh/h).
-            destination_density_bc: Mapping destination id -> callable(time) -> downstream density (veh/km/lane).
-            initial_flows: Optional mapping link id -> scalar or per-cell array for initial flows (default: zeros).
-            initial_densities: Optional mapping link id -> scalar or per-cell array for initial densities (default: zeros).
-            initial_speeds: Optional mapping link id -> scalar or per-cell array for initial speeds (default: free-flow speed).
-            initial_origin_queues: Optional mapping origin id -> initial queue length (veh).
-            initial_onramp_queues: Optional mapping onramp id -> initial queue length (veh).
-            initial_offramp_queues: Optional mapping offramp id -> initial queue length (veh).
-            preferred_cell_size: Preferred link segmentation size (km) used when partitioning motorway links.
+            destination_density_bc: Mapping destination id ->
+                callable(time) -> downstream density (veh/km/lane).
+            initial_flows: Optional mapping link id -> scalar or
+                per-cell array for initial flows (default: zeros).
+            initial_densities: Optional mapping link id -> scalar or
+                per-cell array for initial densities (default: zeros).
+            initial_speeds: Optional mapping link id -> scalar or per-cell
+                array for initial speeds (default: free-flow speed).
+            initial_origin_queues: Optional mapping origin id -> initial
+                queue length (veh).
+            initial_onramp_queues: Optional mapping onramp id -> initial
+                queue length (veh).
+            initial_offramp_queues: Optional mapping offramp id ->
+                initial queue length (veh).
+            preferred_cell_size: Preferred link segmentation size (km)
+                used when partitioning motorway links.
             plot_results: If True, generate plots and save results to `results_dir`.
             show_plots: If True, display the network topology plot interactively.
-            reference_results_path: Optional path to a mainline-only results JSON (e.g. measured
-                or externally simulated data) that is resampled to the simulation time grid and
-                overlaid on the mainline link plots. Only used when `plot_results` is True.
-            results_dir: Directory for saving results; if None a timestamped folder under `results/` is used when `plot_results` is True.
+            reference_results_path: Optional path to a mainline-only results
+                JSON (e.g. measured or externally simulated data) that is
+                resampled to the simulation time grid and overlaid on the
+                mainline link plots. Only used when `plot_results` is True.
+            results_dir: Directory for saving results; if None a timestamped
+                folder under `results/` is used when `plot_results` is True.
 
         Returns:
             tuple: `(time_array, state_history, disturbance_history)` where
                 - `time_array` is a 1-D NumPy array of time points,
-                - `state_history` is a 2-D NumPy array of packed states over time (state_size x timesteps),
-                - `disturbance_history` is a 2-D NumPy array of packed disturbances over time (disturbance_size x timesteps-1).
+                - `state_history` is a 2-D NumPy array of packed states
+                  over time (state_size x timesteps),
+                - `disturbance_history` is a 2-D NumPy array of packed
+                  disturbances over time (disturbance_size x timesteps-1).
 
         Raises:
-            ValueError: If required inputs are missing or inconsistent with the network topology.
+            ValueError: If required inputs are missing or inconsistent
+                with the network topology.
             FileNotFoundError: If `reference_results_path` is given but does not exist.
         """
         # ! 1 - validate all inputs as required
@@ -1111,11 +1143,14 @@ class Simulation:
         Args:
             filepath: Path where the JSON file should be saved.
             time_array: 1-D array of time points (uses stored results when None).
-            state_history: 2-D array of state vectors over time (uses stored results when None).
-            disturbance_history: 2-D array of disturbances over time (uses stored results when None).
+            state_history: 2-D array of state vectors over time (uses
+                stored results when None).
+            disturbance_history: 2-D array of disturbances over time
+                (uses stored results when None).
             dt: Simulation time step (uses value from last run() when None).
             duration: Total simulation duration (uses value from last run() when None).
-            preferred_cell_size: Preferred cell size (uses value from last run() when None).
+            preferred_cell_size: Preferred cell size (uses value from
+                last run() when None).
             model_params: Model parameters for METANET (None for CTM).
         """
         # Fall back to stored instance results when arguments are not supplied
@@ -1515,7 +1550,8 @@ class Simulation:
 
         Args:
             filepath: Path to the JSON file containing simulation results.
-            network: Network instance to use for validating structure against saved data.
+            network: Network instance to use for validating structure
+                against saved data.
             load_mainline_only: If True, only require and load mainline quantities
                 (flows/densities/speeds and boundary conditions). Other
                 quantities (queues, demands, turning rates) will be filled with
@@ -2174,7 +2210,8 @@ class Simulation:
         """Compute a set of performance metrics based on the provided simulation results
 
         Args:
-            states: 2-D array shape (state_size, timesteps) containing state vectors over time.
+            states: 2-D array shape (state_size, timesteps) containing
+                state vectors over time.
             dt: Time step used in the simulation (hours).
             timesteps: Number of timesteps in the simulation.
             ignore_queues: If True, time spent in origin/onramp/offramp queues is
@@ -2263,10 +2300,13 @@ class Simulation:
 
         Args:
             time_array: 1-D array of time points (hours).
-            state_history: 2-D array of state vectors over time, shape (state_size, timesteps).
-            reference_state_history: Optional 2-D array of mainline-only reference state vectors over time,
-                shape (reference_state_size, timesteps), overlaid on the mainline link plots.
-            disturbance_history: 2-D array of disturbances over time, shape (disturbance_size, timesteps-1).
+            state_history: 2-D array of state vectors over time, shape
+                (state_size, timesteps).
+            reference_state_history: Optional 2-D array of mainline-only
+                reference state vectors over time, shape (reference_state_size,
+                timesteps), overlaid on the mainline link plots.
+            disturbance_history: 2-D array of disturbances over time,
+                shape (disturbance_size, timesteps-1).
             save_dir: Directory where plots should be saved (default: "results").
         """
         # create results directory if it doesn't exist
@@ -2585,9 +2625,12 @@ class Simulation:
             densities: 2-D array of densities over time (cells x time).
             flows: 2-D array of flows over time (cells x time).
             speeds: 2-D array of speeds over time (cells x time).
-            reference_densities: Optional 2-D array of reference densities over time (cells x time).
-            reference_flows: Optional 2-D array of reference flows over time (cells x time).
-            reference_speeds: Optional 2-D array of reference speeds over time (cells x time).
+            reference_densities: Optional 2-D array of reference
+                densities over time (cells x time).
+            reference_flows: Optional 2-D array of reference flows over
+                time (cells x time).
+            reference_speeds: Optional 2-D array of reference speeds
+                over time (cells x time).
             save_dir: Directory where plots should be saved.
         """
         num_cells = len(link)
@@ -3149,8 +3192,9 @@ class Simulation:
             results_filepath: Path to simulation results JSON file
             output_filepath: Path for output video file (.avi)
             fps: Frames per second for output video
-            subsampling: Number of intervals to split each time interval into for smoother animation
-                        (1=no interpolation, 2=split intervals in half, 3=split into thirds, etc.)
+            subsampling: Number of intervals to split each time interval
+                into for smoother animation (1=no interpolation, 2=split
+                intervals in half, 3=split into thirds, etc.)
             figsize: Figure size in inches (width, height)
             dpi: Dots per inch for rendering
 
@@ -3325,11 +3369,12 @@ class Simulation:
             labels: List of labels for each simulation (same length as result_filepaths)
             output_filepath: Path for output video file (.avi)
             fps: Frames per second for output video
-            subsampling: Number of intervals to split each time interval into for smoother animation
+            subsampling: Number of intervals to split each time interval
+                into for smoother animation
             figsize: Figure size in inches (width, height)
             dpi: Dots per inch for rendering
-            layout: Optional tuple (nrows, ncols) for subplot layout. If None, auto-computed
-                   to create an approximately square grid.
+            layout: Optional tuple (nrows, ncols) for subplot layout. If
+                None, auto-computed to create an approximately square grid.
 
         Raises:
             ValueError: If inputs are invalid or simulations have different lengths
@@ -3618,8 +3663,8 @@ class Simulation:
             state_history: 2-D array (state_size x timesteps)
             time_array: 1-D array of time points
             subsampling: Number of intervals to split each time interval into
-                        (subsampling=1 means no interpolation, subsampling=2 splits each interval in half,
-                        subsampling=3 splits into thirds, etc.)
+                (subsampling=1 means no interpolation, subsampling=2 splits
+                each interval in half, subsampling=3 splits into thirds, etc.)
 
         Returns:
             Tuple of (interpolated_time_array, interpolated_state_history)
