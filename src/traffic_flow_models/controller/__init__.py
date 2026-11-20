@@ -1,6 +1,6 @@
 """Controller subpackage for traffic_flow_models.
 
-Empty package for consistency with the project layout.
+Exports the ramp-metering controllers.
 """
 
 from .flow_controller import FlowController

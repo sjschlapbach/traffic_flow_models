@@ -8,7 +8,7 @@ Pass `plot_results=True` to `run()` to automatically generate and save plots (de
 time_arr, states, disturbances = sim.run(
     ...,
     plot_results=True,
-    show_plots=False,               # set True to display interactively
+    show_plots=False,               # set True to display the network topology figure
     results_dir="results/my_run",   # directory for saved figures and JSON
 )
 ```

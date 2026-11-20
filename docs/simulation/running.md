@@ -53,7 +53,7 @@ time_arr, states, disturbances = sim.run(
 - `state_history` — 2-D NumPy array, shape `(state_size, steps + 1)`
 - `disturbance_history` — 2-D NumPy array, shape `(disturbance_size, steps)`
 
-The time step must satisfy the CFL condition for all links. An error is raised if it is violated.
+Cells are made longer than `preferred_cell_size` where needed to satisfy the CFL condition (cell length at least `free_flow_speed * dt`). An error is raised if a link is shorter than one such cell.
 
 ## Saving and loading results
 
@@ -74,13 +74,13 @@ time_arr, states, disturbances, metadata = Simulation.load_results(
 
 ## Setting initial conditions
 
-By default the network starts empty (zero density, free-flow speed). Override per link:
+By default the network starts empty (zero density, free-flow speed). Override per link; a given `initial_densities` or `initial_speeds` dict must contain every motorway link and off-ramp:
 
 ```python
 time_arr, states, disturbances = sim.run(
     ...,
-    initial_densities={"m1": 20.0, "m2": 50.0},    # scalar applies to all cells
-    initial_speeds={"m1": 95.0},                   # free-flow speed used elsewhere
+    initial_densities={"m1": 20.0, "m2": 50.0, "m3": 20.0, "f1": 0.0},  # scalar applies to all cells
+    initial_speeds={"m1": 95.0, "m2": 95.0, "m3": 95.0, "f1": 80.0},
     initial_origin_queues={"o_main": 100.0},
 )
 ```

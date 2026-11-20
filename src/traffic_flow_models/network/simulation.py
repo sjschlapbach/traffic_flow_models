@@ -1,9 +1,8 @@
 """Simulation class for traffic flow models.
 
 This module contains the Simulation class that handles execution of traffic
-simulations, result storage, and visualization. It was extracted from the
-Network class to separate concerns between network topology/validation
-and simulation execution.
+simulations, result storage, and visualization, separate from the network
+topology and validation in the Network class.
 """
 
 from __future__ import annotations
@@ -862,7 +861,8 @@ class Simulation:
             dt: Simulation time step (same units as `duration`).
             origin_demands: Mapping origin id -> callable(time) -> demand (veh/h).
             turning_rates: Mapping node id -> callable(time) -> dict[outgoing_link_id -> split rate].
-            destination_flow_bc: Mapping destination id -> callable(time) -> downstream flow (veh/h/lane).
+            destination_flow_bc: Mapping destination id -> callable(time) -> downstream
+                flow (veh/h).
             destination_density_bc: Mapping destination id -> callable(time) -> downstream density (veh/km/lane).
             initial_flows: Optional mapping link id -> scalar or per-cell array for initial flows (default: zeros).
             initial_densities: Optional mapping link id -> scalar or per-cell array for initial densities (default: zeros).
@@ -872,7 +872,7 @@ class Simulation:
             initial_offramp_queues: Optional mapping offramp id -> initial queue length (veh).
             preferred_cell_size: Preferred link segmentation size (km) used when partitioning motorway links.
             plot_results: If True, generate plots and save results to `results_dir`.
-            show_plots: If True, display plots interactively.
+            show_plots: If True, display the network topology plot interactively.
             reference_results_path: Optional path to a mainline-only results JSON (e.g. measured
                 or externally simulated data) that is resampled to the simulation time grid and
                 overlaid on the mainline link plots. Only used when `plot_results` is True.
@@ -3156,7 +3156,6 @@ class Simulation:
 
         Raises:
             ValueError: If nodes lack position information or metadata is missing
-            ImportError: If opencv-python is not installed
         """
         # inspect file to determine whether it holds mainline-only reference data
         try:
@@ -3334,7 +3333,6 @@ class Simulation:
 
         Raises:
             ValueError: If inputs are invalid or simulations have different lengths
-            ImportError: If opencv-python is not installed
         """
         if len(result_filepaths) != len(labels):
             raise ValueError(

@@ -795,9 +795,9 @@ class METANET:
         - For an `Onramp`: the density is set to zero (free-flow conditions)
           in order not to influence the inflow from the virtual upstream
           origin onto the store-and-forward onramp link
-        - For an `Offramp`: the connected destination's boundary condition
-          is used (offramps do not carry internal density in the
-          store-and-forward representation).
+        - For an `Offramp`: it is left out (offramps do not carry internal
+          density in the store-and-forward representation); a single
+          outgoing offramp gives zero (free-flow conditions).
         - For a `Destination`: the provided boundary condition is used.
 
         If multiple motorway or destination densities are present they are
@@ -931,12 +931,11 @@ class METANET:
     ) -> casadi.SX:
         """Compute the virtual upstream speed for METANET updates.
 
-        The method computes the total available flow into the node by summing
-        the last cell flows of all incoming motorway links as well as the
-        flows from origins and onramps. Based on the total available flow and
-        the provided split ratios, the method computes the outflows for each
-        outgoing link. Additionally, the method computes the virtual upstream speed
-        used in the speed update equations for outgoing motorway links.
+        The virtual upstream speed, used in the speed update equations for
+        outgoing motorway links, is the flow-weighted mean of the last-cell
+        speeds of all incoming motorway links (their plain mean without
+        upstream flow). Nodes without incoming motorway links use a free-flow
+        speed instead.
 
         Args:
             node (Node): Network node for which to compute the virtual upstream speed.
@@ -1043,9 +1042,6 @@ class METANET:
             where `next_outflow` is the offramp outflow (vehicles/time) into
             the connected destination, and `next_queue` is the updated queue
             length on the offramp (vehicles).
-
-        Raises:
-            ValueError: If the `offramp` does not have a `destination` defined.
         """
         mainline_outflow = node_outflows[
             offramp.id
@@ -1258,7 +1254,8 @@ class METANET:
             / (previous_density + params["kappa"])
         )
 
-        # if the considered cell is the last downstream cell of a link into a node with onramp inflows, reduce the speed accordingly
+        # if the considered cell is the first cell of a link leaving a node with onramp
+        # inflows, reduce the speed accordingly
         if upstream_onramp_inflows is not None:
             speed -= (
                 (dt * params["delta"])
@@ -1333,10 +1330,11 @@ class METANET:
                 vector.
             num_speeds (int): Length of the speed portion of the state vector.
             num_origins (int): Number of origin links (state/disturbance size).
-            num_onramps (int): Number of onramp links (state/disturbance size).
-            num_offramps (int): Number of offramp links (state/disturbance size).
+            num_onramps (int): Number of onramp links (state size).
+            num_offramps (int): Number of offramp links (state size).
             num_splits (int): Number of split-ratio disturbance entries.
-            num_destinations (int): Number of boundary-condition disturbance entries.
+            num_destinations (int): Number of destinations (two boundary-condition
+                disturbance entries each).
             dt (float): Simulation timestep.
             dynamics (DynamicsFormulation): ``"closed_form"`` (default) evaluates the onramp
                 controllers inside the step. ``"exogenous_control"`` ignores them and takes the
@@ -1365,8 +1363,8 @@ class METANET:
 
         # ! Set up variables for state update and cast types to be correct
         # set up state and disturbance vectors
-        # state: flows, densities, speeds, origin, onramp
-        # disturbances: origin_demands, offramp_split_ratios
+        # state: flows, densities, speeds, origin, onramp and offramp queues
+        # disturbances: turning rates, origin demands, destination boundary conditions
         # CasADi type stubs are incorrect - sym() does accept string as first arg
         x = casadi.SX.sym(  # type: ignore
             "x",  # type: ignore

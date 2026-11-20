@@ -12,7 +12,6 @@ class Offramp:
         Qc: Total offramp capacity in vehicles per hour.
         vf: Free-flow speed in km/h.
         rho_jam: Jam density in vehicles per km per lane.
-        destination: Optional linked `Destination` instance.
     """
 
     def __init__(

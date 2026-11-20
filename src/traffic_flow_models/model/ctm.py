@@ -216,7 +216,7 @@ class CTM:
     ) -> casadi.SX:
         """Compute the portion of a node's outflow routed into a motorway link.
 
-        Using the provided `node` and its outgoing split ratios (`node_splits`),
+        Using the upstream node of `link` and its outgoing split ratios (`splits`),
         this helper sums the last-cell flows of all incoming links to the node
         and returns the fraction directed into `link` according to the split
         ratio for `link.id`.
@@ -229,15 +229,13 @@ class CTM:
                 receiving a portion of the node outflow.
             flows (dict[str, casadi.SX]): Mapping from link id to the
                 current-step flow vector (CasADi SX) for that link.
-            node_splits (dict[str, casadi.SX]): Mapping of outgoing link id
-                to the split ratio used at `node` (CasADi SX).
 
         Returns:
             casadi.SX: Flow portion directed into `link` (vehicles / time).
 
         Raises:
             ValueError: If no split ratio is defined for `link.id` in
-                `node_splits`.
+                `splits`.
         """
         if link.origin_node_id is None:
             raise ValueError(
@@ -500,7 +498,7 @@ class CTM:
                 )
 
             elif isinstance(out, Offramp):
-                # destinations are modeled as store-and-forward links with a virtual queue
+                # offramps are modeled as store-and-forward links with a virtual queue
                 # -> only the offramp capacity becomes a limiting factor for potential spillback
                 # any congestion caused by downstream boundary conditions will only grow the off-ramp queue
                 # (consistent with the definition for diverging flows in Daganzo, 1993)
@@ -582,10 +580,6 @@ class CTM:
             connected destination (vehicles / time) and ``next_queue`` is the
             updated queue length on the offramp (vehicles), both as CasADi SX
             expressions.
-
-        Raises:
-            ValueError: If the ``offramp`` does not have an associated
-                ``destination`` link (required for the downstream density).
         """
         # update the offramp flow and queue based on the store-and-forward model
         next_outflow, next_queue = store_and_forward_update(
@@ -643,10 +637,11 @@ class CTM:
                 vector.
             num_speeds (int): Length of the speed portion of the state vector.
             num_origins (int): Number of origin links (state/disturbance size).
-            num_onramps (int): Number of onramp links (state/disturbance size).
-            num_offramps (int): Number of offramp links (state/disturbance size).
+            num_onramps (int): Number of onramp links (state size).
+            num_offramps (int): Number of offramp links (state size).
             num_splits (int): Number of split-ratio disturbance entries.
-            num_destinations (int): Number of boundary-condition disturbance entries.
+            num_destinations (int): Number of destinations (two boundary-condition
+                disturbance entries each).
             dt (float): Simulation timestep.
             dynamics (DynamicsFormulation): ``"closed_form"`` (default) evaluates the onramp
                 controllers inside the step. ``"exogenous_control"`` ignores them and takes the
@@ -663,8 +658,8 @@ class CTM:
 
         # ! Set up variables for state update and cast types to be correct
         # set up state and disturbance vectors
-        # state: flows, densities, speeds, origin, onramp
-        # disturbances: origin_demands, offramp_split_ratios
+        # state: flows, densities, speeds, origin, onramp and offramp queues
+        # disturbances: turning rates, origin demands, destination boundary conditions
         # CasADi type stubs are incorrect - sym() does accept string as first arg
         x = casadi.SX.sym(  # type: ignore
             "x",  # type: ignore

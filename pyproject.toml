@@ -29,6 +29,7 @@ dependencies = [
 dev = [
   "pytest==9.0.0",
   "pylint==4.0.4",
+  "black==26.10.1",
   "mypy==2.4.1",
   "scipy-stubs==1.16.3.3",
   "numpy-typing-compat==20251206.2.3",

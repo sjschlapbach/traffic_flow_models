@@ -1,8 +1,8 @@
 """
 Calibrator class for traffic flow model parameter estimation.
 
-This module contains helper methods for model calibration that have been extracted
-from the Network class to improve maintainability and separation of concerns.
+This module contains helper methods for calibrating model parameters of a
+Network against recorded data.
 """
 
 from __future__ import annotations
@@ -167,7 +167,6 @@ class Calibrator:
     """
     Calibrator class providing helper methods for traffic flow model parameter estimation.
 
-    This class contains the calibration-related methods extracted from the Network class.
     It is instantiated with a reference to the network being calibrated.
 
     Attributes:
@@ -657,7 +656,8 @@ class Calibrator:
                           prepare_system_params method.
 
         Returns:
-            1-D array of residuals (predicted - measured) for all measurable states
+            1-D array of residuals (predicted - measured, divided by the link mean of
+            the quantity, at least 1) for all measurable states
             across all timesteps in the window.
         """
         # convert calibration parameter vector to system parameter vector format
@@ -872,7 +872,7 @@ class Calibrator:
 
         Args:
             ground_truth_filepath: Path to JSON file containing ground truth simulation results
-                (must be in the format produced by save_simulation_results_json).
+                (must be in the format produced by Simulation.save_results).
             model: Macroscopic flow model instance. Must implement calibration interface.
             initial_params: Initial guess for model parameters. If None, uses model defaults.
                 When use_parameter_search=True, it is not used as a starting point and
@@ -936,8 +936,8 @@ class Calibrator:
             - calibrated_params: Dictionary of calibrated model parameters.
             - result: scipy OptimizeResult object with detailed optimization information
               (cost, iterations, termination status, etc.).
-            - param_history: 2-D array of parameter vectors over optimization iterations
-              (shape: num_evaluations x num_parameters).
+            - param_history: 2-D array of the parameter vectors of every residual
+              evaluation (shape: num_evaluations x num_parameters).
 
         Raises:
             NotImplementedError: If model does not support parameter calibration.
