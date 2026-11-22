@@ -25,7 +25,7 @@
       
       
       <link rel="icon" href="../../assets/images/favicon.png">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.2">
     
     
       
@@ -33,10 +33,10 @@
       
     
     
-      <link rel="stylesheet" href="../../assets/stylesheets/main.484c7ddc.min.css">
+      <link rel="stylesheet" href="../../assets/stylesheets/main.57a0d79d.min.css">
       
         
-        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.fb2fffe2.min.css">
       
       
 
@@ -1003,6 +1003,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#control-interval" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Control interval
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#alinea-local-ramp-metering" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1018,6 +1029,17 @@
     <span class="md-ellipsis">
       
         METALINE — coordinated ramp metering
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#maximum-queue-length-queue-control" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Maximum queue length (queue control)
       
     </span>
   </a>
@@ -1490,62 +1512,6 @@
 
               
             
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../../experimental/sumo-pipeline/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    SUMO Integration
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../../api/experimental/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    API (Experimental)
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
           </ul>
         </nav>
       
@@ -1719,6 +1685,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#control-interval" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Control interval
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#alinea-local-ramp-metering" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1734,6 +1711,17 @@
     <span class="md-ellipsis">
       
         METALINE — coordinated ramp metering
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#maximum-queue-length-queue-control" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Maximum queue length (queue control)
       
     </span>
   </a>
@@ -1783,99 +1771,114 @@
 
 
 <h1 id="ramp-metering">Ramp Metering</h1>
-<p>Ramp metering regulates inflow through on-ramps to prevent mainline congestion. The
-library provides a general control interface and two reference implementations —
-<strong>ALINEA</strong> (local) and <strong>METALINE</strong> (coordinated) — that can be used with both CTM and
-METANET.</p>
-<p>For full algorithmic derivations, see
-<a href="../../#citation">Schlapbach et al., STRC 2026</a>.</p>
+<p>Ramp metering regulates inflow through on-ramps to prevent mainline congestion. The library provides a general control interface and two reference implementations — <strong>ALINEA</strong> (local) and <strong>METALINE</strong> (coordinated) — that can be used with both CTM and METANET.</p>
+<p>For full algorithmic derivations, see <a href="../../#citation">Schlapbach et al., STRC 2026</a>.</p>
 <hr />
 <h2 id="how-controllers-are-attached">How controllers are attached</h2>
-<p>A controller is assigned to an <code>Onramp</code> via its <code>controller</code> attribute. The simulation
-reads the controller from the onramp automatically during each time step.</p>
+<p>A controller is assigned to an <code>Onramp</code> via its <code>controller</code> attribute. The simulation reads the controller from the onramp automatically during each time step.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">traffic_flow_models</span><span class="w"> </span><span class="kn">import</span> <span class="n">Onramp</span>
 <a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>
-<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="n">onramp</span> <span class="o">=</span> <span class="n">Onramp</span><span class="p">(</span><span class="nb">id</span><span class="o">=</span><span class="s2">&quot;r1&quot;</span><span class="p">,</span> <span class="n">length</span><span class="o">=</span><span class="mf">0.5</span><span class="p">,</span> <span class="n">lanes</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="n">onramp</span> <span class="o">=</span> <span class="n">Onramp</span><span class="p">(</span><span class="nb">id</span><span class="o">=</span><span class="s2">"r1"</span><span class="p">,</span> <span class="n">length</span><span class="o">=</span><span class="mf">0.5</span><span class="p">,</span> <span class="n">lanes</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>
 <a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>                <span class="n">lane_capacity</span><span class="o">=</span><span class="mi">1800</span><span class="p">,</span> <span class="n">free_flow_speed</span><span class="o">=</span><span class="mi">80</span><span class="p">,</span> <span class="n">jam_density</span><span class="o">=</span><span class="mi">180</span><span class="p">,</span>
 <a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>                <span class="n">controller</span><span class="o">=</span><span class="kc">None</span><span class="p">)</span>  <span class="c1"># controller assigned below</span>
 </code></pre></div>
 <hr />
 <h2 id="general-metering-mechanism">General metering mechanism</h2>
-<p>All ramp metering strategies compute a <strong>maximum allowed inflow</strong> <span class="arithmatex">\(r_m(k)\)</span> for each
-controlled on-ramp <span class="arithmatex">\(m\)</span>. The actual metered flow is:</p>
+<p>All ramp metering strategies compute a <strong>maximum allowed inflow</strong> <span class="arithmatex">\(r_m(k)\)</span> for each controlled on-ramp <span class="arithmatex">\(m\)</span>. The actual metered flow is:</p>
 <div class="arithmatex">\[q_m^r(k+1) = \min\!\bigl\{q_m(k+1),\; \max\{r_m(k+1),\; 0\}\bigr\}\]</div>
-<p>where <span class="arithmatex">\(q_m(k+1)\)</span> is the unmetered on-ramp outflow. An unmetered on-ramp (no
-controller) is equivalent to setting <span class="arithmatex">\(r_m = \infty\)</span>. Excess vehicles that cannot
-enter the mainline are stored in the on-ramp virtual queue <span class="arithmatex">\(N_m(k)\)</span>.</p>
+<p>where <span class="arithmatex">\(q_m(k+1)\)</span> is the unmetered on-ramp outflow. An unmetered on-ramp (no controller) is equivalent to setting <span class="arithmatex">\(r_m = \infty\)</span>. Excess vehicles that cannot enter the mainline are stored in the on-ramp virtual queue <span class="arithmatex">\(N_m(k)\)</span>.</p>
+<hr />
+<h2 id="control-interval">Control interval</h2>
+<p>Every controller accepts an optional <code>control_dt</code> in the same time unit as the simulation <code>dt</code>. The controller is then evaluated every <code>control_dt</code> and its metering rate is held in between. <code>control_dt</code> must be an integer multiple of <code>dt</code> (a 10 Hz simulation accepts a 1 Hz controller, a 3 Hz simulation rejects a 2 Hz one with a <code>ValueError</code>); the default <code>None</code> updates the rate at every simulation step.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="n">onramp</span><span class="o">.</span><span class="n">controller</span> <span class="o">=</span> <span class="n">AlineaController</span><span class="p">(</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>    <span class="n">onramp</span><span class="o">=</span><span class="n">onramp</span><span class="p">,</span> <span class="n">measurement_link_id</span><span class="o">=</span><span class="s2">"m2"</span><span class="p">,</span> <span class="n">measurement_cell_idx</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>    <span class="n">gain</span><span class="o">=</span><span class="mf">5.0</span><span class="p">,</span> <span class="n">density_setpoint</span><span class="o">=</span><span class="mf">40.0</span><span class="p">,</span>
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>    <span class="n">control_dt</span><span class="o">=</span><span class="mi">60</span> <span class="o">/</span> <span class="mi">3600</span><span class="p">,</span>  <span class="c1"># dt = 10 / 3600: new metering rate every 6th step</span>
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="p">)</span>
+</code></pre></div>
+<p>The model step has two formulations, selected with <code>network_update_function(..., dynamics=...)</code> (type <code>DynamicsFormulation</code>):</p>
+<ul>
+<li><code>"closed_form"</code> (default): the controllers are part of the dynamics, <code>f(params, x, d)</code>.</li>
+<li><code>"exogenous_control"</code>: the controllers are ignored and the metering rates are an input, <code>f(params, x, d, u)</code>, with one entry per on-ramp in the state-vector order of the on-ramp queues (<code>inf</code> = unmetered). <code>Simulation</code> uses it only when a controller sets <code>control_dt</code>, and so does the <code>Calibrator</code>, which replays the held metering rates from the recorded states (see <a href="../../experimental/calibration/#ground-truth-file-format">Calibration</a>).</li>
+</ul>
 <hr />
 <h2 id="alinea-local-ramp-metering">ALINEA — local ramp metering</h2>
-<p>ALINEA is a <strong>local I-type feedback controller</strong>. It regulates the density at a
-detector location on the mainline to a set point (typically the critical density
-<span class="arithmatex">\(\rho\_{cr}\)</span> for maximum throughput):</p>
-<div class="arithmatex">\[r_m(k+1) = q_m^r(k) + K'_I \bigl[\rho_j^\mu(k) - \rho_{set}^\mu\bigr]\]</div>
-<p>where <span class="arithmatex">\(K'\_I = K_I L_j^\mu / \Delta t\)</span> is the gain (transformed from the original
-occupancy-based formulation to density units).</p>
-<p><strong>Choosing the measurement location:</strong> typically a cell <strong>downstream of the on-ramp</strong>
-and upstream of a known bottleneck, so the controller can react before congestion
-propagates back to the ramp.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">traffic_flow_models</span><span class="w"> </span><span class="kn">import</span> <span class="n">AlineaController</span><span class="p">,</span> <span class="n">Onramp</span>
-<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>
-<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="c1"># Create the onramp first, then attach the controller</span>
-<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="n">onramp</span> <span class="o">=</span> <span class="n">Onramp</span><span class="p">(</span><span class="nb">id</span><span class="o">=</span><span class="s2">&quot;r1&quot;</span><span class="p">,</span> <span class="n">length</span><span class="o">=</span><span class="mf">0.5</span><span class="p">,</span> <span class="n">lanes</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>
-<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>                <span class="n">lane_capacity</span><span class="o">=</span><span class="mi">1800</span><span class="p">,</span> <span class="n">free_flow_speed</span><span class="o">=</span><span class="mi">80</span><span class="p">,</span> <span class="n">jam_density</span><span class="o">=</span><span class="mi">180</span><span class="p">)</span>
-<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>
-<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="n">onramp</span><span class="o">.</span><span class="n">controller</span> <span class="o">=</span> <span class="n">AlineaController</span><span class="p">(</span>
-<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a>    <span class="n">onramp</span><span class="o">=</span><span class="n">onramp</span><span class="p">,</span>
-<a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a>    <span class="n">measurement_link_id</span><span class="o">=</span><span class="s2">&quot;m2&quot;</span><span class="p">,</span>  <span class="c1"># ID of the mainline link to measure</span>
-<a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a>    <span class="n">measurement_cell_idx</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span>    <span class="c1"># cell index on that link (0-based)</span>
-<a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a>    <span class="n">gain</span><span class="o">=</span><span class="mf">5.0</span><span class="p">,</span>                  <span class="c1"># K&#39;_I gain</span>
-<a id="__codelineno-1-12" name="__codelineno-1-12" href="#__codelineno-1-12"></a>    <span class="n">density_setpoint</span><span class="o">=</span><span class="mf">40.0</span><span class="p">,</span>     <span class="c1"># desired density [veh/km/lane]</span>
-<a id="__codelineno-1-13" name="__codelineno-1-13" href="#__codelineno-1-13"></a><span class="p">)</span>
+<p>ALINEA is a <strong>local I-type feedback controller</strong>. It regulates the density at a detector location on the mainline to a set point (typically the critical density <span class="arithmatex">\(\rho\_{cr}\)</span> for maximum throughput):</p>
+<div class="arithmatex">\[r_m(k+1) = q_m^r(k) + K'_I \bigl[\rho_{set}^\mu - \rho_j^\mu(k)\bigr]\]</div>
+<p>where <span class="arithmatex">\(K'\_I = K_I L_j^\mu / \Delta t\)</span> is the gain (transformed from the original occupancy-based formulation to density units).</p>
+<p><strong>Choosing the measurement location:</strong> typically a cell <strong>downstream of the on-ramp</strong> and upstream of a known bottleneck, so the controller can react before congestion propagates back to the ramp.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">traffic_flow_models</span><span class="w"> </span><span class="kn">import</span> <span class="n">AlineaController</span><span class="p">,</span> <span class="n">Onramp</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="c1"># Create the onramp first, then attach the controller</span>
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="n">onramp</span> <span class="o">=</span> <span class="n">Onramp</span><span class="p">(</span><span class="nb">id</span><span class="o">=</span><span class="s2">"r1"</span><span class="p">,</span> <span class="n">length</span><span class="o">=</span><span class="mf">0.5</span><span class="p">,</span> <span class="n">lanes</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>
+<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a>                <span class="n">lane_capacity</span><span class="o">=</span><span class="mi">1800</span><span class="p">,</span> <span class="n">free_flow_speed</span><span class="o">=</span><span class="mi">80</span><span class="p">,</span> <span class="n">jam_density</span><span class="o">=</span><span class="mi">180</span><span class="p">)</span>
+<a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a>
+<a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a><span class="n">onramp</span><span class="o">.</span><span class="n">controller</span> <span class="o">=</span> <span class="n">AlineaController</span><span class="p">(</span>
+<a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a>    <span class="n">onramp</span><span class="o">=</span><span class="n">onramp</span><span class="p">,</span>
+<a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a>    <span class="n">measurement_link_id</span><span class="o">=</span><span class="s2">"m2"</span><span class="p">,</span>  <span class="c1"># ID of the mainline link to measure</span>
+<a id="__codelineno-2-10" name="__codelineno-2-10" href="#__codelineno-2-10"></a>    <span class="n">measurement_cell_idx</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span>    <span class="c1"># cell index on that link (0-based)</span>
+<a id="__codelineno-2-11" name="__codelineno-2-11" href="#__codelineno-2-11"></a>    <span class="n">gain</span><span class="o">=</span><span class="mf">5.0</span><span class="p">,</span>                  <span class="c1"># K'_I gain</span>
+<a id="__codelineno-2-12" name="__codelineno-2-12" href="#__codelineno-2-12"></a>    <span class="n">density_setpoint</span><span class="o">=</span><span class="mf">40.0</span><span class="p">,</span>     <span class="c1"># desired density [veh/km/lane]</span>
+<a id="__codelineno-2-13" name="__codelineno-2-13" href="#__codelineno-2-13"></a><span class="p">)</span>
 </code></pre></div>
 <hr />
 <h2 id="metaline-coordinated-ramp-metering">METALINE — coordinated ramp metering</h2>
-<p>METALINE distributes control effort across <strong>multiple on-ramps</strong> simultaneously,
-using density measurements from several relevant locations. This reduces the
-myopia of local controllers:</p>
-<div class="arithmatex">\[r_m(k+1) = q_m^r(k) + K_{METALINE}^m \cdot \bigl[\boldsymbol{\rho}(k) - \boldsymbol{\rho}_{set}\bigr]\]</div>
-<p>where <span class="arithmatex">\(K\_{METALINE}^m\)</span> is the <span class="arithmatex">\(m\)</span>-th row of the gain matrix. A purely diagonal
-gain matrix reduces to uncoordinated ALINEA-style control.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
-<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">traffic_flow_models</span><span class="w"> </span><span class="kn">import</span> <span class="n">MetalineController</span><span class="p">,</span> <span class="n">Onramp</span>
-<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>
-<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="n">onramp</span> <span class="o">=</span> <span class="n">Onramp</span><span class="p">(</span><span class="nb">id</span><span class="o">=</span><span class="s2">&quot;r1&quot;</span><span class="p">,</span> <span class="n">length</span><span class="o">=</span><span class="mf">0.5</span><span class="p">,</span> <span class="n">lanes</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>
-<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a>                <span class="n">lane_capacity</span><span class="o">=</span><span class="mi">1800</span><span class="p">,</span> <span class="n">free_flow_speed</span><span class="o">=</span><span class="mi">80</span><span class="p">,</span> <span class="n">jam_density</span><span class="o">=</span><span class="mi">180</span><span class="p">)</span>
-<a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a>
-<a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a><span class="n">onramp</span><span class="o">.</span><span class="n">controller</span> <span class="o">=</span> <span class="n">MetalineController</span><span class="p">(</span>
-<a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a>    <span class="n">onramp</span><span class="o">=</span><span class="n">onramp</span><span class="p">,</span>
-<a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a>    <span class="c1"># list of (link_id, cell_idx) measurement locations</span>
-<a id="__codelineno-2-10" name="__codelineno-2-10" href="#__codelineno-2-10"></a>    <span class="n">measurement_cells</span><span class="o">=</span><span class="p">[(</span><span class="s2">&quot;m2&quot;</span><span class="p">,</span> <span class="mi">0</span><span class="p">),</span> <span class="p">(</span><span class="s2">&quot;m3&quot;</span><span class="p">,</span> <span class="mi">1</span><span class="p">)],</span>
-<a id="__codelineno-2-11" name="__codelineno-2-11" href="#__codelineno-2-11"></a>    <span class="c1"># gain matrix: dict mapping onramp ID -&gt; numpy array shape (1, n_measurements)</span>
-<a id="__codelineno-2-12" name="__codelineno-2-12" href="#__codelineno-2-12"></a>    <span class="n">gain_matrix</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;r1&quot;</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([[</span><span class="mf">10.0</span><span class="p">,</span> <span class="mf">5.0</span><span class="p">]])},</span>
-<a id="__codelineno-2-13" name="__codelineno-2-13" href="#__codelineno-2-13"></a>    <span class="c1"># desired density at each measurement cell: list of (link_id, cell_idx, setpoint)</span>
-<a id="__codelineno-2-14" name="__codelineno-2-14" href="#__codelineno-2-14"></a>    <span class="n">density_setpoints</span><span class="o">=</span><span class="p">[(</span><span class="s2">&quot;m2&quot;</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mf">40.0</span><span class="p">),</span> <span class="p">(</span><span class="s2">&quot;m3&quot;</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mf">40.0</span><span class="p">)],</span>
-<a id="__codelineno-2-15" name="__codelineno-2-15" href="#__codelineno-2-15"></a><span class="p">)</span>
+<p>METALINE distributes control effort across <strong>multiple on-ramps</strong> simultaneously, using density measurements from several relevant locations. This reduces the myopia of local controllers:</p>
+<div class="arithmatex">\[r_m(k+1) = q_m^r(k) - K_{METALINE}^m \cdot \bigl[\boldsymbol{\rho}(k) - \boldsymbol{\rho}_{set}\bigr]\]</div>
+<p>where <span class="arithmatex">\(K\_{METALINE}^m\)</span> is the <span class="arithmatex">\(m\)</span>-th row of the gain matrix. A purely diagonal gain matrix reduces to uncoordinated ALINEA-style control.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">traffic_flow_models</span><span class="w"> </span><span class="kn">import</span> <span class="n">MetalineController</span><span class="p">,</span> <span class="n">Onramp</span>
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="n">onramp</span> <span class="o">=</span> <span class="n">Onramp</span><span class="p">(</span><span class="nb">id</span><span class="o">=</span><span class="s2">"r1"</span><span class="p">,</span> <span class="n">length</span><span class="o">=</span><span class="mf">0.5</span><span class="p">,</span> <span class="n">lanes</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>
+<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>                <span class="n">lane_capacity</span><span class="o">=</span><span class="mi">1800</span><span class="p">,</span> <span class="n">free_flow_speed</span><span class="o">=</span><span class="mi">80</span><span class="p">,</span> <span class="n">jam_density</span><span class="o">=</span><span class="mi">180</span><span class="p">)</span>
+<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a>
+<a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a><span class="n">onramp</span><span class="o">.</span><span class="n">controller</span> <span class="o">=</span> <span class="n">MetalineController</span><span class="p">(</span>
+<a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a>    <span class="n">onramp</span><span class="o">=</span><span class="n">onramp</span><span class="p">,</span>
+<a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a>    <span class="c1"># list of (link_id, cell_idx) measurement locations</span>
+<a id="__codelineno-3-10" name="__codelineno-3-10" href="#__codelineno-3-10"></a>    <span class="n">measurement_cells</span><span class="o">=</span><span class="p">[(</span><span class="s2">"m2"</span><span class="p">,</span> <span class="mi">0</span><span class="p">),</span> <span class="p">(</span><span class="s2">"m3"</span><span class="p">,</span> <span class="mi">1</span><span class="p">)],</span>
+<a id="__codelineno-3-11" name="__codelineno-3-11" href="#__codelineno-3-11"></a>    <span class="c1"># gain matrix: dict mapping onramp ID -&gt; numpy array shape (1, n_measurements)</span>
+<a id="__codelineno-3-12" name="__codelineno-3-12" href="#__codelineno-3-12"></a>    <span class="n">gain_matrix</span><span class="o">=</span><span class="p">{</span><span class="s2">"r1"</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([[</span><span class="mf">10.0</span><span class="p">,</span> <span class="mf">5.0</span><span class="p">]])},</span>
+<a id="__codelineno-3-13" name="__codelineno-3-13" href="#__codelineno-3-13"></a>    <span class="c1"># desired density at each measurement cell: list of (link_id, cell_idx, setpoint)</span>
+<a id="__codelineno-3-14" name="__codelineno-3-14" href="#__codelineno-3-14"></a>    <span class="n">density_setpoints</span><span class="o">=</span><span class="p">[(</span><span class="s2">"m2"</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mf">40.0</span><span class="p">),</span> <span class="p">(</span><span class="s2">"m3"</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mf">40.0</span><span class="p">)],</span>
+<a id="__codelineno-3-15" name="__codelineno-3-15" href="#__codelineno-3-15"></a><span class="p">)</span>
 </code></pre></div>
+<hr />
+<h2 id="maximum-queue-length-queue-control">Maximum queue length (queue control)</h2>
+<p>Set <code>max_queue</code> (veh) on an <code>Onramp</code>, e.g. to the vehicles the ramp can store, to keep its queue from spilling back into the adjacent network. ALINEA and METALINE then limit the metering rate with the standard queue-control law:</p>
+<div class="arithmatex">\[r_w(k) = \frac{w(k) - w_{max}}{T} + d(k-1), \qquad r(k) = \max\bigl\{r_{ctrl}(k),\; r_w(k)\bigr\}\]</div>
+<p>where <span class="arithmatex">\(w(k)\)</span> is the current queue, <span class="arithmatex">\(w_{max}\)</span> the <code>max_queue</code>, <span class="arithmatex">\(d(k-1)\)</span> the arrival flow from the origin feeding the on-ramp, <span class="arithmatex">\(r_{ctrl}\)</span> the ALINEA / METALINE rate and <span class="arithmatex">\(T\)</span> the time between two metering-rate updates. Held for <span class="arithmatex">\(T\)</span>, <span class="arithmatex">\(r_w\)</span> brings the queue back to <span class="arithmatex">\(w_{max}\)</span> for constant arrivals. The metering rate is raised only as far as the queue requires, and the control law takes over again once the queue is below the limit.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="n">onramp</span> <span class="o">=</span> <span class="n">Onramp</span><span class="p">(</span><span class="nb">id</span><span class="o">=</span><span class="s2">"r1"</span><span class="p">,</span> <span class="n">length</span><span class="o">=</span><span class="mf">0.5</span><span class="p">,</span> <span class="n">lanes</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>                <span class="n">lane_capacity</span><span class="o">=</span><span class="mi">1800</span><span class="p">,</span> <span class="n">free_flow_speed</span><span class="o">=</span><span class="mi">80</span><span class="p">,</span> <span class="n">jam_density</span><span class="o">=</span><span class="mi">180</span><span class="p">,</span>
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>                <span class="n">max_queue</span><span class="o">=</span><span class="mf">60.0</span><span class="p">)</span>  <span class="c1"># at most 60 vehicles waiting on the ramp</span>
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="n">onramp</span><span class="o">.</span><span class="n">controller</span> <span class="o">=</span> <span class="n">AlineaController</span><span class="p">(</span>
+<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>    <span class="n">onramp</span><span class="o">=</span><span class="n">onramp</span><span class="p">,</span> <span class="n">measurement_link_id</span><span class="o">=</span><span class="s2">"m2"</span><span class="p">,</span> <span class="n">measurement_cell_idx</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span>
+<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a>    <span class="n">gain</span><span class="o">=</span><span class="mf">5.0</span><span class="p">,</span> <span class="n">density_setpoint</span><span class="o">=</span><span class="mf">40.0</span><span class="p">,</span>
+<a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a><span class="p">)</span>
+</code></pre></div>
+<ul>
+<li><span class="arithmatex">\(T\)</span> is the controller's update interval (<code>control_dt</code>, or the simulation <code>dt</code> if it is None), so <span class="arithmatex">\(r_w\)</span> is evaluated together with the control law and held with it. <span class="arithmatex">\(d\)</span> is the arrival flow of the feeding origin in the last simulation step, assumed constant over <span class="arithmatex">\(T\)</span> (zero-order hold); if arrivals rise within the interval, the queue ends the interval above <span class="arithmatex">\(w_{max}\)</span>. Both are set automatically when the model step is built.</li>
+<li>Only ALINEA and METALINE support <code>max_queue</code>. With a <code>FlowController</code> or <code>CustomController</code> it is ignored with a warning (a custom function can read <code>onramp_queues</code> and <code>onramp.max_queue</code> itself); an on-ramp without a controller is unmetered and ignores it. In the <code>"exogenous_control"</code> formulation, metering rates passed as <code>u</code> are applied unchanged.</li>
+<li>The queue can still exceed <code>max_queue</code> when the ramp capacity or the merge (mainline supply) limits the on-ramp outflow; no metering rate can prevent that. Similarly, the zero-hold assumption of the demand can lead to temporary overshoots if the arrival flow rises within the interval.</li>
+</ul>
 <hr />
 <h2 id="fixed-rate-metering">Fixed-rate metering</h2>
 <p>For simple capacity-restriction scenarios use the <code>FlowController</code>:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">traffic_flow_models</span><span class="w"> </span><span class="kn">import</span> <span class="n">FlowController</span>
-<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>
-<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="n">onramp</span><span class="o">.</span><span class="n">controller</span> <span class="o">=</span> <span class="n">FlowController</span><span class="p">(</span><span class="n">onramp</span><span class="o">=</span><span class="n">onramp</span><span class="p">,</span> <span class="n">flow</span><span class="o">=</span><span class="mf">600.0</span><span class="p">)</span>  <span class="c1"># 600 veh/h max</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">traffic_flow_models</span><span class="w"> </span><span class="kn">import</span> <span class="n">FlowController</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="n">onramp</span><span class="o">.</span><span class="n">controller</span> <span class="o">=</span> <span class="n">FlowController</span><span class="p">(</span><span class="n">onramp</span><span class="o">=</span><span class="n">onramp</span><span class="p">,</span> <span class="n">flow</span><span class="o">=</span><span class="mf">600.0</span><span class="p">)</span>  <span class="c1"># 600 veh/h max</span>
 </code></pre></div>
 <hr />
 <h2 id="custom-controllers">Custom controllers</h2>
-<p>Supply any CasADi-compatible callable via <code>CustomController</code>. The function receives
-<code>(onramp_queues, flows, densities)</code> dicts and must return a <code>casadi.SX</code> expression:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">casadi</span>
-<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">traffic_flow_models</span><span class="w"> </span><span class="kn">import</span> <span class="n">CustomController</span>
-<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>
-<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="k">def</span><span class="w"> </span><span class="nf">my_law</span><span class="p">(</span><span class="n">onramp_queues</span><span class="p">,</span> <span class="n">flows</span><span class="p">,</span> <span class="n">densities</span><span class="p">):</span>
-<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Reduce metering when downstream density exceeds 50 veh/km/lane.&quot;&quot;&quot;</span>
-<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a>    <span class="n">rho</span> <span class="o">=</span> <span class="n">densities</span><span class="p">[</span><span class="s2">&quot;m2&quot;</span><span class="p">][</span><span class="mi">0</span><span class="p">]</span>
-<a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a>    <span class="k">return</span> <span class="n">casadi</span><span class="o">.</span><span class="n">if_else</span><span class="p">(</span><span class="n">rho</span> <span class="o">&gt;</span> <span class="mf">50.0</span><span class="p">,</span> <span class="n">casadi</span><span class="o">.</span><span class="n">SX</span><span class="p">(</span><span class="mf">400.0</span><span class="p">),</span> <span class="n">casadi</span><span class="o">.</span><span class="n">SX</span><span class="p">(</span><span class="mf">1200.0</span><span class="p">))</span>
-<a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a>
-<a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a><span class="n">onramp</span><span class="o">.</span><span class="n">controller</span> <span class="o">=</span> <span class="n">CustomController</span><span class="p">(</span><span class="n">onramp</span><span class="o">=</span><span class="n">onramp</span><span class="p">,</span> <span class="n">controller_fn</span><span class="o">=</span><span class="n">my_law</span><span class="p">)</span>
+<p>Supply any CasADi-compatible callable via <code>CustomController</code>. The function receives <code>(onramp_queues, flows, densities)</code> dicts and must return a <code>casadi.SX</code> expression:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">casadi</span>
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">traffic_flow_models</span><span class="w"> </span><span class="kn">import</span> <span class="n">CustomController</span>
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="k">def</span><span class="w"> </span><span class="nf">my_law</span><span class="p">(</span><span class="n">onramp_queues</span><span class="p">,</span> <span class="n">flows</span><span class="p">,</span> <span class="n">densities</span><span class="p">):</span>
+<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a><span class="w">    </span><span class="sd">"""Reduce metering when downstream density exceeds 50 veh/km/lane."""</span>
+<a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a>    <span class="n">rho</span> <span class="o">=</span> <span class="n">densities</span><span class="p">[</span><span class="s2">"m2"</span><span class="p">][</span><span class="mi">0</span><span class="p">]</span>
+<a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a>    <span class="k">return</span> <span class="n">casadi</span><span class="o">.</span><span class="n">if_else</span><span class="p">(</span><span class="n">rho</span> <span class="o">&gt;</span> <span class="mf">50.0</span><span class="p">,</span> <span class="n">casadi</span><span class="o">.</span><span class="n">SX</span><span class="p">(</span><span class="mf">400.0</span><span class="p">),</span> <span class="n">casadi</span><span class="o">.</span><span class="n">SX</span><span class="p">(</span><span class="mf">1200.0</span><span class="p">))</span>
+<a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a>
+<a id="__codelineno-6-9" name="__codelineno-6-9" href="#__codelineno-6-9"></a><span class="n">onramp</span><span class="o">.</span><span class="n">controller</span> <span class="o">=</span> <span class="n">CustomController</span><span class="p">(</span><span class="n">onramp</span><span class="o">=</span><span class="n">onramp</span><span class="p">,</span> <span class="n">controller_fn</span><span class="o">=</span><span class="n">my_law</span><span class="p">)</span>
 </code></pre></div>
 
 
@@ -1931,10 +1934,10 @@ gain matrix reduces to uncoordinated ALINEA-style control.</p>
     
       
       
-      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.tabs", "navigation.tabs.sticky", "navigation.sections", "navigation.expand", "navigation.top", "search.suggest", "search.highlight", "content.code.copy", "content.code.annotate", "toc.follow"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.tabs", "navigation.tabs.sticky", "navigation.sections", "navigation.expand", "navigation.top", "search.suggest", "search.highlight", "content.code.copy", "content.code.annotate", "toc.follow"], "search": "../../assets/javascripts/workers/search.a7633da7.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
     
     
-      <script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>
+      <script src="../../assets/javascripts/bundle.a5f9d56c.min.js"></script>
       
         <script src="../../javascripts/mathjax.js"></script>
       

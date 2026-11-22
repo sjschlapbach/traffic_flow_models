@@ -25,7 +25,7 @@
       
       
       <link rel="icon" href="../../assets/images/favicon.png">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.2">
     
     
       
@@ -33,10 +33,10 @@
       
     
     
-      <link rel="stylesheet" href="../../assets/stylesheets/main.484c7ddc.min.css">
+      <link rel="stylesheet" href="../../assets/stylesheets/main.57a0d79d.min.css">
       
         
-        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.fb2fffe2.min.css">
       
       
 
@@ -1490,62 +1490,6 @@
 
               
             
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../../experimental/sumo-pipeline/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    SUMO Integration
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../../api/experimental/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    API (Experimental)
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
           </ul>
         </nav>
       
@@ -1783,20 +1727,13 @@
 
 
 <h1 id="state-space-formulation">State-Space Formulation</h1>
-<p>Both CTM and METANET share the same abstract discrete-time state-space representation.
-Understanding this formulation helps clarify what each argument to <code>Simulation.run()</code>
-represents and how models differ internally.</p>
+<p>Both CTM and METANET share the same abstract discrete-time state-space representation. Understanding this formulation helps clarify what each argument to <code>Simulation.run()</code> represents and how models differ internally.</p>
 <h2 id="the-unified-update-equation">The unified update equation</h2>
-<p>Network evolution is governed by a single nonlinear, time-invariant discrete-time
-update function:</p>
+<p>Network evolution is governed by a single nonlinear, time-invariant discrete-time update function:</p>
 <div class="arithmatex">\[\boxed{x(k+1) = f\!\bigl(x(k),\; u(k),\; d(k),\; \theta\bigr)}\]</div>
-<p>The function <span class="arithmatex">\(f(\cdot)\)</span> advances the network state by one discrete time step
-<span class="arithmatex">\(\Delta t\)</span>. CTM and METANET implement different <span class="arithmatex">\(f(\cdot)\)</span> but operate on the
-same state and input structure.</p>
+<p>The function <span class="arithmatex">\(f(\cdot)\)</span> advances the network state by one discrete time step <span class="arithmatex">\(\Delta t\)</span>. CTM and METANET implement different <span class="arithmatex">\(f(\cdot)\)</span> but operate on the same state and input structure.</p>
 <h2 id="state-vector-xk">State vector <span class="arithmatex">\(x(k)\)</span></h2>
-<p>The state vector aggregates all modelled physical quantities at time step <span class="arithmatex">\(k\)</span>.
-It is packed in network-traversal order: for each node, incoming <code>Origin</code> / <code>Onramp</code>
-entries come first, followed by outgoing link entries.</p>
+<p>The state vector aggregates all modelled physical quantities at time step <span class="arithmatex">\(k\)</span>. It is packed in network-traversal order: for each node, incoming <code>Origin</code> / <code>Onramp</code> entries come first, followed by outgoing link entries.</p>
 <table>
 <thead>
 <tr>
@@ -1841,17 +1778,11 @@ entries come first, followed by outgoing link entries.</p>
 </table>
 <div class="admonition note">
 <p class="admonition-title">Speed in CTM</p>
-<p>In CTM, mean speed is derived algebraically from flow and density via the
-fundamental relation <span class="arithmatex">\(v = q / (\lambda \rho)\)</span>. It is stored in the state
-vector as a derived quantity at each step, but is not an independent dynamic
-state — unlike METANET where it is integrated via a separate ODE.</p>
+<p>In CTM, mean speed is derived algebraically from flow and density via the fundamental relation <span class="arithmatex">\(v = q / (\lambda \rho)\)</span>. It is stored in the state vector as a derived quantity at each step, but is not an independent dynamic state — unlike METANET where it is integrated via a separate ODE.</p>
 </div>
 <div class="admonition note">
 <p class="admonition-title">Store-and-forward links</p>
-<p><code>Origin</code>, <code>Onramp</code>, and <code>Offramp</code> are each represented as a single-cell
-store-and-forward element. Their state contributes <strong>two</strong> scalars to <span class="arithmatex">\(x\)</span>:
-the current outflow <span class="arithmatex">\(q^m\)</span> and the virtual queue <span class="arithmatex">\(N^m\)</span>. <code>Destination</code> links
-contribute only the exit flow (no queue).</p>
+<p><code>Origin</code>, <code>Onramp</code>, and <code>Offramp</code> are each represented as a single-cell store-and-forward element. Their state contributes <strong>two</strong> scalars to <span class="arithmatex">\(x\)</span>: the current outflow <span class="arithmatex">\(q^m\)</span> and the virtual queue <span class="arithmatex">\(N^m\)</span>. <code>Destination</code> links contribute only the exit flow (no queue).</p>
 </div>
 <h2 id="input-vector-uk">Input vector <span class="arithmatex">\(u(k)\)</span></h2>
 <p>Control inputs applied at each time step:</p>
@@ -1871,10 +1802,9 @@ contribute only the exit flow (no queue).</p>
 </tr>
 </tbody>
 </table>
-<p>When no controller is attached, <span class="arithmatex">\(r_m(k) = \infty\)</span> (no metering).</p>
+<p>When no controller is attached, <span class="arithmatex">\(r_m(k) = \infty\)</span> (no metering). In the default <code>"closed_form"</code> step the controllers compute <span class="arithmatex">\(r_m(k)\)</span> inside <span class="arithmatex">\(f\)</span>; only the <code>"exogenous_control"</code> step takes <span class="arithmatex">\(u(k)\)</span> as an explicit input (see <a href="../../control/ramp-metering/#control-interval">Ramp Metering</a>).</p>
 <h2 id="disturbance-vector-dk">Disturbance vector <span class="arithmatex">\(d(k)\)</span></h2>
-<p>Exogenous quantities that drive the simulation and are not controlled. The disturbance
-vector is packed in the same node-traversal order as the state vector:</p>
+<p>Exogenous quantities that drive the simulation and are not controlled. The disturbance vector is packed in the same node-traversal order as the state vector:</p>
 <table>
 <thead>
 <tr>
@@ -1897,18 +1827,17 @@ vector is packed in the same node-traversal order as the state vector:</p>
 <tr>
 <td>Flow boundary condition</td>
 <td><span class="arithmatex">\(q\_{bc}^m(k)\)</span></td>
-<td>Maximum exit flow at each <code>Destination</code> (veh/h)</td>
+<td>Maximum exit flow at each <code>Destination</code>, used by CTM (veh/h)</td>
 </tr>
 <tr>
 <td>Density boundary condition</td>
 <td><span class="arithmatex">\(\rho\_{bc}^m(k)\)</span></td>
-<td>Downstream density at each <code>Destination</code> — used by METANET's speed equation (veh/km/lane)</td>
+<td>Downstream density at each <code>Destination</code> — used by METANET's speed equation and off-ramp supply (veh/km/lane)</td>
 </tr>
 </tbody>
 </table>
 <h2 id="parameter-vector-theta">Parameter vector <span class="arithmatex">\(\theta\)</span></h2>
-<p>Model parameters that are fixed for a given simulation run. Parameters belonging to the
-<strong>fundamental diagram (FD)</strong> are currently fixed and link-specific, thereby fully defining CTM. Additional *<em>METANET-specific</em> parameters are passed via <code>METANETParams</code> and govern the second-order dynamics:</p>
+<p>Model parameters that are fixed for a given simulation run. Parameters belonging to the <strong>fundamental diagram (FD)</strong> are currently fixed and link-specific, thereby fully defining CTM. Additional *<em>METANET-specific</em> parameters are passed via <code>METANETParams</code> and govern the second-order dynamics:</p>
 <table>
 <thead>
 <tr>
@@ -1961,12 +1890,11 @@ vector is packed in the same node-traversal order as the state vector:</p>
 <!-- | Lane capacity flow       | \(q\_{c,\text{lane}}\) | veh/h/lane  | Both                | -->
 <!-- | Jam density              | \(\rho\_{jam}\)        | veh/km/lane | Both                | -->
 
-<p>See <a href="../../models/ctm/">CTM</a> and <a href="../../models/metanet/">METANET</a> for detailed parameter
-descriptions and typical values.</p>
+<p>See <a href="../../models/ctm/">CTM</a> and <a href="../../models/metanet/">METANET</a> for detailed parameter descriptions and typical values.</p>
 <h2 id="initial-conditions">Initial conditions</h2>
 <p>At <span class="arithmatex">\(k=0\)</span>, the default initial state is <strong>free-flow with no vehicles</strong>:</p>
 <div class="arithmatex">\[q_i^m(0) = 0, \quad \rho_i^m(0) = 0, \quad v_i^m(0) = v_f^m, \quad N^m(0) = 0\]</div>
-<p>A custom initial state <span class="arithmatex">\(x_0\)</span> can be passed to <code>Simulation.run()</code> for warm-starting.</p>
+<p>A custom initial state can be passed to <code>Simulation.run()</code> for warm-starting (<code>initial_flows</code>, <code>initial_densities</code>, <code>initial_speeds</code>, <code>initial_origin_queues</code>, <code>initial_onramp_queues</code>, <code>initial_offramp_queues</code>).</p>
 
 
 
@@ -2021,10 +1949,10 @@ descriptions and typical values.</p>
     
       
       
-      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.tabs", "navigation.tabs.sticky", "navigation.sections", "navigation.expand", "navigation.top", "search.suggest", "search.highlight", "content.code.copy", "content.code.annotate", "toc.follow"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.tabs", "navigation.tabs.sticky", "navigation.sections", "navigation.expand", "navigation.top", "search.suggest", "search.highlight", "content.code.copy", "content.code.annotate", "toc.follow"], "search": "../../assets/javascripts/workers/search.a7633da7.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
     
     
-      <script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>
+      <script src="../../assets/javascripts/bundle.a5f9d56c.min.js"></script>
       
         <script src="../../javascripts/mathjax.js"></script>
       

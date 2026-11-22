@@ -18,14 +18,14 @@
         <link rel="prev" href="../">
       
       
-        <link rel="next" href="../sumo-pipeline/">
+        <link rel="next" href="../../development/contributing/">
       
       
         
       
       
       <link rel="icon" href="../../assets/images/favicon.png">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.2">
     
     
       
@@ -33,10 +33,10 @@
       
     
     
-      <link rel="stylesheet" href="../../assets/stylesheets/main.484c7ddc.min.css">
+      <link rel="stylesheet" href="../../assets/stylesheets/main.57a0d79d.min.css">
       
         
-        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.fb2fffe2.min.css">
       
       
 
@@ -1455,6 +1455,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#ground-truth-file-format" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Ground-truth file format
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#custom-bounds" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1524,62 +1535,6 @@
   
 </nav>
       
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../sumo-pipeline/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    SUMO Integration
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../../api/experimental/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    API (Experimental)
-  
-
-    
-  </span>
-  
-  
-
-      </a>
     </li>
   
 
@@ -1775,6 +1730,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#ground-truth-file-format" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Ground-truth file format
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#custom-bounds" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1865,35 +1831,29 @@
 <p class="admonition-title">Experimental</p>
 <p>Calibration tooling is experimental. The API may change in future releases.</p>
 </div>
-<p>Parameter calibration fits METANET model parameters to data from a reference
-simulation (e.g. from SUMO microsimulation or a real-world reference run) using
-<strong>sliding-window nonlinear least-squares</strong> optimisation via SciPy's Trust-Region
-Reflective algorithm. Only METANET supports calibration; CTM has no calibratable
-parameters (its characteristics are entirely determined by link geometry).</p>
-<p>For a detailed algorithmic description, see
-<a href="../../#citation">Schlapbach et al., STRC 2026</a>.</p>
+<p>Parameter calibration fits METANET model parameters to reference data (e.g. measured traffic data or the output of another simulator, converted to the <a href="#ground-truth-file-format">ground-truth file format</a>) using <strong>sliding-window nonlinear least-squares</strong> optimisation via SciPy's Trust-Region Reflective algorithm. Only METANET supports calibration; CTM has no calibratable parameters (its characteristics are entirely determined by link geometry).</p>
+<p>For a detailed algorithmic description, see <a href="../../#citation">Schlapbach et al., STRC 2026</a>.</p>
 <hr />
 <h2 id="overview">Overview</h2>
 <p>The calibration workflow:</p>
 <ol>
-<li><strong>Run a reference simulation</strong> and save the results to a JSON file.</li>
+<li><strong>Provide ground-truth data</strong> as a results JSON file (e.g. saved from a reference simulation with <code>Simulation.save_results</code>, or converted from measurements).</li>
 <li><strong>Instantiate a <code>Calibrator</code></strong> with the same <code>Network</code> object.</li>
 <li><strong>Call <code>calibrate_model_params()</code></strong> with the path to the saved JSON.</li>
-<li>Optionally run <strong>multi-start search</strong> (Latin Hypercube Sampling) to escape local
-   minima, and inspect <strong>parameter correlations</strong> to detect identifiability issues.</li>
+<li>Optionally run <strong>multi-start search</strong> (Latin Hypercube Sampling) to escape local minima, and inspect <strong>parameter correlations</strong> to detect identifiability issues.</li>
 </ol>
 <hr />
 <h2 id="basic-usage">Basic usage</h2>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">traffic_flow_models</span><span class="w"> </span><span class="kn">import</span> <span class="n">Calibrator</span><span class="p">,</span> <span class="n">METANET</span><span class="p">,</span> <span class="n">METANETParams</span>
 <a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>
-<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="c1"># Initial parameter guess</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="c1"># Initial parameter guess (the model's literature start values)</span>
 <a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="n">initial_params</span><span class="p">:</span> <span class="n">METANETParams</span> <span class="o">=</span> <span class="p">{</span>
-<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>    <span class="s2">&quot;tau&quot;</span><span class="p">:</span> <span class="mf">10.0</span> <span class="o">/</span> <span class="mi">3600</span><span class="p">,</span>
-<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>    <span class="s2">&quot;nu&quot;</span><span class="p">:</span> <span class="mf">20.0</span><span class="p">,</span>
-<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>    <span class="s2">&quot;kappa&quot;</span><span class="p">:</span> <span class="mf">20.0</span><span class="p">,</span>
-<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>    <span class="s2">&quot;delta&quot;</span><span class="p">:</span> <span class="mf">1.0</span><span class="p">,</span>
-<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>    <span class="s2">&quot;phi&quot;</span><span class="p">:</span> <span class="mf">1.0</span><span class="p">,</span>
-<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>    <span class="s2">&quot;alpha&quot;</span><span class="p">:</span> <span class="mf">1.0</span><span class="p">,</span>
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>    <span class="s2">"tau"</span><span class="p">:</span> <span class="mf">18.0</span> <span class="o">/</span> <span class="mi">3600</span><span class="p">,</span>
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>    <span class="s2">"nu"</span><span class="p">:</span> <span class="mf">60.0</span><span class="p">,</span>
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>    <span class="s2">"kappa"</span><span class="p">:</span> <span class="mf">40.0</span><span class="p">,</span>
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>    <span class="s2">"delta"</span><span class="p">:</span> <span class="mf">0.0122</span><span class="p">,</span>
+<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>    <span class="s2">"phi"</span><span class="p">:</span> <span class="mf">2.98</span><span class="p">,</span>
+<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>    <span class="s2">"alpha"</span><span class="p">:</span> <span class="mf">1.636</span><span class="p">,</span>
 <a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a><span class="p">}</span>
 <a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a>
 <a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a><span class="n">metanet</span> <span class="o">=</span> <span class="n">METANET</span><span class="p">()</span>
@@ -1903,30 +1863,28 @@ parameters (its characteristics are entirely determined by link geometry).</p>
 <a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a>
 <a id="__codelineno-0-18" name="__codelineno-0-18" href="#__codelineno-0-18"></a><span class="c1"># Calibrate — returns (params_dict, scipy_result, param_history_array)</span>
 <a id="__codelineno-0-19" name="__codelineno-0-19" href="#__codelineno-0-19"></a><span class="n">calibrated_params</span><span class="p">,</span> <span class="n">result</span><span class="p">,</span> <span class="n">param_history</span> <span class="o">=</span> <span class="n">calibrator</span><span class="o">.</span><span class="n">calibrate_model_params</span><span class="p">(</span>
-<a id="__codelineno-0-20" name="__codelineno-0-20" href="#__codelineno-0-20"></a>    <span class="c1"># ground truth file (can be generated from microsimulation through pipeline)</span>
-<a id="__codelineno-0-21" name="__codelineno-0-21" href="#__codelineno-0-21"></a>    <span class="n">ground_truth_filepath</span><span class="o">=</span><span class="s2">&quot;results/ground_truth/simulation_results.json&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-20" name="__codelineno-0-20" href="#__codelineno-0-20"></a>    <span class="c1"># ground truth file in the results JSON format (see below)</span>
+<a id="__codelineno-0-21" name="__codelineno-0-21" href="#__codelineno-0-21"></a>    <span class="n">ground_truth_filepath</span><span class="o">=</span><span class="s2">"results/ground_truth/simulation_results.json"</span><span class="p">,</span>
 <a id="__codelineno-0-22" name="__codelineno-0-22" href="#__codelineno-0-22"></a>    <span class="n">model</span><span class="o">=</span><span class="n">metanet</span><span class="p">,</span>
 <a id="__codelineno-0-23" name="__codelineno-0-23" href="#__codelineno-0-23"></a>    <span class="n">initial_params</span><span class="o">=</span><span class="n">initial_params</span><span class="p">,</span>
 <a id="__codelineno-0-24" name="__codelineno-0-24" href="#__codelineno-0-24"></a>    <span class="n">window_size</span><span class="o">=</span><span class="mi">30</span><span class="p">,</span>       <span class="c1"># time steps per sliding window</span>
 <a id="__codelineno-0-25" name="__codelineno-0-25" href="#__codelineno-0-25"></a>    <span class="n">stride</span><span class="o">=</span><span class="mi">15</span><span class="p">,</span>            <span class="c1"># step between windows (default: window_size // 2)</span>
-<a id="__codelineno-0-26" name="__codelineno-0-26" href="#__codelineno-0-26"></a>    <span class="n">model_options</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;link_specific_alpha&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">},</span>
+<a id="__codelineno-0-26" name="__codelineno-0-26" href="#__codelineno-0-26"></a>    <span class="n">model_options</span><span class="o">=</span><span class="p">{</span><span class="s2">"link_specific_alpha"</span><span class="p">:</span> <span class="kc">False</span><span class="p">},</span>
 <a id="__codelineno-0-27" name="__codelineno-0-27" href="#__codelineno-0-27"></a>    <span class="n">regularization_weight</span><span class="o">=</span><span class="mf">0.0</span><span class="p">,</span>
 <a id="__codelineno-0-28" name="__codelineno-0-28" href="#__codelineno-0-28"></a>    <span class="n">max_nfev</span><span class="o">=</span><span class="mi">200</span><span class="p">,</span>
 <a id="__codelineno-0-29" name="__codelineno-0-29" href="#__codelineno-0-29"></a>    <span class="n">verbose</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
-<a id="__codelineno-0-30" name="__codelineno-0-30" href="#__codelineno-0-30"></a>    <span class="n">save_dir</span><span class="o">=</span><span class="s2">&quot;results/calibration&quot;</span><span class="p">,</span>
-<a id="__codelineno-0-31" name="__codelineno-0-31" href="#__codelineno-0-31"></a>    <span class="n">plot_correlation</span><span class="o">=</span><span class="s2">&quot;parameter_correlation.png&quot;</span><span class="p">,</span>
-<a id="__codelineno-0-32" name="__codelineno-0-32" href="#__codelineno-0-32"></a>    <span class="n">plot_param_history</span><span class="o">=</span><span class="s2">&quot;param_history.png&quot;</span><span class="p">,</span>
-<a id="__codelineno-0-33" name="__codelineno-0-33" href="#__codelineno-0-33"></a>    <span class="n">correlation_title</span><span class="o">=</span><span class="s2">&quot;Parameter Correlation Analysis&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-30" name="__codelineno-0-30" href="#__codelineno-0-30"></a>    <span class="n">save_dir</span><span class="o">=</span><span class="s2">"results/calibration"</span><span class="p">,</span>
+<a id="__codelineno-0-31" name="__codelineno-0-31" href="#__codelineno-0-31"></a>    <span class="n">plot_correlation</span><span class="o">=</span><span class="s2">"parameter_correlation.png"</span><span class="p">,</span>
+<a id="__codelineno-0-32" name="__codelineno-0-32" href="#__codelineno-0-32"></a>    <span class="n">plot_param_history</span><span class="o">=</span><span class="s2">"param_history.png"</span><span class="p">,</span>
+<a id="__codelineno-0-33" name="__codelineno-0-33" href="#__codelineno-0-33"></a>    <span class="n">correlation_title</span><span class="o">=</span><span class="s2">"Parameter Correlation Analysis"</span><span class="p">,</span>
 <a id="__codelineno-0-34" name="__codelineno-0-34" href="#__codelineno-0-34"></a><span class="p">)</span>
 <a id="__codelineno-0-35" name="__codelineno-0-35" href="#__codelineno-0-35"></a>
 <a id="__codelineno-0-36" name="__codelineno-0-36" href="#__codelineno-0-36"></a><span class="nb">print</span><span class="p">(</span><span class="n">calibrated_params</span><span class="p">)</span>          <span class="c1"># METANETParams dict with calibrated values</span>
-<a id="__codelineno-0-37" name="__codelineno-0-37" href="#__codelineno-0-37"></a><span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Cost:    </span><span class="si">{</span><span class="n">result</span><span class="o">.</span><span class="n">cost</span><span class="si">:</span><span class="s2">.4e</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
-<a id="__codelineno-0-38" name="__codelineno-0-38" href="#__codelineno-0-38"></a><span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Success: </span><span class="si">{</span><span class="n">result</span><span class="o">.</span><span class="n">success</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
-<a id="__codelineno-0-39" name="__codelineno-0-39" href="#__codelineno-0-39"></a><span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Evals:   </span><span class="si">{</span><span class="n">result</span><span class="o">.</span><span class="n">nfev</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-37" name="__codelineno-0-37" href="#__codelineno-0-37"></a><span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Cost:    </span><span class="si">{</span><span class="n">result</span><span class="o">.</span><span class="n">cost</span><span class="si">:</span><span class="s2">.4e</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+<a id="__codelineno-0-38" name="__codelineno-0-38" href="#__codelineno-0-38"></a><span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Success: </span><span class="si">{</span><span class="n">result</span><span class="o">.</span><span class="n">success</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+<a id="__codelineno-0-39" name="__codelineno-0-39" href="#__codelineno-0-39"></a><span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Evals:   </span><span class="si">{</span><span class="n">result</span><span class="o">.</span><span class="n">nfev</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
 </code></pre></div>
-<p>The calibration targets the six <code>METANETParams</code> fields: <code>tau</code>, <code>nu</code>, <code>kappa</code>,
-<code>delta</code>, <code>phi</code>, and <code>alpha</code>. Fundamental-diagram parameters (<code>lane_capacity</code>,
-<code>free_flow_speed</code>, <code>jam_density</code>) are <strong>not</strong> calibrated — they stay on the links.</p>
+<p>The calibration targets the six <code>METANETParams</code> fields: <code>tau</code>, <code>nu</code>, <code>kappa</code>, <code>delta</code>, <code>phi</code>, and <code>alpha</code>. Fundamental-diagram parameters (<code>lane_capacity</code>, <code>free_flow_speed</code>, <code>jam_density</code>) are <strong>not</strong> calibrated — they stay on the links.</p>
 <h3 id="return-values">Return values</h3>
 <table>
 <thead>
@@ -1950,149 +1908,160 @@ parameters (its characteristics are entirely determined by link geometry).</p>
 <tr>
 <td><code>param_history</code></td>
 <td><code>NDArray[float]</code></td>
-<td>2-D array <code>(n_evals × n_params)</code> — parameter vector at each function evaluation</td>
+<td>2-D array <code>(n_evals × n_params)</code> — parameter vector at each residual evaluation</td>
 </tr>
 </tbody>
 </table>
 <hr />
+<h2 id="ground-truth-file-format">Ground-truth file format</h2>
+<p>The ground truth is a JSON file with the same layout that <code>Simulation.save_results</code> writes and <code>Simulation.load_results</code> reads. Link, node, origin and destination IDs must match the <code>Network</code> passed to the <code>Calibrator</code>.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="p">{</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="w">  </span><span class="nt">"metadata"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"model_type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"METANET"</span><span class="p">,</span><span class="w"> </span><span class="nt">"link_properties"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"..."</span><span class="p">:</span><span class="w"> </span><span class="p">{}</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="p">},</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="w">  </span><span class="nt">"time_array"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="mf">0.0</span><span class="p">,</span><span class="w"> </span><span class="mf">0.0028</span><span class="p">,</span><span class="w"> </span><span class="mf">0.0056</span><span class="p">],</span>
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="w">  </span><span class="nt">"state_time_series"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="w">    </span><span class="nt">"flows"</span><span class="p">:</span><span class="w">     </span><span class="p">{</span><span class="w"> </span><span class="nt">"&lt;link_id&gt;"</span><span class="p">:</span><span class="w"> </span><span class="p">[[</span><span class="err">q_cell</span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="err">q_cell</span><span class="mi">1</span><span class="p">],</span><span class="w"> </span><span class="p">[</span><span class="err">q_cell</span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="err">q_cell</span><span class="mi">1</span><span class="p">],</span><span class="w"> </span><span class="err">...</span><span class="p">]</span><span class="w"> </span><span class="p">},</span>
+<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="w">    </span><span class="nt">"densities"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"&lt;link_id&gt;"</span><span class="p">:</span><span class="w"> </span><span class="p">[[</span><span class="err">...</span><span class="p">],</span><span class="w"> </span><span class="err">...</span><span class="p">]</span><span class="w"> </span><span class="p">},</span>
+<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="w">    </span><span class="nt">"speeds"</span><span class="p">:</span><span class="w">    </span><span class="p">{</span><span class="w"> </span><span class="nt">"&lt;link_id&gt;"</span><span class="p">:</span><span class="w"> </span><span class="p">[[</span><span class="err">...</span><span class="p">],</span><span class="w"> </span><span class="err">...</span><span class="p">]</span><span class="w"> </span><span class="p">},</span>
+<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a><span class="w">    </span><span class="nt">"origin_queues"</span><span class="p">:</span><span class="w"> </span><span class="p">{},</span><span class="w"> </span><span class="nt">"onramp_queues"</span><span class="p">:</span><span class="w"> </span><span class="p">{},</span><span class="w"> </span><span class="nt">"offramp_queues"</span><span class="p">:</span><span class="w"> </span><span class="p">{}</span>
+<a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a><span class="w">  </span><span class="p">},</span>
+<a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a><span class="w">  </span><span class="nt">"disturbance_time_series"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a><span class="w">    </span><span class="nt">"origin_demands"</span><span class="p">:</span><span class="w"> </span><span class="p">{},</span><span class="w"> </span><span class="nt">"turning_rates"</span><span class="p">:</span><span class="w"> </span><span class="p">{},</span>
+<a id="__codelineno-1-12" name="__codelineno-1-12" href="#__codelineno-1-12"></a><span class="w">    </span><span class="nt">"flow_boundary_conditions"</span><span class="p">:</span><span class="w"> </span><span class="p">{},</span><span class="w"> </span><span class="nt">"density_boundary_conditions"</span><span class="p">:</span><span class="w"> </span><span class="p">{}</span>
+<a id="__codelineno-1-13" name="__codelineno-1-13" href="#__codelineno-1-13"></a><span class="w">  </span><span class="p">}</span>
+<a id="__codelineno-1-14" name="__codelineno-1-14" href="#__codelineno-1-14"></a><span class="p">}</span>
+</code></pre></div>
+<ul>
+<li><code>time_array</code> is in hours. State series hold one entry per time step (per-cell lists for motorway links). Disturbance series hold one entry fewer, since they apply between steps.</li>
+<li><strong>Full files</strong> (<code>use_disturbance_from_file=True</code>, the default) must contain all state fields (including the queue fields) and all four disturbance fields.</li>
+<li><strong>Mainline-only files</strong> (<code>use_disturbance_from_file=False</code>) only need <code>flows</code>, <code>densities</code> and <code>speeds</code> for the mainline motorway links, plus the two boundary-condition fields. Queues are optional (zero when absent); demands and turning rates are not read from the file. Instead, all four disturbance callables (<code>origin_demands_fn</code>, <code>turning_rates_fn</code>, <code>flow_boundary_conditions_fn</code>, <code>density_boundary_conditions_fn</code>) must be passed. Set <code>metadata.model_type</code> to <code>"MICRO"</code> so that <code>Simulation.visualize</code> and <code>visualize_comparison</code> also load the file in mainline-only mode.</li>
+<li><strong>Ramp metering</strong>: On-ramp controllers of the network are evaluated inside the model step on the predicted states. If a controller sets <code>control_dt</code> (see <a href="../../control/ramp-metering/#control-interval">Ramp metering</a>), the calibrator instead reconstructs the metering rates of all on-ramps once from the recorded states, since the model step then takes every rate as an input: rates of controllers with a <code>control_dt</code> are held for it, as <code>Simulation.run</code> does, and controllers without one are updated at every step. This needs a full file, a time step that divides <code>control_dt</code>, and a series that starts with a controller update (as files from <code>Simulation.save_results</code> do).</li>
+<li>If the number of cells per link in the file differs from the network partitioning, the per-cell arrays are resampled spatially, using <code>metadata.link_properties[&lt;id&gt;].cell_lengths</code> when present (uniform cells otherwise). Use <code>Simulation.resample_results_file</code> to resample a file to a different time grid.</li>
+</ul>
+<hr />
 <h2 id="custom-bounds">Custom bounds</h2>
+<p>The default start values are the model parameters of Kotsialos, Papageorgiou, Mangeas and Haj-Salem (2002, Transportation Research Part C 10(1), 65–84, Table 1): <span class="arithmatex">\(\tau = 18\)</span> s, <span class="arithmatex">\(\nu = 60\)</span> km²/h, <span class="arithmatex">\(\kappa = 40\)</span> veh/km/lane, <span class="arithmatex">\(\delta = 0.0122\)</span>, <span class="arithmatex">\(\varphi = 2.98\)</span> and <span class="arithmatex">\(a = 1.636\)</span>. The default bounds are the METANET calibration limits of Zhao, Roncoli and Yildirimoglu (2025, Bounded-METANET, Table 1): <span class="arithmatex">\(a \in [0.5, 2.5]\)</span>, <span class="arithmatex">\(\tau \in [5, 80]\)</span> s, <span class="arithmatex">\(\nu \in [10, 90]\)</span> km²/h, <span class="arithmatex">\(\kappa \in [5, 50]\)</span> veh/km/lane, <span class="arithmatex">\(\delta \in [10^{-4}, 4]\)</span>, with <span class="arithmatex">\(\varphi \in [0.01, 15]\)</span> (no published range). The explicit relaxation term is unstable for <span class="arithmatex">\(\tau\)</span> below the time step <span class="arithmatex">\(T\)</span> (Zhao et al. note that the lower bound of <span class="arithmatex">\(\tau\)</span> is set by the time step), so the calibrator raises a lower bound of <span class="arithmatex">\(\tau\)</span> below <span class="arithmatex">\(T\)</span> to <span class="arithmatex">\(T\)</span> and issues a warning; this applies to the default bounds and to <code>param_bounds</code>. Start values and true values should lie strictly inside the bounds.</p>
 <p>Retrieve the model's default bounds and optionally override them:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
-<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>
-<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="n">lower</span><span class="p">,</span> <span class="n">upper</span> <span class="o">=</span> <span class="n">METANET</span><span class="p">()</span><span class="o">.</span><span class="n">get_calibration_bounds</span><span class="p">(</span><span class="n">network</span><span class="o">=</span><span class="n">net</span><span class="p">)</span>
-<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>
-<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="c1"># Override specific bounds (order: tau, nu, kappa, delta, phi, alpha)</span>
-<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="n">lower</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="mf">5.0</span> <span class="o">/</span> <span class="mi">3600</span>  <span class="c1"># tau ≥ 5 s</span>
-<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="n">upper</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="mf">100.0</span>        <span class="c1"># nu ≤ 100</span>
-<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a>
-<a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a><span class="n">calibrated_params</span><span class="p">,</span> <span class="n">result</span><span class="p">,</span> <span class="n">param_history</span> <span class="o">=</span> <span class="n">calibrator</span><span class="o">.</span><span class="n">calibrate_model_params</span><span class="p">(</span>
-<a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a>    <span class="n">ground_truth_filepath</span><span class="o">=</span><span class="s2">&quot;results/ground_truth/simulation_results.json&quot;</span><span class="p">,</span>
-<a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a>    <span class="n">model</span><span class="o">=</span><span class="n">metanet</span><span class="p">,</span>
-<a id="__codelineno-1-12" name="__codelineno-1-12" href="#__codelineno-1-12"></a>    <span class="n">initial_params</span><span class="o">=</span><span class="n">initial_params</span><span class="p">,</span>
-<a id="__codelineno-1-13" name="__codelineno-1-13" href="#__codelineno-1-13"></a>    <span class="n">param_bounds</span><span class="o">=</span><span class="p">(</span><span class="n">lower</span><span class="p">,</span> <span class="n">upper</span><span class="p">),</span>
-<a id="__codelineno-1-14" name="__codelineno-1-14" href="#__codelineno-1-14"></a>    <span class="n">window_size</span><span class="o">=</span><span class="mi">30</span><span class="p">,</span>
-<a id="__codelineno-1-15" name="__codelineno-1-15" href="#__codelineno-1-15"></a>    <span class="n">stride</span><span class="o">=</span><span class="mi">15</span><span class="p">,</span>
-<a id="__codelineno-1-16" name="__codelineno-1-16" href="#__codelineno-1-16"></a>    <span class="n">model_options</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;link_specific_alpha&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">},</span>
-<a id="__codelineno-1-17" name="__codelineno-1-17" href="#__codelineno-1-17"></a><span class="p">)</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="n">lower</span><span class="p">,</span> <span class="n">upper</span> <span class="o">=</span> <span class="n">METANET</span><span class="p">()</span><span class="o">.</span><span class="n">get_calibration_bounds</span><span class="p">(</span><span class="n">network</span><span class="o">=</span><span class="n">net</span><span class="p">)</span>
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>
+<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="c1"># Override specific bounds (order: tau, nu, kappa, delta, phi, alpha)</span>
+<a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a><span class="n">lower</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="mf">20.0</span> <span class="o">/</span> <span class="mi">3600</span>  <span class="c1"># tau ≥ 20 s</span>
+<a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a><span class="n">upper</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="mf">60.0</span>         <span class="c1"># nu ≤ 60</span>
+<a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a>
+<a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a><span class="n">calibrated_params</span><span class="p">,</span> <span class="n">result</span><span class="p">,</span> <span class="n">param_history</span> <span class="o">=</span> <span class="n">calibrator</span><span class="o">.</span><span class="n">calibrate_model_params</span><span class="p">(</span>
+<a id="__codelineno-2-10" name="__codelineno-2-10" href="#__codelineno-2-10"></a>    <span class="n">ground_truth_filepath</span><span class="o">=</span><span class="s2">"results/ground_truth/simulation_results.json"</span><span class="p">,</span>
+<a id="__codelineno-2-11" name="__codelineno-2-11" href="#__codelineno-2-11"></a>    <span class="n">model</span><span class="o">=</span><span class="n">metanet</span><span class="p">,</span>
+<a id="__codelineno-2-12" name="__codelineno-2-12" href="#__codelineno-2-12"></a>    <span class="n">initial_params</span><span class="o">=</span><span class="n">initial_params</span><span class="p">,</span>
+<a id="__codelineno-2-13" name="__codelineno-2-13" href="#__codelineno-2-13"></a>    <span class="n">param_bounds</span><span class="o">=</span><span class="p">(</span><span class="n">lower</span><span class="p">,</span> <span class="n">upper</span><span class="p">),</span>
+<a id="__codelineno-2-14" name="__codelineno-2-14" href="#__codelineno-2-14"></a>    <span class="n">window_size</span><span class="o">=</span><span class="mi">30</span><span class="p">,</span>
+<a id="__codelineno-2-15" name="__codelineno-2-15" href="#__codelineno-2-15"></a>    <span class="n">stride</span><span class="o">=</span><span class="mi">15</span><span class="p">,</span>
+<a id="__codelineno-2-16" name="__codelineno-2-16" href="#__codelineno-2-16"></a>    <span class="n">model_options</span><span class="o">=</span><span class="p">{</span><span class="s2">"link_specific_alpha"</span><span class="p">:</span> <span class="kc">False</span><span class="p">},</span>
+<a id="__codelineno-2-17" name="__codelineno-2-17" href="#__codelineno-2-17"></a><span class="p">)</span>
 </code></pre></div>
 <hr />
 <h2 id="multi-start-search">Multi-start search</h2>
-<p>When data are noisy or the loss surface is multimodal, use Latin Hypercube Sampling
-to explore the parameter space from multiple starting points. The best result across
-all runs is returned. Pass <code>plot_convergence</code> as a filename string to save a
-diagnostic plot of cost, evaluations, and optimality across all LHS runs:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="n">calibrated_params</span><span class="p">,</span> <span class="n">result</span><span class="p">,</span> <span class="n">param_history</span> <span class="o">=</span> <span class="n">calibrator</span><span class="o">.</span><span class="n">calibrate_model_params</span><span class="p">(</span>
-<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>    <span class="n">ground_truth_filepath</span><span class="o">=</span><span class="s2">&quot;results/ground_truth/simulation_results.json&quot;</span><span class="p">,</span>
-<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>    <span class="n">model</span><span class="o">=</span><span class="n">metanet</span><span class="p">,</span>
-<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>    <span class="n">initial_params</span><span class="o">=</span><span class="n">initial_params</span><span class="p">,</span>
-<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a>    <span class="n">window_size</span><span class="o">=</span><span class="mi">30</span><span class="p">,</span>
-<a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a>    <span class="n">stride</span><span class="o">=</span><span class="mi">15</span><span class="p">,</span>
-<a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a>    <span class="n">model_options</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;link_specific_alpha&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">},</span>
-<a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a>    <span class="n">regularization_weight</span><span class="o">=</span><span class="mf">0.0</span><span class="p">,</span>
-<a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a>    <span class="n">max_nfev</span><span class="o">=</span><span class="mi">150</span><span class="p">,</span>
-<a id="__codelineno-2-10" name="__codelineno-2-10" href="#__codelineno-2-10"></a>    <span class="n">use_parameter_search</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>     <span class="c1"># enable LHS multi-start</span>
-<a id="__codelineno-2-11" name="__codelineno-2-11" href="#__codelineno-2-11"></a>    <span class="n">n_samples</span><span class="o">=</span><span class="mi">40</span><span class="p">,</span>                  <span class="c1"># number of LHS samples</span>
-<a id="__codelineno-2-12" name="__codelineno-2-12" href="#__codelineno-2-12"></a>    <span class="n">save_dir</span><span class="o">=</span><span class="s2">&quot;results/calibration&quot;</span><span class="p">,</span>
-<a id="__codelineno-2-13" name="__codelineno-2-13" href="#__codelineno-2-13"></a>    <span class="n">plot_convergence</span><span class="o">=</span><span class="s2">&quot;lhs_convergence.png&quot;</span><span class="p">,</span>   <span class="c1"># convergence across LHS runs</span>
-<a id="__codelineno-2-14" name="__codelineno-2-14" href="#__codelineno-2-14"></a>    <span class="n">plot_correlation</span><span class="o">=</span><span class="s2">&quot;parameter_correlation.png&quot;</span><span class="p">,</span>
-<a id="__codelineno-2-15" name="__codelineno-2-15" href="#__codelineno-2-15"></a>    <span class="n">plot_param_history</span><span class="o">=</span><span class="s2">&quot;param_history.png&quot;</span><span class="p">,</span>
-<a id="__codelineno-2-16" name="__codelineno-2-16" href="#__codelineno-2-16"></a>    <span class="n">convergence_title</span><span class="o">=</span><span class="s2">&quot;Multi-Start Convergence&quot;</span><span class="p">,</span>
-<a id="__codelineno-2-17" name="__codelineno-2-17" href="#__codelineno-2-17"></a>    <span class="n">correlation_title</span><span class="o">=</span><span class="s2">&quot;Parameter Correlation — LHS Best&quot;</span><span class="p">,</span>
-<a id="__codelineno-2-18" name="__codelineno-2-18" href="#__codelineno-2-18"></a>    <span class="n">verbose</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
-<a id="__codelineno-2-19" name="__codelineno-2-19" href="#__codelineno-2-19"></a><span class="p">)</span>
+<p>When data are noisy or the loss surface is multimodal, use Latin Hypercube Sampling to explore the parameter space from multiple starting points. The best result across all runs is returned. Pass <code>plot_convergence</code> as a filename string to save a diagnostic plot of cost, evaluations, and optimality across all LHS runs:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="n">calibrated_params</span><span class="p">,</span> <span class="n">result</span><span class="p">,</span> <span class="n">param_history</span> <span class="o">=</span> <span class="n">calibrator</span><span class="o">.</span><span class="n">calibrate_model_params</span><span class="p">(</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>    <span class="n">ground_truth_filepath</span><span class="o">=</span><span class="s2">"results/ground_truth/simulation_results.json"</span><span class="p">,</span>
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>    <span class="n">model</span><span class="o">=</span><span class="n">metanet</span><span class="p">,</span>
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>    <span class="n">initial_params</span><span class="o">=</span><span class="n">initial_params</span><span class="p">,</span>
+<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>    <span class="n">window_size</span><span class="o">=</span><span class="mi">30</span><span class="p">,</span>
+<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a>    <span class="n">stride</span><span class="o">=</span><span class="mi">15</span><span class="p">,</span>
+<a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a>    <span class="n">model_options</span><span class="o">=</span><span class="p">{</span><span class="s2">"link_specific_alpha"</span><span class="p">:</span> <span class="kc">False</span><span class="p">},</span>
+<a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a>    <span class="n">regularization_weight</span><span class="o">=</span><span class="mf">0.0</span><span class="p">,</span>
+<a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a>    <span class="n">max_nfev</span><span class="o">=</span><span class="mi">150</span><span class="p">,</span>
+<a id="__codelineno-3-10" name="__codelineno-3-10" href="#__codelineno-3-10"></a>    <span class="n">use_parameter_search</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>     <span class="c1"># enable LHS multi-start</span>
+<a id="__codelineno-3-11" name="__codelineno-3-11" href="#__codelineno-3-11"></a>    <span class="n">n_samples</span><span class="o">=</span><span class="mi">40</span><span class="p">,</span>                  <span class="c1"># number of LHS samples</span>
+<a id="__codelineno-3-12" name="__codelineno-3-12" href="#__codelineno-3-12"></a>    <span class="n">save_dir</span><span class="o">=</span><span class="s2">"results/calibration"</span><span class="p">,</span>
+<a id="__codelineno-3-13" name="__codelineno-3-13" href="#__codelineno-3-13"></a>    <span class="n">plot_convergence</span><span class="o">=</span><span class="s2">"lhs_convergence.png"</span><span class="p">,</span>   <span class="c1"># convergence across LHS runs</span>
+<a id="__codelineno-3-14" name="__codelineno-3-14" href="#__codelineno-3-14"></a>    <span class="n">plot_correlation</span><span class="o">=</span><span class="s2">"parameter_correlation.png"</span><span class="p">,</span>
+<a id="__codelineno-3-15" name="__codelineno-3-15" href="#__codelineno-3-15"></a>    <span class="n">plot_param_history</span><span class="o">=</span><span class="s2">"param_history.png"</span><span class="p">,</span>
+<a id="__codelineno-3-16" name="__codelineno-3-16" href="#__codelineno-3-16"></a>    <span class="n">convergence_title</span><span class="o">=</span><span class="s2">"Multi-Start Convergence"</span><span class="p">,</span>
+<a id="__codelineno-3-17" name="__codelineno-3-17" href="#__codelineno-3-17"></a>    <span class="n">correlation_title</span><span class="o">=</span><span class="s2">"Parameter Correlation — LHS Best"</span><span class="p">,</span>
+<a id="__codelineno-3-18" name="__codelineno-3-18" href="#__codelineno-3-18"></a>    <span class="n">verbose</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+<a id="__codelineno-3-19" name="__codelineno-3-19" href="#__codelineno-3-19"></a><span class="p">)</span>
 </code></pre></div>
-<p><code>plot_convergence</code> only produces output when <code>use_parameter_search=True</code>; it is
-silently ignored in single-start mode. Both <code>plot_convergence</code> and
-<code>plot_correlation</code> also accept <code>True</code> (uses a default filename) or <code>False</code>
-(disabled).</p>
+<p><code>plot_convergence</code> only produces output when <code>use_parameter_search=True</code>; it is silently ignored in single-start mode. Both <code>plot_convergence</code> and <code>plot_correlation</code> also accept <code>True</code> (uses a default filename) or <code>False</code> (disabled).</p>
 <hr />
 <h2 id="correlation-analysis">Correlation analysis</h2>
-<p>High off-diagonal correlations (&gt; 0.8) indicate parameter pairs that cannot be
-identified simultaneously. The analysis is triggered automatically during
-<code>calibrate_model_params()</code> when <code>plot_correlation</code> is set. It can also be run
-standalone on a result returned from a previous call:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="n">param_names</span> <span class="o">=</span> <span class="n">METANET</span><span class="p">()</span><span class="o">.</span><span class="n">get_calibration_param_names</span><span class="p">(</span><span class="n">network</span><span class="o">=</span><span class="n">net</span><span class="p">)</span>
-<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="c1"># returns [&#39;tau&#39;, &#39;nu&#39;, &#39;kappa&#39;, &#39;delta&#39;, &#39;phi&#39;, &#39;alpha&#39;]</span>
-<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>
-<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="n">calibrator</span><span class="o">.</span><span class="n">analyze_parameter_correlation</span><span class="p">(</span>
-<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>    <span class="n">result</span><span class="o">=</span><span class="n">result</span><span class="p">,</span>
-<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a>    <span class="n">param_names</span><span class="o">=</span><span class="n">param_names</span><span class="p">,</span>
-<a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a>    <span class="n">save_dir</span><span class="o">=</span><span class="s2">&quot;results/calibration&quot;</span><span class="p">,</span>
-<a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a>    <span class="n">filename</span><span class="o">=</span><span class="s2">&quot;correlation_matrix.png&quot;</span><span class="p">,</span>
-<a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a>    <span class="n">title</span><span class="o">=</span><span class="s2">&quot;Parameter Correlation Analysis&quot;</span><span class="p">,</span>
-<a id="__codelineno-3-10" name="__codelineno-3-10" href="#__codelineno-3-10"></a><span class="p">)</span>
+<p>High off-diagonal correlations (&gt; 0.8) indicate parameter pairs that cannot be identified simultaneously. The analysis is triggered automatically during <code>calibrate_model_params()</code> when <code>plot_correlation</code> and <code>save_dir</code> are set. It can also be run standalone on a result returned from a previous call:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="n">param_names</span> <span class="o">=</span> <span class="n">METANET</span><span class="p">()</span><span class="o">.</span><span class="n">get_calibration_param_names</span><span class="p">(</span><span class="n">network</span><span class="o">=</span><span class="n">net</span><span class="p">)</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="c1"># returns ['tau', 'nu', 'kappa', 'delta', 'phi', 'alpha']</span>
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="n">calibrator</span><span class="o">.</span><span class="n">analyze_parameter_correlation</span><span class="p">(</span>
+<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>    <span class="n">result</span><span class="o">=</span><span class="n">result</span><span class="p">,</span>
+<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a>    <span class="n">param_names</span><span class="o">=</span><span class="n">param_names</span><span class="p">,</span>
+<a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a>    <span class="n">save_dir</span><span class="o">=</span><span class="s2">"results/calibration"</span><span class="p">,</span>
+<a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a>    <span class="n">filename</span><span class="o">=</span><span class="s2">"correlation_matrix.png"</span><span class="p">,</span>
+<a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a>    <span class="n">title</span><span class="o">=</span><span class="s2">"Parameter Correlation Analysis"</span><span class="p">,</span>
+<a id="__codelineno-4-10" name="__codelineno-4-10" href="#__codelineno-4-10"></a><span class="p">)</span>
 </code></pre></div>
-<p>If a pair is strongly correlated, consider fixing one parameter to a physically
-motivated value by setting its lower and upper bounds to the same value, then
-re-running.</p>
+<p>If a pair is strongly correlated, consider fixing one parameter to a physically motivated value by narrowing its bounds to a small interval around that value, then re-running.</p>
 <hr />
 <h2 id="regularization-and-noisy-data">Regularization and noisy data</h2>
-<p>For noisy real-world data, three strategies improve robustness:</p>
+<p>Each calibration window starts from the recorded state at its first time step and is predicted forward with the candidate parameters. With noisy data, this initial state is itself noisy, which biases the estimate. The calibrator therefore starts every window from a centered moving average of the recorded states, <span class="arithmatex">\(\hat{x}(t) = \frac{1}{|N_t|} \sum_{j \in N_t} x(j)\)</span> with <span class="arithmatex">\(N_t = \{t - \tfrac{k-1}{2}, \dots, t + \tfrac{k-1}{2}\}\)</span> restricted to the recorded time steps (<code>initial_state_smoothing</code> <span class="arithmatex">\(k\)</span>, odd, default 5; with 10 s steps about a 1-minute aggregation). The residuals still compare with the raw measurements. Use <code>initial_state_smoothing=1</code> for noise-free data. The starting point is moved 0.1 % of the bound range inside the parameter bounds, because the trust region reflective method stalls when it starts on a bound.</p>
+<p>For noisy real-world data, three further strategies improve robustness:</p>
 <ol>
-<li><strong>Disable link-specific alpha</strong> (<code>link_specific_alpha: False</code>) to reduce
-   the number of free parameters.</li>
-<li><strong>Add Tikhonov regularization</strong> (<code>regularization_weight</code>) to penalise
-   deviation from <code>initial_params</code>.</li>
+<li><strong>Disable link-specific alpha</strong> (<code>link_specific_alpha: False</code>) to reduce the number of free parameters.</li>
+<li><strong>Add relative Tikhonov regularization</strong> (<code>regularization_weight</code> <span class="arithmatex">\(\lambda\)</span>) to penalize deviation from the reference parameters <span class="arithmatex">\(p^{\mathrm{ref}}\)</span> (<code>regularization_reference</code>, default <code>initial_params</code>; with multi-start every run uses the same reference). The calibrator minimizes <span class="arithmatex">\(\lVert r(p) \rVert^2 + \lambda \sum_i \log^2(p_i / p_i^{\mathrm{ref}})\)</span>, the MAP objective of independent log-normal priors. The penalty is unit-free, so a deviation by a factor of 2 costs <span class="arithmatex">\(\lambda \log^2 2 \approx 0.48\,\lambda\)</span> for every parameter (e.g. <code>tau</code> in hours and <code>nu</code> in km²/h alike). It requires positive parameters and lower bounds.</li>
 <li><strong>Use multi-start search</strong> to avoid local minima introduced by noise.</li>
 </ol>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="c1"># Experiment: noisy data with Tikhonov regularization (no multi-start)</span>
-<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="n">calibrated_params_reg</span><span class="p">,</span> <span class="n">result_reg</span><span class="p">,</span> <span class="n">param_history_reg</span> <span class="o">=</span> <span class="n">calibrator</span><span class="o">.</span><span class="n">calibrate_model_params</span><span class="p">(</span>
-<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>    <span class="n">ground_truth_filepath</span><span class="o">=</span><span class="s2">&quot;results/noisy/simulation_results.json&quot;</span><span class="p">,</span>
-<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>    <span class="n">model</span><span class="o">=</span><span class="n">metanet</span><span class="p">,</span>
-<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>    <span class="n">initial_params</span><span class="o">=</span><span class="n">initial_params</span><span class="p">,</span>
-<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a>    <span class="n">window_size</span><span class="o">=</span><span class="mi">30</span><span class="p">,</span>
-<a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a>    <span class="n">stride</span><span class="o">=</span><span class="mi">15</span><span class="p">,</span>
-<a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a>    <span class="n">model_options</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;link_specific_alpha&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">},</span>
-<a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a>    <span class="n">regularization_weight</span><span class="o">=</span><span class="mf">0.01</span><span class="p">,</span>    <span class="c1"># L2 ridge penalty</span>
-<a id="__codelineno-4-10" name="__codelineno-4-10" href="#__codelineno-4-10"></a>    <span class="n">use_parameter_search</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
-<a id="__codelineno-4-11" name="__codelineno-4-11" href="#__codelineno-4-11"></a>    <span class="n">save_dir</span><span class="o">=</span><span class="s2">&quot;results/calibration&quot;</span><span class="p">,</span>
-<a id="__codelineno-4-12" name="__codelineno-4-12" href="#__codelineno-4-12"></a>    <span class="n">plot_correlation</span><span class="o">=</span><span class="s2">&quot;noisy_reg_correlation.png&quot;</span><span class="p">,</span>
-<a id="__codelineno-4-13" name="__codelineno-4-13" href="#__codelineno-4-13"></a>    <span class="n">plot_param_history</span><span class="o">=</span><span class="s2">&quot;noisy_reg_param_history.png&quot;</span><span class="p">,</span>
-<a id="__codelineno-4-14" name="__codelineno-4-14" href="#__codelineno-4-14"></a>    <span class="n">correlation_title</span><span class="o">=</span><span class="s2">&quot;Parameter Correlation — Noisy (Regularized)&quot;</span><span class="p">,</span>
-<a id="__codelineno-4-15" name="__codelineno-4-15" href="#__codelineno-4-15"></a><span class="p">)</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="c1"># Experiment: noisy data with relative Tikhonov regularization (no multi-start)</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="n">calibrated_params_reg</span><span class="p">,</span> <span class="n">result_reg</span><span class="p">,</span> <span class="n">param_history_reg</span> <span class="o">=</span> <span class="n">calibrator</span><span class="o">.</span><span class="n">calibrate_model_params</span><span class="p">(</span>
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>    <span class="n">ground_truth_filepath</span><span class="o">=</span><span class="s2">"results/noisy/simulation_results.json"</span><span class="p">,</span>
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>    <span class="n">model</span><span class="o">=</span><span class="n">metanet</span><span class="p">,</span>
+<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a>    <span class="n">initial_params</span><span class="o">=</span><span class="n">initial_params</span><span class="p">,</span>
+<a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a>    <span class="n">window_size</span><span class="o">=</span><span class="mi">30</span><span class="p">,</span>
+<a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a>    <span class="n">stride</span><span class="o">=</span><span class="mi">15</span><span class="p">,</span>
+<a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a>    <span class="n">model_options</span><span class="o">=</span><span class="p">{</span><span class="s2">"link_specific_alpha"</span><span class="p">:</span> <span class="kc">False</span><span class="p">},</span>
+<a id="__codelineno-5-9" name="__codelineno-5-9" href="#__codelineno-5-9"></a>    <span class="n">regularization_weight</span><span class="o">=</span><span class="mf">0.1</span><span class="p">,</span>     <span class="c1"># relative (log-ratio) Tikhonov penalty</span>
+<a id="__codelineno-5-10" name="__codelineno-5-10" href="#__codelineno-5-10"></a>    <span class="n">use_parameter_search</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+<a id="__codelineno-5-11" name="__codelineno-5-11" href="#__codelineno-5-11"></a>    <span class="n">save_dir</span><span class="o">=</span><span class="s2">"results/calibration"</span><span class="p">,</span>
+<a id="__codelineno-5-12" name="__codelineno-5-12" href="#__codelineno-5-12"></a>    <span class="n">plot_correlation</span><span class="o">=</span><span class="s2">"noisy_reg_correlation.png"</span><span class="p">,</span>
+<a id="__codelineno-5-13" name="__codelineno-5-13" href="#__codelineno-5-13"></a>    <span class="n">plot_param_history</span><span class="o">=</span><span class="s2">"noisy_reg_param_history.png"</span><span class="p">,</span>
+<a id="__codelineno-5-14" name="__codelineno-5-14" href="#__codelineno-5-14"></a>    <span class="n">correlation_title</span><span class="o">=</span><span class="s2">"Parameter Correlation — Noisy (Regularized)"</span><span class="p">,</span>
+<a id="__codelineno-5-15" name="__codelineno-5-15" href="#__codelineno-5-15"></a><span class="p">)</span>
 </code></pre></div>
 <hr />
 <h2 id="link-specific-alpha">Link-specific alpha</h2>
-<p>Set <code>model_options={"link_specific_alpha": True}</code> to calibrate a separate <code>alpha</code>
-for every motorway link. The returned <code>calibrated_params["alpha"]</code> is then a
-<code>dict[str, float]</code> mapping link IDs to values rather than a scalar:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="n">calibrated_params_link</span><span class="p">,</span> <span class="n">result_link</span><span class="p">,</span> <span class="n">param_history_link</span> <span class="o">=</span> <span class="n">calibrator</span><span class="o">.</span><span class="n">calibrate_model_params</span><span class="p">(</span>
-<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>    <span class="n">ground_truth_filepath</span><span class="o">=</span><span class="s2">&quot;results/noisy/simulation_results.json&quot;</span><span class="p">,</span>
-<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>    <span class="n">model</span><span class="o">=</span><span class="n">metanet</span><span class="p">,</span>
-<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>    <span class="n">initial_params</span><span class="o">=</span><span class="n">initial_params</span><span class="p">,</span>
-<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a>    <span class="n">window_size</span><span class="o">=</span><span class="mi">30</span><span class="p">,</span>
-<a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a>    <span class="n">stride</span><span class="o">=</span><span class="mi">15</span><span class="p">,</span>
-<a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a>    <span class="n">model_options</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;link_specific_alpha&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">},</span>
-<a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a>    <span class="n">regularization_weight</span><span class="o">=</span><span class="mf">0.01</span><span class="p">,</span>
-<a id="__codelineno-5-9" name="__codelineno-5-9" href="#__codelineno-5-9"></a>    <span class="n">use_parameter_search</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
-<a id="__codelineno-5-10" name="__codelineno-5-10" href="#__codelineno-5-10"></a>    <span class="n">save_dir</span><span class="o">=</span><span class="s2">&quot;results/calibration&quot;</span><span class="p">,</span>
-<a id="__codelineno-5-11" name="__codelineno-5-11" href="#__codelineno-5-11"></a>    <span class="n">plot_correlation</span><span class="o">=</span><span class="s2">&quot;link_alpha_correlation.png&quot;</span><span class="p">,</span>
-<a id="__codelineno-5-12" name="__codelineno-5-12" href="#__codelineno-5-12"></a>    <span class="n">plot_param_history</span><span class="o">=</span><span class="s2">&quot;link_alpha_param_history.png&quot;</span><span class="p">,</span>
-<a id="__codelineno-5-13" name="__codelineno-5-13" href="#__codelineno-5-13"></a>    <span class="n">correlation_title</span><span class="o">=</span><span class="s2">&quot;Parameter Correlation — Link-Specific Alpha&quot;</span><span class="p">,</span>
-<a id="__codelineno-5-14" name="__codelineno-5-14" href="#__codelineno-5-14"></a><span class="p">)</span>
-<a id="__codelineno-5-15" name="__codelineno-5-15" href="#__codelineno-5-15"></a>
-<a id="__codelineno-5-16" name="__codelineno-5-16" href="#__codelineno-5-16"></a><span class="c1"># calibrated_params_link[&quot;alpha&quot;] is a dict when link_specific_alpha=True</span>
-<a id="__codelineno-5-17" name="__codelineno-5-17" href="#__codelineno-5-17"></a><span class="n">alpha</span> <span class="o">=</span> <span class="n">calibrated_params_link</span><span class="p">[</span><span class="s2">&quot;alpha&quot;</span><span class="p">]</span>
-<a id="__codelineno-5-18" name="__codelineno-5-18" href="#__codelineno-5-18"></a><span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">alpha</span><span class="p">,</span> <span class="nb">dict</span><span class="p">):</span>
-<a id="__codelineno-5-19" name="__codelineno-5-19" href="#__codelineno-5-19"></a>    <span class="k">for</span> <span class="n">link_id</span><span class="p">,</span> <span class="n">alpha_val</span> <span class="ow">in</span> <span class="n">alpha</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
-<a id="__codelineno-5-20" name="__codelineno-5-20" href="#__codelineno-5-20"></a>        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;  Link </span><span class="si">{</span><span class="n">link_id</span><span class="si">}</span><span class="s2">: alpha = </span><span class="si">{</span><span class="n">alpha_val</span><span class="si">:</span><span class="s2">.4f</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
-<a id="__codelineno-5-21" name="__codelineno-5-21" href="#__codelineno-5-21"></a><span class="k">else</span><span class="p">:</span>
-<a id="__codelineno-5-22" name="__codelineno-5-22" href="#__codelineno-5-22"></a>    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;  Global alpha = </span><span class="si">{</span><span class="n">alpha</span><span class="si">:</span><span class="s2">.4f</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+<p>Set <code>model_options={"link_specific_alpha": True}</code> to calibrate a separate <code>alpha</code> for every motorway link. The returned <code>calibrated_params["alpha"]</code> is then a <code>dict[str, float]</code> mapping link IDs to values rather than a scalar:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="n">calibrated_params_link</span><span class="p">,</span> <span class="n">result_link</span><span class="p">,</span> <span class="n">param_history_link</span> <span class="o">=</span> <span class="n">calibrator</span><span class="o">.</span><span class="n">calibrate_model_params</span><span class="p">(</span>
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>    <span class="n">ground_truth_filepath</span><span class="o">=</span><span class="s2">"results/noisy/simulation_results.json"</span><span class="p">,</span>
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>    <span class="n">model</span><span class="o">=</span><span class="n">metanet</span><span class="p">,</span>
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a>    <span class="n">initial_params</span><span class="o">=</span><span class="n">initial_params</span><span class="p">,</span>
+<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a>    <span class="n">window_size</span><span class="o">=</span><span class="mi">30</span><span class="p">,</span>
+<a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a>    <span class="n">stride</span><span class="o">=</span><span class="mi">15</span><span class="p">,</span>
+<a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a>    <span class="n">model_options</span><span class="o">=</span><span class="p">{</span><span class="s2">"link_specific_alpha"</span><span class="p">:</span> <span class="kc">True</span><span class="p">},</span>
+<a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a>    <span class="n">regularization_weight</span><span class="o">=</span><span class="mf">0.1</span><span class="p">,</span>
+<a id="__codelineno-6-9" name="__codelineno-6-9" href="#__codelineno-6-9"></a>    <span class="n">use_parameter_search</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+<a id="__codelineno-6-10" name="__codelineno-6-10" href="#__codelineno-6-10"></a>    <span class="n">save_dir</span><span class="o">=</span><span class="s2">"results/calibration"</span><span class="p">,</span>
+<a id="__codelineno-6-11" name="__codelineno-6-11" href="#__codelineno-6-11"></a>    <span class="n">plot_correlation</span><span class="o">=</span><span class="s2">"link_alpha_correlation.png"</span><span class="p">,</span>
+<a id="__codelineno-6-12" name="__codelineno-6-12" href="#__codelineno-6-12"></a>    <span class="n">plot_param_history</span><span class="o">=</span><span class="s2">"link_alpha_param_history.png"</span><span class="p">,</span>
+<a id="__codelineno-6-13" name="__codelineno-6-13" href="#__codelineno-6-13"></a>    <span class="n">correlation_title</span><span class="o">=</span><span class="s2">"Parameter Correlation — Link-Specific Alpha"</span><span class="p">,</span>
+<a id="__codelineno-6-14" name="__codelineno-6-14" href="#__codelineno-6-14"></a><span class="p">)</span>
+<a id="__codelineno-6-15" name="__codelineno-6-15" href="#__codelineno-6-15"></a>
+<a id="__codelineno-6-16" name="__codelineno-6-16" href="#__codelineno-6-16"></a><span class="c1"># calibrated_params_link["alpha"] is a dict when link_specific_alpha=True</span>
+<a id="__codelineno-6-17" name="__codelineno-6-17" href="#__codelineno-6-17"></a><span class="n">alpha</span> <span class="o">=</span> <span class="n">calibrated_params_link</span><span class="p">[</span><span class="s2">"alpha"</span><span class="p">]</span>
+<a id="__codelineno-6-18" name="__codelineno-6-18" href="#__codelineno-6-18"></a><span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">alpha</span><span class="p">,</span> <span class="nb">dict</span><span class="p">):</span>
+<a id="__codelineno-6-19" name="__codelineno-6-19" href="#__codelineno-6-19"></a>    <span class="k">for</span> <span class="n">link_id</span><span class="p">,</span> <span class="n">alpha_val</span> <span class="ow">in</span> <span class="n">alpha</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+<a id="__codelineno-6-20" name="__codelineno-6-20" href="#__codelineno-6-20"></a>        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"  Link </span><span class="si">{</span><span class="n">link_id</span><span class="si">}</span><span class="s2">: alpha = </span><span class="si">{</span><span class="n">alpha_val</span><span class="si">:</span><span class="s2">.4f</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+<a id="__codelineno-6-21" name="__codelineno-6-21" href="#__codelineno-6-21"></a><span class="k">else</span><span class="p">:</span>
+<a id="__codelineno-6-22" name="__codelineno-6-22" href="#__codelineno-6-22"></a>    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"  Global alpha = </span><span class="si">{</span><span class="n">alpha</span><span class="si">:</span><span class="s2">.4f</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
 </code></pre></div>
 <hr />
 <h2 id="comparing-parameter-histories">Comparing parameter histories</h2>
-<p>After running multiple experiments you can overlay their parameter trajectories
-to compare convergence across conditions:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="n">param_names</span> <span class="o">=</span> <span class="p">[</span><span class="s2">&quot;tau&quot;</span><span class="p">,</span> <span class="s2">&quot;nu&quot;</span><span class="p">,</span> <span class="s2">&quot;kappa&quot;</span><span class="p">,</span> <span class="s2">&quot;delta&quot;</span><span class="p">,</span> <span class="s2">&quot;phi&quot;</span><span class="p">,</span> <span class="s2">&quot;alpha&quot;</span><span class="p">]</span>
-<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>
-<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="n">calibrator</span><span class="o">.</span><span class="n">plot_parameter_convergence</span><span class="p">(</span>
-<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a>    <span class="n">param_history_exact</span><span class="o">=</span><span class="n">param_history_exact</span><span class="p">,</span>     <span class="c1"># from exact ground truth</span>
-<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a>    <span class="n">param_history_noreg</span><span class="o">=</span><span class="n">param_history_noreg</span><span class="p">,</span>     <span class="c1"># from noisy data, no regularization</span>
-<a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a>    <span class="n">param_history_reg</span><span class="o">=</span><span class="n">param_history_reg</span><span class="p">,</span>         <span class="c1"># from noisy data, with regularization</span>
-<a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a>    <span class="n">param_names</span><span class="o">=</span><span class="n">param_names</span><span class="p">,</span>
-<a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a>    <span class="n">true_params</span><span class="o">=</span><span class="n">true_params</span><span class="p">,</span>                     <span class="c1"># METANETParams ground truth (for reference lines)</span>
-<a id="__codelineno-6-9" name="__codelineno-6-9" href="#__codelineno-6-9"></a>    <span class="n">save_dir</span><span class="o">=</span><span class="s2">&quot;results/calibration&quot;</span><span class="p">,</span>
-<a id="__codelineno-6-10" name="__codelineno-6-10" href="#__codelineno-6-10"></a><span class="p">)</span>
+<p>After running multiple experiments you can overlay their parameter trajectories to compare convergence across conditions:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="n">param_names</span> <span class="o">=</span> <span class="p">[</span><span class="s2">"tau"</span><span class="p">,</span> <span class="s2">"nu"</span><span class="p">,</span> <span class="s2">"kappa"</span><span class="p">,</span> <span class="s2">"delta"</span><span class="p">,</span> <span class="s2">"phi"</span><span class="p">,</span> <span class="s2">"alpha"</span><span class="p">]</span>
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="n">calibrator</span><span class="o">.</span><span class="n">plot_parameter_convergence</span><span class="p">(</span>
+<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a>    <span class="n">param_history_exact</span><span class="o">=</span><span class="n">param_history_exact</span><span class="p">,</span>     <span class="c1"># from exact ground truth</span>
+<a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a>    <span class="n">param_history_noreg</span><span class="o">=</span><span class="n">param_history_noreg</span><span class="p">,</span>     <span class="c1"># from noisy data, no regularization</span>
+<a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a>    <span class="n">param_history_reg</span><span class="o">=</span><span class="n">param_history_reg</span><span class="p">,</span>         <span class="c1"># from noisy data, with regularization</span>
+<a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a>    <span class="n">param_names</span><span class="o">=</span><span class="n">param_names</span><span class="p">,</span>
+<a id="__codelineno-7-8" name="__codelineno-7-8" href="#__codelineno-7-8"></a>    <span class="n">true_params</span><span class="o">=</span><span class="n">true_params</span><span class="p">,</span>                     <span class="c1"># METANETParams ground truth (for reference lines)</span>
+<a id="__codelineno-7-9" name="__codelineno-7-9" href="#__codelineno-7-9"></a>    <span class="n">save_dir</span><span class="o">=</span><span class="s2">"results/calibration"</span><span class="p">,</span>
+<a id="__codelineno-7-10" name="__codelineno-7-10" href="#__codelineno-7-10"></a><span class="p">)</span>
 </code></pre></div>
 
 
@@ -2148,10 +2117,10 @@ to compare convergence across conditions:</p>
     
       
       
-      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.tabs", "navigation.tabs.sticky", "navigation.sections", "navigation.expand", "navigation.top", "search.suggest", "search.highlight", "content.code.copy", "content.code.annotate", "toc.follow"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.tabs", "navigation.tabs.sticky", "navigation.sections", "navigation.expand", "navigation.top", "search.suggest", "search.highlight", "content.code.copy", "content.code.annotate", "toc.follow"], "search": "../../assets/javascripts/workers/search.a7633da7.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
     
     
-      <script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>
+      <script src="../../assets/javascripts/bundle.a5f9d56c.min.js"></script>
       
         <script src="../../javascripts/mathjax.js"></script>
       

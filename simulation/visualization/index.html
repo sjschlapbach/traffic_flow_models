@@ -25,7 +25,7 @@
       
       
       <link rel="icon" href="../../assets/images/favicon.png">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.2">
     
     
       
@@ -33,10 +33,10 @@
       
     
     
-      <link rel="stylesheet" href="../../assets/stylesheets/main.484c7ddc.min.css">
+      <link rel="stylesheet" href="../../assets/stylesheets/main.57a0d79d.min.css">
       
         
-        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.fb2fffe2.min.css">
       
       
 
@@ -1457,62 +1457,6 @@
 
               
             
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../../experimental/sumo-pipeline/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    SUMO Integration
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../../api/experimental/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    API (Experimental)
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
           </ul>
         </nav>
       
@@ -1718,14 +1662,12 @@
 
 <h1 id="visualization">Visualization</h1>
 <h2 id="automatic-plots-during-run">Automatic plots during <code>run()</code></h2>
-<p>Pass <code>plot_results=True</code> to <code>run()</code> to automatically generate and save plots (density,
-flow, speed per link; queue plots for origins and on-ramps; node summary plots) to
-<code>results_dir</code>:</p>
+<p>Pass <code>plot_results=True</code> to <code>run()</code> to automatically generate and save plots (density, flow, speed per link; queue plots for origins and on-ramps; node summary plots) to <code>results_dir</code>:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="n">time_arr</span><span class="p">,</span> <span class="n">states</span><span class="p">,</span> <span class="n">disturbances</span> <span class="o">=</span> <span class="n">sim</span><span class="o">.</span><span class="n">run</span><span class="p">(</span>
 <a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>    <span class="o">...</span><span class="p">,</span>
 <a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>    <span class="n">plot_results</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
-<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>    <span class="n">show_plots</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>               <span class="c1"># set True to display interactively</span>
-<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>    <span class="n">results_dir</span><span class="o">=</span><span class="s2">&quot;results/my_run&quot;</span><span class="p">,</span>   <span class="c1"># directory for saved figures and JSON</span>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>    <span class="n">show_plots</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>               <span class="c1"># set True to display the network topology figure</span>
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>    <span class="n">results_dir</span><span class="o">=</span><span class="s2">"results/my_run"</span><span class="p">,</span>   <span class="c1"># directory for saved figures and JSON</span>
 <a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="p">)</span>
 </code></pre></div>
 <h2 id="manual-plots">Manual plots</h2>
@@ -1733,29 +1675,27 @@ flow, speed per link; queue plots for origins and on-ramps; node summary plots) 
 <div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="n">sim</span><span class="o">.</span><span class="n">plot_results</span><span class="p">(</span>
 <a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>    <span class="n">time_array</span><span class="o">=</span><span class="n">time_arr</span><span class="p">,</span>
 <a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>    <span class="n">state_history</span><span class="o">=</span><span class="n">states</span><span class="p">,</span>
-<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>    <span class="n">micro_state_history</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>       <span class="c1"># None unless co-simulating with SUMO</span>
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>    <span class="n">reference_state_history</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>   <span class="c1"># optional mainline-only reference states to overlay</span>
 <a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>    <span class="n">disturbance_history</span><span class="o">=</span><span class="n">disturbances</span><span class="p">,</span>
-<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>    <span class="n">save_dir</span><span class="o">=</span><span class="s2">&quot;results/my_run&quot;</span><span class="p">,</span>
+<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>    <span class="n">save_dir</span><span class="o">=</span><span class="s2">"results/my_run"</span><span class="p">,</span>
 <a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="p">)</span>
 </code></pre></div>
 <h2 id="video-export">Video export</h2>
-<p><code>visualize()</code> generates an AVI video from a <strong>saved results JSON file</strong> (requires
-<code>opencv-python</code>). Save results first, then call:</p>
+<p><code>visualize()</code> generates an AVI video from a <strong>saved results JSON file</strong> (requires <code>opencv-python</code>). Save results first, then call:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="c1"># 1. Save results after run()</span>
-<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="n">sim</span><span class="o">.</span><span class="n">save_results</span><span class="p">(</span><span class="s2">&quot;results/my_run/results.json&quot;</span><span class="p">)</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="n">sim</span><span class="o">.</span><span class="n">save_results</span><span class="p">(</span><span class="s2">"results/my_run/results.json"</span><span class="p">)</span>
 <a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>
 <a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="c1"># 2. Generate video</span>
 <a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="n">sim</span><span class="o">.</span><span class="n">visualize</span><span class="p">(</span>
-<a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a>    <span class="n">results_filepath</span><span class="o">=</span><span class="s2">&quot;results/my_run/results.json&quot;</span><span class="p">,</span>
-<a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a>    <span class="n">output_filepath</span><span class="o">=</span><span class="s2">&quot;results/my_run/simulation.avi&quot;</span><span class="p">,</span>
+<a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a>    <span class="n">results_filepath</span><span class="o">=</span><span class="s2">"results/my_run/results.json"</span><span class="p">,</span>
+<a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a>    <span class="n">output_filepath</span><span class="o">=</span><span class="s2">"results/my_run/simulation.avi"</span><span class="p">,</span>
 <a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a>    <span class="n">fps</span><span class="o">=</span><span class="mi">10</span><span class="p">,</span>
 <a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a>    <span class="n">subsampling</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span>  <span class="c1"># interpolate between time steps for smoother animation</span>
 <a id="__codelineno-2-10" name="__codelineno-2-10" href="#__codelineno-2-10"></a><span class="p">)</span>
 </code></pre></div>
 <div class="admonition note">
 <p class="admonition-title">Node coordinates required for video export</p>
-<p>Node position coordinates must be set on each <code>Node</code> for the video to render
-the network topology correctly:</p>
+<p>Node position coordinates must be set on each <code>Node</code> for the video to render the network topology correctly:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="n">node</span><span class="o">.</span><span class="n">position</span> <span class="o">=</span> <span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">)</span>
 </code></pre></div>
 </div>
@@ -1813,10 +1753,10 @@ the network topology correctly:</p>
     
       
       
-      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.tabs", "navigation.tabs.sticky", "navigation.sections", "navigation.expand", "navigation.top", "search.suggest", "search.highlight", "content.code.copy", "content.code.annotate", "toc.follow"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.tabs", "navigation.tabs.sticky", "navigation.sections", "navigation.expand", "navigation.top", "search.suggest", "search.highlight", "content.code.copy", "content.code.annotate", "toc.follow"], "search": "../../assets/javascripts/workers/search.a7633da7.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
     
     
-      <script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>
+      <script src="../../assets/javascripts/bundle.a5f9d56c.min.js"></script>
       
         <script src="../../javascripts/mathjax.js"></script>
       

@@ -25,7 +25,7 @@
       
       
       <link rel="icon" href="../../assets/images/favicon.png">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.2">
     
     
       
@@ -33,10 +33,10 @@
       
     
     
-      <link rel="stylesheet" href="../../assets/stylesheets/main.484c7ddc.min.css">
+      <link rel="stylesheet" href="../../assets/stylesheets/main.57a0d79d.min.css">
       
         
-        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.fb2fffe2.min.css">
       
       
 
@@ -1479,62 +1479,6 @@
 
               
             
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../../experimental/sumo-pipeline/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    SUMO Integration
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../../api/experimental/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    API (Experimental)
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
           </ul>
         </nav>
       
@@ -1761,9 +1705,7 @@
 
 
 <h1 id="network-structure">Network Structure</h1>
-<p>A <code>Network</code> is a directed graph of <strong>links</strong> and <strong>nodes</strong>. The same topology is shared
-by all models (CTM and METANET), ensuring that simulation results are directly comparable
-under identical network conditions.</p>
+<p>A <code>Network</code> is a directed graph of <strong>links</strong> and <strong>nodes</strong>. The same topology is shared by all models (CTM and METANET), ensuring that simulation results are directly comparable under identical network conditions.</p>
 <h2 id="link-types">Link types</h2>
 <table>
 <thead>
@@ -1792,61 +1734,49 @@ under identical network conditions.</p>
 <tr>
 <td><code>Origin</code></td>
 <td>Virtual demand source</td>
-<td>demand <span class="arithmatex">\(d(k)\)</span>, virtual queue <span class="arithmatex">\(N\)</span></td>
+<td>flow <span class="arithmatex">\(q\)</span>, virtual queue <span class="arithmatex">\(N\)</span> (demand <span class="arithmatex">\(d(k)\)</span>)</td>
 </tr>
 <tr>
 <td><code>Destination</code></td>
 <td>Virtual flow sink</td>
-<td>boundary condition <span class="arithmatex">\(q_{bc}(k)\)</span> or <span class="arithmatex">\(\rho_{bc}(k)\)</span></td>
+<td>flow <span class="arithmatex">\(q\)</span> (boundary conditions <span class="arithmatex">\(q_{bc}(k)\)</span> and <span class="arithmatex">\(\rho_{bc}(k)\)</span>)</td>
 </tr>
 </tbody>
 </table>
-<p><code>Origin</code>, <code>Onramp</code>, and <code>Offramp</code> are all modelled as <strong>store-and-forward</strong> links: they
-accept arbitrary inflow and store excess traffic in a virtual queue <span class="arithmatex">\(N(k)\)</span>, so highway
-backpressure is captured without enforcing hard capacity on the ramp itself. This is consistent with the network-level METANET formulation proposed by A. Kotsialos, M. Papageorgiou, et al. (2002).</p>
+<p><code>Origin</code>, <code>Onramp</code>, and <code>Offramp</code> are all modelled as <strong>store-and-forward</strong> links: they accept arbitrary inflow and store excess traffic in a virtual queue <span class="arithmatex">\(N(k)\)</span>, so highway backpressure is captured in the queue. On- and off-ramp outflows are limited by the ramp capacity; origins have no capacity limit. This is consistent with the network-level METANET formulation proposed by A. Kotsialos, M. Papageorgiou, et al. (2002).</p>
 <h2 id="nodes">Nodes</h2>
-<p>A <code>Node</code> connects a set of incoming links to a set of outgoing links. Nodes are placed
-wherever the network is <strong>inhomogeneous</strong>: on-ramp merges, off-ramp diverges, lane drops,
-and changes in free-flow speed or jam density all require a node boundary.</p>
+<p>A <code>Node</code> connects a set of incoming links to a set of outgoing links. Nodes are placed wherever the network is <strong>inhomogeneous</strong>: on-ramp merges, off-ramp diverges, lane drops, and changes in free-flow speed or jam density all require a node boundary.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">traffic_flow_models</span><span class="w"> </span><span class="kn">import</span> <span class="n">Node</span><span class="p">,</span> <span class="n">MotorwayLink</span><span class="p">,</span> <span class="n">Onramp</span><span class="p">,</span> <span class="n">Origin</span><span class="p">,</span> <span class="n">Destination</span>
 <a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>
 <a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="c1"># Single-lane bottleneck preceded by an on-ramp merge</span>
-<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="n">link_a</span> <span class="o">=</span> <span class="n">MotorwayLink</span><span class="p">(</span><span class="nb">id</span><span class="o">=</span><span class="s2">&quot;m1&quot;</span><span class="p">,</span> <span class="n">length</span><span class="o">=</span><span class="mf">2.0</span><span class="p">,</span> <span class="n">lanes</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="n">link_a</span> <span class="o">=</span> <span class="n">MotorwayLink</span><span class="p">(</span><span class="nb">id</span><span class="o">=</span><span class="s2">"m1"</span><span class="p">,</span> <span class="n">length</span><span class="o">=</span><span class="mf">2.0</span><span class="p">,</span> <span class="n">lanes</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span>
 <a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>                      <span class="n">lane_capacity</span><span class="o">=</span><span class="mi">2000</span><span class="p">,</span> <span class="n">free_flow_speed</span><span class="o">=</span><span class="mi">100</span><span class="p">,</span> <span class="n">jam_density</span><span class="o">=</span><span class="mi">180</span><span class="p">)</span>
-<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="n">onramp</span> <span class="o">=</span> <span class="n">Onramp</span><span class="p">(</span><span class="nb">id</span><span class="o">=</span><span class="s2">&quot;r1&quot;</span><span class="p">,</span> <span class="n">length</span><span class="o">=</span><span class="mf">0.5</span><span class="p">,</span> <span class="n">lanes</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="n">onramp</span> <span class="o">=</span> <span class="n">Onramp</span><span class="p">(</span><span class="nb">id</span><span class="o">=</span><span class="s2">"r1"</span><span class="p">,</span> <span class="n">length</span><span class="o">=</span><span class="mf">0.5</span><span class="p">,</span> <span class="n">lanes</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>
 <a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>                <span class="n">lane_capacity</span><span class="o">=</span><span class="mi">1800</span><span class="p">,</span> <span class="n">free_flow_speed</span><span class="o">=</span><span class="mi">80</span><span class="p">,</span> <span class="n">jam_density</span><span class="o">=</span><span class="mi">180</span><span class="p">)</span>
-<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="n">link_b</span> <span class="o">=</span> <span class="n">MotorwayLink</span><span class="p">(</span><span class="nb">id</span><span class="o">=</span><span class="s2">&quot;m2&quot;</span><span class="p">,</span> <span class="n">length</span><span class="o">=</span><span class="mf">2.0</span><span class="p">,</span> <span class="n">lanes</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>  <span class="c1"># bottleneck</span>
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="n">link_b</span> <span class="o">=</span> <span class="n">MotorwayLink</span><span class="p">(</span><span class="nb">id</span><span class="o">=</span><span class="s2">"m2"</span><span class="p">,</span> <span class="n">length</span><span class="o">=</span><span class="mf">2.0</span><span class="p">,</span> <span class="n">lanes</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>  <span class="c1"># bottleneck</span>
 <a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>                      <span class="n">lane_capacity</span><span class="o">=</span><span class="mi">2000</span><span class="p">,</span> <span class="n">free_flow_speed</span><span class="o">=</span><span class="mi">100</span><span class="p">,</span> <span class="n">jam_density</span><span class="o">=</span><span class="mi">180</span><span class="p">)</span>
 <a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>
-<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a><span class="n">o1</span> <span class="o">=</span> <span class="n">Origin</span><span class="p">(</span><span class="nb">id</span><span class="o">=</span><span class="s2">&quot;o1&quot;</span><span class="p">)</span>
-<a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a><span class="n">o2</span> <span class="o">=</span> <span class="n">Origin</span><span class="p">(</span><span class="nb">id</span><span class="o">=</span><span class="s2">&quot;o2&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a><span class="n">o1</span> <span class="o">=</span> <span class="n">Origin</span><span class="p">(</span><span class="nb">id</span><span class="o">=</span><span class="s2">"o1"</span><span class="p">)</span>
+<a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a><span class="n">o2</span> <span class="o">=</span> <span class="n">Origin</span><span class="p">(</span><span class="nb">id</span><span class="o">=</span><span class="s2">"o2"</span><span class="p">)</span>
 <a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a>
 <a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a><span class="n">merge_node</span> <span class="o">=</span> <span class="n">Node</span><span class="p">(</span>
-<a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a>    <span class="nb">id</span><span class="o">=</span><span class="s2">&quot;n_merge&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a>    <span class="nb">id</span><span class="o">=</span><span class="s2">"n_merge"</span><span class="p">,</span>
 <a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a>    <span class="n">incoming</span><span class="o">=</span><span class="p">[</span><span class="n">link_a</span><span class="p">,</span> <span class="n">onramp</span><span class="p">],</span>
 <a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a>    <span class="n">outgoing</span><span class="o">=</span><span class="p">[</span><span class="n">link_b</span><span class="p">],</span>
 <a id="__codelineno-0-18" name="__codelineno-0-18" href="#__codelineno-0-18"></a><span class="p">)</span>
 </code></pre></div>
 <h2 id="cell-discretisation">Cell discretisation</h2>
-<p><code>MotorwayLink</code> instances are automatically split into <strong>cells</strong> (also called <em>segments</em>
-in the METANET literature). The number of cells is chosen to satisfy the
-<strong>Courant–Friedrichs–Lewy (CFL) condition</strong>:</p>
+<p><code>MotorwayLink</code> instances are automatically split into <strong>cells</strong> (also called <em>segments</em> in the METANET literature). The number of cells is chosen to satisfy the <strong>Courant–Friedrichs–Lewy (CFL) condition</strong>:</p>
 <div class="arithmatex">\[L_i^m \;\geq\; \Delta t \cdot v_f^m\]</div>
-<p>This prevents vehicles from travelling across more than one cell per time step and
-guarantees numerical stability. A desired cell size <span class="arithmatex">\(L\_{des}\)</span> can be passed as a
-constructor argument; the library adjusts it upward if necessary to satisfy the CFL
-condition for the given time step and free-flow speed.</p>
+<p>This prevents vehicles from travelling across more than one cell per time step and guarantees numerical stability. A desired cell size <span class="arithmatex">\(L\_{des}\)</span> can be passed as <code>preferred_cell_size</code> to <code>Simulation.run()</code> (default 0.5 km); the library adjusts it upward if necessary to satisfy the CFL condition for the given time step and free-flow speed.</p>
 <h2 id="regularity-assumptions">Regularity assumptions</h2>
 <p>The following structural rules are enforced during <code>Network</code> validation:</p>
 <ul>
-<li>Every <code>Origin</code> or <code>Destination</code> node has exactly <strong>one</strong> connected link.</li>
-<li><code>Origin</code> nodes directly connected to a highway link or an on-ramp act as
-  store-and-forward links; no spillback from the ramp is modelled.</li>
-<li><code>Offramp</code> nodes are connected to exactly one upstream motorway link and one
-  downstream <code>Destination</code>.</li>
+<li>Every <code>Origin</code> node has the origin as its only incoming link and exactly <strong>one</strong> outgoing link (motorway link or on-ramp).</li>
+<li><code>Origin</code> nodes directly connected to a highway link or an on-ramp act as store-and-forward links; no spillback from the ramp is modelled.</li>
+<li>The node downstream of an <code>Offramp</code> has the off-ramp as its only incoming link and exactly one outgoing <code>Destination</code>.</li>
 </ul>
-<p>These assumptions simplify the model equations and ensure a well-posed network
-topology for both CTM and METANET. They are validated during the construction of the non-linear model equation system and will raise an error if violated.</p>
+<p>These assumptions simplify the model equations and ensure a well-posed network topology for both CTM and METANET. <code>Network.validate()</code> checks them and raises an error if they are violated; the construction of the non-linear model equation system also raises an error for some violations.</p>
 <h2 id="full-network-example">Full network example</h2>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">traffic_flow_models</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
 <a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>    <span class="n">Network</span><span class="p">,</span> <span class="n">Node</span><span class="p">,</span>
@@ -1855,30 +1785,30 @@ topology for both CTM and METANET. They are validated during the construction of
 <a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="p">)</span>
 <a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>
 <a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="c1"># Links — all physical parameters are required</span>
-<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a><span class="n">l1</span>  <span class="o">=</span> <span class="n">MotorwayLink</span><span class="p">(</span><span class="nb">id</span><span class="o">=</span><span class="s2">&quot;m1&quot;</span><span class="p">,</span> <span class="n">length</span><span class="o">=</span><span class="mf">2.0</span><span class="p">,</span> <span class="n">lanes</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span>
+<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a><span class="n">l1</span>  <span class="o">=</span> <span class="n">MotorwayLink</span><span class="p">(</span><span class="nb">id</span><span class="o">=</span><span class="s2">"m1"</span><span class="p">,</span> <span class="n">length</span><span class="o">=</span><span class="mf">2.0</span><span class="p">,</span> <span class="n">lanes</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span>
 <a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a>                   <span class="n">lane_capacity</span><span class="o">=</span><span class="mi">2000</span><span class="p">,</span> <span class="n">free_flow_speed</span><span class="o">=</span><span class="mi">100</span><span class="p">,</span> <span class="n">jam_density</span><span class="o">=</span><span class="mi">180</span><span class="p">)</span>
-<a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a><span class="n">l2</span>  <span class="o">=</span> <span class="n">MotorwayLink</span><span class="p">(</span><span class="nb">id</span><span class="o">=</span><span class="s2">&quot;m2&quot;</span><span class="p">,</span> <span class="n">length</span><span class="o">=</span><span class="mf">1.0</span><span class="p">,</span> <span class="n">lanes</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span>
+<a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a><span class="n">l2</span>  <span class="o">=</span> <span class="n">MotorwayLink</span><span class="p">(</span><span class="nb">id</span><span class="o">=</span><span class="s2">"m2"</span><span class="p">,</span> <span class="n">length</span><span class="o">=</span><span class="mf">1.0</span><span class="p">,</span> <span class="n">lanes</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span>
 <a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a>                   <span class="n">lane_capacity</span><span class="o">=</span><span class="mi">2000</span><span class="p">,</span> <span class="n">free_flow_speed</span><span class="o">=</span><span class="mi">100</span><span class="p">,</span> <span class="n">jam_density</span><span class="o">=</span><span class="mi">180</span><span class="p">)</span>
-<a id="__codelineno-1-12" name="__codelineno-1-12" href="#__codelineno-1-12"></a><span class="n">l3</span>  <span class="o">=</span> <span class="n">MotorwayLink</span><span class="p">(</span><span class="nb">id</span><span class="o">=</span><span class="s2">&quot;m3&quot;</span><span class="p">,</span> <span class="n">length</span><span class="o">=</span><span class="mf">2.0</span><span class="p">,</span> <span class="n">lanes</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span>
+<a id="__codelineno-1-12" name="__codelineno-1-12" href="#__codelineno-1-12"></a><span class="n">l3</span>  <span class="o">=</span> <span class="n">MotorwayLink</span><span class="p">(</span><span class="nb">id</span><span class="o">=</span><span class="s2">"m3"</span><span class="p">,</span> <span class="n">length</span><span class="o">=</span><span class="mf">2.0</span><span class="p">,</span> <span class="n">lanes</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span>
 <a id="__codelineno-1-13" name="__codelineno-1-13" href="#__codelineno-1-13"></a>                   <span class="n">lane_capacity</span><span class="o">=</span><span class="mi">2000</span><span class="p">,</span> <span class="n">free_flow_speed</span><span class="o">=</span><span class="mi">100</span><span class="p">,</span> <span class="n">jam_density</span><span class="o">=</span><span class="mi">180</span><span class="p">)</span>
-<a id="__codelineno-1-14" name="__codelineno-1-14" href="#__codelineno-1-14"></a><span class="n">on</span>  <span class="o">=</span> <span class="n">Onramp</span><span class="p">(</span><span class="nb">id</span><span class="o">=</span><span class="s2">&quot;r1&quot;</span><span class="p">,</span>  <span class="n">length</span><span class="o">=</span><span class="mf">0.5</span><span class="p">,</span> <span class="n">lanes</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>
+<a id="__codelineno-1-14" name="__codelineno-1-14" href="#__codelineno-1-14"></a><span class="n">on</span>  <span class="o">=</span> <span class="n">Onramp</span><span class="p">(</span><span class="nb">id</span><span class="o">=</span><span class="s2">"r1"</span><span class="p">,</span>  <span class="n">length</span><span class="o">=</span><span class="mf">0.5</span><span class="p">,</span> <span class="n">lanes</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>
 <a id="__codelineno-1-15" name="__codelineno-1-15" href="#__codelineno-1-15"></a>            <span class="n">lane_capacity</span><span class="o">=</span><span class="mi">1800</span><span class="p">,</span> <span class="n">free_flow_speed</span><span class="o">=</span><span class="mi">80</span><span class="p">,</span> <span class="n">jam_density</span><span class="o">=</span><span class="mi">180</span><span class="p">)</span>
-<a id="__codelineno-1-16" name="__codelineno-1-16" href="#__codelineno-1-16"></a><span class="n">off</span> <span class="o">=</span> <span class="n">Offramp</span><span class="p">(</span><span class="nb">id</span><span class="o">=</span><span class="s2">&quot;f1&quot;</span><span class="p">,</span> <span class="n">lanes</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>        <span class="c1"># Offramp has no length parameter</span>
+<a id="__codelineno-1-16" name="__codelineno-1-16" href="#__codelineno-1-16"></a><span class="n">off</span> <span class="o">=</span> <span class="n">Offramp</span><span class="p">(</span><span class="nb">id</span><span class="o">=</span><span class="s2">"f1"</span><span class="p">,</span> <span class="n">lanes</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>        <span class="c1"># Offramp has no length parameter</span>
 <a id="__codelineno-1-17" name="__codelineno-1-17" href="#__codelineno-1-17"></a>              <span class="n">lane_capacity</span><span class="o">=</span><span class="mi">1500</span><span class="p">,</span> <span class="n">free_flow_speed</span><span class="o">=</span><span class="mi">80</span><span class="p">,</span> <span class="n">jam_density</span><span class="o">=</span><span class="mi">180</span><span class="p">)</span>
 <a id="__codelineno-1-18" name="__codelineno-1-18" href="#__codelineno-1-18"></a>
 <a id="__codelineno-1-19" name="__codelineno-1-19" href="#__codelineno-1-19"></a><span class="c1"># Origins &amp; destinations</span>
-<a id="__codelineno-1-20" name="__codelineno-1-20" href="#__codelineno-1-20"></a><span class="n">o1</span> <span class="o">=</span> <span class="n">Origin</span><span class="p">(</span><span class="nb">id</span><span class="o">=</span><span class="s2">&quot;o1&quot;</span><span class="p">)</span>
-<a id="__codelineno-1-21" name="__codelineno-1-21" href="#__codelineno-1-21"></a><span class="n">o2</span> <span class="o">=</span> <span class="n">Origin</span><span class="p">(</span><span class="nb">id</span><span class="o">=</span><span class="s2">&quot;o2&quot;</span><span class="p">)</span>  <span class="c1"># feeds on-ramp</span>
-<a id="__codelineno-1-22" name="__codelineno-1-22" href="#__codelineno-1-22"></a><span class="n">d1</span> <span class="o">=</span> <span class="n">Destination</span><span class="p">(</span><span class="nb">id</span><span class="o">=</span><span class="s2">&quot;d1&quot;</span><span class="p">)</span>
-<a id="__codelineno-1-23" name="__codelineno-1-23" href="#__codelineno-1-23"></a><span class="n">d2</span> <span class="o">=</span> <span class="n">Destination</span><span class="p">(</span><span class="nb">id</span><span class="o">=</span><span class="s2">&quot;d2&quot;</span><span class="p">)</span>  <span class="c1"># receives off-ramp</span>
+<a id="__codelineno-1-20" name="__codelineno-1-20" href="#__codelineno-1-20"></a><span class="n">o1</span> <span class="o">=</span> <span class="n">Origin</span><span class="p">(</span><span class="nb">id</span><span class="o">=</span><span class="s2">"o1"</span><span class="p">)</span>
+<a id="__codelineno-1-21" name="__codelineno-1-21" href="#__codelineno-1-21"></a><span class="n">o2</span> <span class="o">=</span> <span class="n">Origin</span><span class="p">(</span><span class="nb">id</span><span class="o">=</span><span class="s2">"o2"</span><span class="p">)</span>  <span class="c1"># feeds on-ramp</span>
+<a id="__codelineno-1-22" name="__codelineno-1-22" href="#__codelineno-1-22"></a><span class="n">d1</span> <span class="o">=</span> <span class="n">Destination</span><span class="p">(</span><span class="nb">id</span><span class="o">=</span><span class="s2">"d1"</span><span class="p">)</span>
+<a id="__codelineno-1-23" name="__codelineno-1-23" href="#__codelineno-1-23"></a><span class="n">d2</span> <span class="o">=</span> <span class="n">Destination</span><span class="p">(</span><span class="nb">id</span><span class="o">=</span><span class="s2">"d2"</span><span class="p">)</span>  <span class="c1"># receives off-ramp</span>
 <a id="__codelineno-1-24" name="__codelineno-1-24" href="#__codelineno-1-24"></a>
 <a id="__codelineno-1-25" name="__codelineno-1-25" href="#__codelineno-1-25"></a><span class="c1"># Node topology</span>
-<a id="__codelineno-1-26" name="__codelineno-1-26" href="#__codelineno-1-26"></a><span class="n">n0</span> <span class="o">=</span> <span class="n">Node</span><span class="p">(</span><span class="nb">id</span><span class="o">=</span><span class="s2">&quot;n0&quot;</span><span class="p">,</span> <span class="n">incoming</span><span class="o">=</span><span class="p">[</span><span class="n">o1</span><span class="p">],</span>       <span class="n">outgoing</span><span class="o">=</span><span class="p">[</span><span class="n">l1</span><span class="p">])</span>
-<a id="__codelineno-1-27" name="__codelineno-1-27" href="#__codelineno-1-27"></a><span class="n">n1</span> <span class="o">=</span> <span class="n">Node</span><span class="p">(</span><span class="nb">id</span><span class="o">=</span><span class="s2">&quot;n1&quot;</span><span class="p">,</span> <span class="n">incoming</span><span class="o">=</span><span class="p">[</span><span class="n">o2</span><span class="p">],</span>       <span class="n">outgoing</span><span class="o">=</span><span class="p">[</span><span class="n">on</span><span class="p">])</span>
-<a id="__codelineno-1-28" name="__codelineno-1-28" href="#__codelineno-1-28"></a><span class="n">n2</span> <span class="o">=</span> <span class="n">Node</span><span class="p">(</span><span class="nb">id</span><span class="o">=</span><span class="s2">&quot;n2&quot;</span><span class="p">,</span> <span class="n">incoming</span><span class="o">=</span><span class="p">[</span><span class="n">l1</span><span class="p">,</span> <span class="n">on</span><span class="p">],</span>   <span class="n">outgoing</span><span class="o">=</span><span class="p">[</span><span class="n">l2</span><span class="p">])</span>       <span class="c1"># merge</span>
-<a id="__codelineno-1-29" name="__codelineno-1-29" href="#__codelineno-1-29"></a><span class="n">n3</span> <span class="o">=</span> <span class="n">Node</span><span class="p">(</span><span class="nb">id</span><span class="o">=</span><span class="s2">&quot;n3&quot;</span><span class="p">,</span> <span class="n">incoming</span><span class="o">=</span><span class="p">[</span><span class="n">l2</span><span class="p">],</span>       <span class="n">outgoing</span><span class="o">=</span><span class="p">[</span><span class="n">l3</span><span class="p">,</span> <span class="n">off</span><span class="p">])</span>  <span class="c1"># diverge</span>
-<a id="__codelineno-1-30" name="__codelineno-1-30" href="#__codelineno-1-30"></a><span class="n">n4</span> <span class="o">=</span> <span class="n">Node</span><span class="p">(</span><span class="nb">id</span><span class="o">=</span><span class="s2">&quot;n4&quot;</span><span class="p">,</span> <span class="n">incoming</span><span class="o">=</span><span class="p">[</span><span class="n">l3</span><span class="p">],</span>       <span class="n">outgoing</span><span class="o">=</span><span class="p">[</span><span class="n">d1</span><span class="p">])</span>
-<a id="__codelineno-1-31" name="__codelineno-1-31" href="#__codelineno-1-31"></a><span class="n">n5</span> <span class="o">=</span> <span class="n">Node</span><span class="p">(</span><span class="nb">id</span><span class="o">=</span><span class="s2">&quot;n5&quot;</span><span class="p">,</span> <span class="n">incoming</span><span class="o">=</span><span class="p">[</span><span class="n">off</span><span class="p">],</span>      <span class="n">outgoing</span><span class="o">=</span><span class="p">[</span><span class="n">d2</span><span class="p">])</span>
+<a id="__codelineno-1-26" name="__codelineno-1-26" href="#__codelineno-1-26"></a><span class="n">n0</span> <span class="o">=</span> <span class="n">Node</span><span class="p">(</span><span class="nb">id</span><span class="o">=</span><span class="s2">"n0"</span><span class="p">,</span> <span class="n">incoming</span><span class="o">=</span><span class="p">[</span><span class="n">o1</span><span class="p">],</span>       <span class="n">outgoing</span><span class="o">=</span><span class="p">[</span><span class="n">l1</span><span class="p">])</span>
+<a id="__codelineno-1-27" name="__codelineno-1-27" href="#__codelineno-1-27"></a><span class="n">n1</span> <span class="o">=</span> <span class="n">Node</span><span class="p">(</span><span class="nb">id</span><span class="o">=</span><span class="s2">"n1"</span><span class="p">,</span> <span class="n">incoming</span><span class="o">=</span><span class="p">[</span><span class="n">o2</span><span class="p">],</span>       <span class="n">outgoing</span><span class="o">=</span><span class="p">[</span><span class="n">on</span><span class="p">])</span>
+<a id="__codelineno-1-28" name="__codelineno-1-28" href="#__codelineno-1-28"></a><span class="n">n2</span> <span class="o">=</span> <span class="n">Node</span><span class="p">(</span><span class="nb">id</span><span class="o">=</span><span class="s2">"n2"</span><span class="p">,</span> <span class="n">incoming</span><span class="o">=</span><span class="p">[</span><span class="n">l1</span><span class="p">,</span> <span class="n">on</span><span class="p">],</span>   <span class="n">outgoing</span><span class="o">=</span><span class="p">[</span><span class="n">l2</span><span class="p">])</span>       <span class="c1"># merge</span>
+<a id="__codelineno-1-29" name="__codelineno-1-29" href="#__codelineno-1-29"></a><span class="n">n3</span> <span class="o">=</span> <span class="n">Node</span><span class="p">(</span><span class="nb">id</span><span class="o">=</span><span class="s2">"n3"</span><span class="p">,</span> <span class="n">incoming</span><span class="o">=</span><span class="p">[</span><span class="n">l2</span><span class="p">],</span>       <span class="n">outgoing</span><span class="o">=</span><span class="p">[</span><span class="n">l3</span><span class="p">,</span> <span class="n">off</span><span class="p">])</span>  <span class="c1"># diverge</span>
+<a id="__codelineno-1-30" name="__codelineno-1-30" href="#__codelineno-1-30"></a><span class="n">n4</span> <span class="o">=</span> <span class="n">Node</span><span class="p">(</span><span class="nb">id</span><span class="o">=</span><span class="s2">"n4"</span><span class="p">,</span> <span class="n">incoming</span><span class="o">=</span><span class="p">[</span><span class="n">l3</span><span class="p">],</span>       <span class="n">outgoing</span><span class="o">=</span><span class="p">[</span><span class="n">d1</span><span class="p">])</span>
+<a id="__codelineno-1-31" name="__codelineno-1-31" href="#__codelineno-1-31"></a><span class="n">n5</span> <span class="o">=</span> <span class="n">Node</span><span class="p">(</span><span class="nb">id</span><span class="o">=</span><span class="s2">"n5"</span><span class="p">,</span> <span class="n">incoming</span><span class="o">=</span><span class="p">[</span><span class="n">off</span><span class="p">],</span>      <span class="n">outgoing</span><span class="o">=</span><span class="p">[</span><span class="n">d2</span><span class="p">])</span>
 <a id="__codelineno-1-32" name="__codelineno-1-32" href="#__codelineno-1-32"></a>
 <a id="__codelineno-1-33" name="__codelineno-1-33" href="#__codelineno-1-33"></a><span class="n">net</span> <span class="o">=</span> <span class="n">Network</span><span class="p">(</span><span class="n">nodes</span><span class="o">=</span><span class="p">[</span><span class="n">n0</span><span class="p">,</span> <span class="n">n1</span><span class="p">,</span> <span class="n">n2</span><span class="p">,</span> <span class="n">n3</span><span class="p">,</span> <span class="n">n4</span><span class="p">,</span> <span class="n">n5</span><span class="p">])</span>
 </code></pre></div>
@@ -1936,10 +1866,10 @@ topology for both CTM and METANET. They are validated during the construction of
     
       
       
-      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.tabs", "navigation.tabs.sticky", "navigation.sections", "navigation.expand", "navigation.top", "search.suggest", "search.highlight", "content.code.copy", "content.code.annotate", "toc.follow"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.tabs", "navigation.tabs.sticky", "navigation.sections", "navigation.expand", "navigation.top", "search.suggest", "search.highlight", "content.code.copy", "content.code.annotate", "toc.follow"], "search": "../../assets/javascripts/workers/search.a7633da7.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
     
     
-      <script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>
+      <script src="../../assets/javascripts/bundle.a5f9d56c.min.js"></script>
       
         <script src="../../javascripts/mathjax.js"></script>
       

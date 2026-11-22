@@ -25,7 +25,7 @@
       
       
       <link rel="icon" href="../../assets/images/favicon.png">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.2">
     
     
       
@@ -33,10 +33,10 @@
       
     
     
-      <link rel="stylesheet" href="../../assets/stylesheets/main.484c7ddc.min.css">
+      <link rel="stylesheet" href="../../assets/stylesheets/main.57a0d79d.min.css">
       
         
-        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.fb2fffe2.min.css">
       
       
 
@@ -1479,62 +1479,6 @@
 
               
             
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../../experimental/sumo-pipeline/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    SUMO Integration
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../../api/experimental/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    API (Experimental)
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
           </ul>
         </nav>
       
@@ -1761,14 +1705,10 @@
 
 
 <h1 id="quickstart">Quickstart</h1>
-<p>This guide walks through a complete CTM simulation, introducing
-the main building blocks: network topology, model selection, simulation execution,
-and result inspection.</p>
+<p>This guide walks through a complete CTM simulation, introducing the main building blocks: network topology, model selection, simulation execution, and result inspection.</p>
 <h2 id="1-build-a-network">1. Build a network</h2>
-<p>A network consists of <strong>links</strong> connected by <strong>nodes</strong>. Virtual <code>Origin</code> and <code>Destination</code>
-nodes represent demand sources and sinks at the boundary of the modelled area.</p>
-<p>The example below models a simple motorway stretch with a bottleneck (lane drop in the
-middle) and an on-ramp.</p>
+<p>A network consists of <strong>links</strong> connected by <strong>nodes</strong>. Virtual <code>Origin</code> and <code>Destination</code> links represent demand sources and sinks at the boundary of the modelled area.</p>
+<p>The example below models a simple motorway stretch with a bottleneck (lane drop in the middle) and an on-ramp.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">traffic_flow_models</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
 <a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>    <span class="n">Network</span><span class="p">,</span> <span class="n">Node</span><span class="p">,</span>
 <a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>    <span class="n">MotorwayLink</span><span class="p">,</span> <span class="n">Onramp</span><span class="p">,</span>
@@ -1776,54 +1716,52 @@ middle) and an on-ramp.</p>
 <a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="p">)</span>
 <a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>
 <a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="c1"># Origins (virtual demand sources)</span>
-<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="n">o_main</span> <span class="o">=</span> <span class="n">Origin</span><span class="p">(</span><span class="nb">id</span><span class="o">=</span><span class="s2">&quot;o_main&quot;</span><span class="p">)</span>
-<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="n">o_ramp</span> <span class="o">=</span> <span class="n">Origin</span><span class="p">(</span><span class="nb">id</span><span class="o">=</span><span class="s2">&quot;o_ramp&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="n">o_main</span> <span class="o">=</span> <span class="n">Origin</span><span class="p">(</span><span class="nb">id</span><span class="o">=</span><span class="s2">"o_main"</span><span class="p">)</span>
+<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="n">o_ramp</span> <span class="o">=</span> <span class="n">Origin</span><span class="p">(</span><span class="nb">id</span><span class="o">=</span><span class="s2">"o_ramp"</span><span class="p">)</span>
 <a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>
 <a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a><span class="c1"># Destination (virtual sink)</span>
-<a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a><span class="n">dest</span> <span class="o">=</span> <span class="n">Destination</span><span class="p">(</span><span class="nb">id</span><span class="o">=</span><span class="s2">&quot;d_main&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a><span class="n">dest</span> <span class="o">=</span> <span class="n">Destination</span><span class="p">(</span><span class="nb">id</span><span class="o">=</span><span class="s2">"d_main"</span><span class="p">)</span>
 <a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a>
 <a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a><span class="c1"># Links — every link needs lane_capacity, free_flow_speed, jam_density</span>
-<a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a><span class="n">link1</span>  <span class="o">=</span> <span class="n">MotorwayLink</span><span class="p">(</span><span class="nb">id</span><span class="o">=</span><span class="s2">&quot;m1&quot;</span><span class="p">,</span> <span class="n">length</span><span class="o">=</span><span class="mf">2.0</span><span class="p">,</span> <span class="n">lanes</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span>
+<a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a><span class="n">link1</span>  <span class="o">=</span> <span class="n">MotorwayLink</span><span class="p">(</span><span class="nb">id</span><span class="o">=</span><span class="s2">"m1"</span><span class="p">,</span> <span class="n">length</span><span class="o">=</span><span class="mf">2.0</span><span class="p">,</span> <span class="n">lanes</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span>
 <a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a>                      <span class="n">lane_capacity</span><span class="o">=</span><span class="mi">2000</span><span class="p">,</span> <span class="n">free_flow_speed</span><span class="o">=</span><span class="mi">100</span><span class="p">,</span> <span class="n">jam_density</span><span class="o">=</span><span class="mi">180</span><span class="p">)</span>
-<a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a><span class="n">onramp</span> <span class="o">=</span> <span class="n">Onramp</span><span class="p">(</span><span class="nb">id</span><span class="o">=</span><span class="s2">&quot;r1&quot;</span><span class="p">,</span> <span class="n">length</span><span class="o">=</span><span class="mf">0.5</span><span class="p">,</span> <span class="n">lanes</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>
+<a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a><span class="n">onramp</span> <span class="o">=</span> <span class="n">Onramp</span><span class="p">(</span><span class="nb">id</span><span class="o">=</span><span class="s2">"r1"</span><span class="p">,</span> <span class="n">length</span><span class="o">=</span><span class="mf">0.5</span><span class="p">,</span> <span class="n">lanes</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>
 <a id="__codelineno-0-18" name="__codelineno-0-18" href="#__codelineno-0-18"></a>                <span class="n">lane_capacity</span><span class="o">=</span><span class="mi">1800</span><span class="p">,</span> <span class="n">free_flow_speed</span><span class="o">=</span><span class="mi">80</span><span class="p">,</span> <span class="n">jam_density</span><span class="o">=</span><span class="mi">180</span><span class="p">)</span>
-<a id="__codelineno-0-19" name="__codelineno-0-19" href="#__codelineno-0-19"></a><span class="n">link2</span>  <span class="o">=</span> <span class="n">MotorwayLink</span><span class="p">(</span><span class="nb">id</span><span class="o">=</span><span class="s2">&quot;m2&quot;</span><span class="p">,</span> <span class="n">length</span><span class="o">=</span><span class="mf">1.0</span><span class="p">,</span> <span class="n">lanes</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>   <span class="c1"># bottleneck</span>
+<a id="__codelineno-0-19" name="__codelineno-0-19" href="#__codelineno-0-19"></a><span class="n">link2</span>  <span class="o">=</span> <span class="n">MotorwayLink</span><span class="p">(</span><span class="nb">id</span><span class="o">=</span><span class="s2">"m2"</span><span class="p">,</span> <span class="n">length</span><span class="o">=</span><span class="mf">1.0</span><span class="p">,</span> <span class="n">lanes</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>   <span class="c1"># bottleneck</span>
 <a id="__codelineno-0-20" name="__codelineno-0-20" href="#__codelineno-0-20"></a>                      <span class="n">lane_capacity</span><span class="o">=</span><span class="mi">2000</span><span class="p">,</span> <span class="n">free_flow_speed</span><span class="o">=</span><span class="mi">100</span><span class="p">,</span> <span class="n">jam_density</span><span class="o">=</span><span class="mi">180</span><span class="p">)</span>
-<a id="__codelineno-0-21" name="__codelineno-0-21" href="#__codelineno-0-21"></a><span class="n">link3</span>  <span class="o">=</span> <span class="n">MotorwayLink</span><span class="p">(</span><span class="nb">id</span><span class="o">=</span><span class="s2">&quot;m3&quot;</span><span class="p">,</span> <span class="n">length</span><span class="o">=</span><span class="mf">1.0</span><span class="p">,</span> <span class="n">lanes</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span>
+<a id="__codelineno-0-21" name="__codelineno-0-21" href="#__codelineno-0-21"></a><span class="n">link3</span>  <span class="o">=</span> <span class="n">MotorwayLink</span><span class="p">(</span><span class="nb">id</span><span class="o">=</span><span class="s2">"m3"</span><span class="p">,</span> <span class="n">length</span><span class="o">=</span><span class="mf">1.0</span><span class="p">,</span> <span class="n">lanes</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span>
 <a id="__codelineno-0-22" name="__codelineno-0-22" href="#__codelineno-0-22"></a>                      <span class="n">lane_capacity</span><span class="o">=</span><span class="mi">2000</span><span class="p">,</span> <span class="n">free_flow_speed</span><span class="o">=</span><span class="mi">100</span><span class="p">,</span> <span class="n">jam_density</span><span class="o">=</span><span class="mi">180</span><span class="p">)</span>
 <a id="__codelineno-0-23" name="__codelineno-0-23" href="#__codelineno-0-23"></a>
 <a id="__codelineno-0-24" name="__codelineno-0-24" href="#__codelineno-0-24"></a><span class="c1"># Nodes</span>
-<a id="__codelineno-0-25" name="__codelineno-0-25" href="#__codelineno-0-25"></a><span class="n">n0</span> <span class="o">=</span> <span class="n">Node</span><span class="p">(</span><span class="nb">id</span><span class="o">=</span><span class="s2">&quot;n0&quot;</span><span class="p">,</span> <span class="n">incoming</span><span class="o">=</span><span class="p">[</span><span class="n">o_main</span><span class="p">],</span>          <span class="n">outgoing</span><span class="o">=</span><span class="p">[</span><span class="n">link1</span><span class="p">])</span>
-<a id="__codelineno-0-26" name="__codelineno-0-26" href="#__codelineno-0-26"></a><span class="n">n1</span> <span class="o">=</span> <span class="n">Node</span><span class="p">(</span><span class="nb">id</span><span class="o">=</span><span class="s2">&quot;n1&quot;</span><span class="p">,</span> <span class="n">incoming</span><span class="o">=</span><span class="p">[</span><span class="n">link1</span><span class="p">,</span> <span class="n">onramp</span><span class="p">],</span>   <span class="n">outgoing</span><span class="o">=</span><span class="p">[</span><span class="n">link2</span><span class="p">])</span>
-<a id="__codelineno-0-27" name="__codelineno-0-27" href="#__codelineno-0-27"></a><span class="n">n2</span> <span class="o">=</span> <span class="n">Node</span><span class="p">(</span><span class="nb">id</span><span class="o">=</span><span class="s2">&quot;n2&quot;</span><span class="p">,</span> <span class="n">incoming</span><span class="o">=</span><span class="p">[</span><span class="n">o_ramp</span><span class="p">],</span>          <span class="n">outgoing</span><span class="o">=</span><span class="p">[</span><span class="n">onramp</span><span class="p">])</span>
-<a id="__codelineno-0-28" name="__codelineno-0-28" href="#__codelineno-0-28"></a><span class="n">n3</span> <span class="o">=</span> <span class="n">Node</span><span class="p">(</span><span class="nb">id</span><span class="o">=</span><span class="s2">&quot;n3&quot;</span><span class="p">,</span> <span class="n">incoming</span><span class="o">=</span><span class="p">[</span><span class="n">link2</span><span class="p">],</span>           <span class="n">outgoing</span><span class="o">=</span><span class="p">[</span><span class="n">link3</span><span class="p">])</span>
-<a id="__codelineno-0-29" name="__codelineno-0-29" href="#__codelineno-0-29"></a><span class="n">n4</span> <span class="o">=</span> <span class="n">Node</span><span class="p">(</span><span class="nb">id</span><span class="o">=</span><span class="s2">&quot;n4&quot;</span><span class="p">,</span> <span class="n">incoming</span><span class="o">=</span><span class="p">[</span><span class="n">link3</span><span class="p">],</span>           <span class="n">outgoing</span><span class="o">=</span><span class="p">[</span><span class="n">dest</span><span class="p">])</span>
+<a id="__codelineno-0-25" name="__codelineno-0-25" href="#__codelineno-0-25"></a><span class="n">n0</span> <span class="o">=</span> <span class="n">Node</span><span class="p">(</span><span class="nb">id</span><span class="o">=</span><span class="s2">"n0"</span><span class="p">,</span> <span class="n">incoming</span><span class="o">=</span><span class="p">[</span><span class="n">o_main</span><span class="p">],</span>          <span class="n">outgoing</span><span class="o">=</span><span class="p">[</span><span class="n">link1</span><span class="p">])</span>
+<a id="__codelineno-0-26" name="__codelineno-0-26" href="#__codelineno-0-26"></a><span class="n">n1</span> <span class="o">=</span> <span class="n">Node</span><span class="p">(</span><span class="nb">id</span><span class="o">=</span><span class="s2">"n1"</span><span class="p">,</span> <span class="n">incoming</span><span class="o">=</span><span class="p">[</span><span class="n">link1</span><span class="p">,</span> <span class="n">onramp</span><span class="p">],</span>   <span class="n">outgoing</span><span class="o">=</span><span class="p">[</span><span class="n">link2</span><span class="p">])</span>
+<a id="__codelineno-0-27" name="__codelineno-0-27" href="#__codelineno-0-27"></a><span class="n">n2</span> <span class="o">=</span> <span class="n">Node</span><span class="p">(</span><span class="nb">id</span><span class="o">=</span><span class="s2">"n2"</span><span class="p">,</span> <span class="n">incoming</span><span class="o">=</span><span class="p">[</span><span class="n">o_ramp</span><span class="p">],</span>          <span class="n">outgoing</span><span class="o">=</span><span class="p">[</span><span class="n">onramp</span><span class="p">])</span>
+<a id="__codelineno-0-28" name="__codelineno-0-28" href="#__codelineno-0-28"></a><span class="n">n3</span> <span class="o">=</span> <span class="n">Node</span><span class="p">(</span><span class="nb">id</span><span class="o">=</span><span class="s2">"n3"</span><span class="p">,</span> <span class="n">incoming</span><span class="o">=</span><span class="p">[</span><span class="n">link2</span><span class="p">],</span>           <span class="n">outgoing</span><span class="o">=</span><span class="p">[</span><span class="n">link3</span><span class="p">])</span>
+<a id="__codelineno-0-29" name="__codelineno-0-29" href="#__codelineno-0-29"></a><span class="n">n4</span> <span class="o">=</span> <span class="n">Node</span><span class="p">(</span><span class="nb">id</span><span class="o">=</span><span class="s2">"n4"</span><span class="p">,</span> <span class="n">incoming</span><span class="o">=</span><span class="p">[</span><span class="n">link3</span><span class="p">],</span>           <span class="n">outgoing</span><span class="o">=</span><span class="p">[</span><span class="n">dest</span><span class="p">])</span>
 <a id="__codelineno-0-30" name="__codelineno-0-30" href="#__codelineno-0-30"></a>
 <a id="__codelineno-0-31" name="__codelineno-0-31" href="#__codelineno-0-31"></a><span class="n">net</span> <span class="o">=</span> <span class="n">Network</span><span class="p">(</span><span class="n">nodes</span><span class="o">=</span><span class="p">[</span><span class="n">n0</span><span class="p">,</span> <span class="n">n1</span><span class="p">,</span> <span class="n">n2</span><span class="p">,</span> <span class="n">n3</span><span class="p">,</span> <span class="n">n4</span><span class="p">])</span>
 </code></pre></div>
 <h2 id="2-define-demand">2. Define demand</h2>
-<p>Demand is a <strong>callable</strong> <code>(t: float) -&gt; float</code> for each <code>Origin</code>, where <code>t</code> is the
-current simulation time in hours. Here we use constant or piecewise-constant demand.</p>
+<p>Demand is a <strong>callable</strong> <code>(t: float) -&gt; float</code> for each <code>Origin</code>, where <code>t</code> is the current simulation time in hours. Here we use constant or piecewise-constant demand.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="n">main_demand</span> <span class="o">=</span> <span class="k">lambda</span> <span class="n">t</span><span class="p">:</span> <span class="mf">1500.0</span>                              <span class="c1"># constant 1500 veh/h</span>
 <a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="n">ramp_demand</span> <span class="o">=</span> <span class="k">lambda</span> <span class="n">t</span><span class="p">:</span> <span class="mf">800.0</span> <span class="k">if</span> <span class="n">t</span> <span class="o">&lt;</span> <span class="mf">0.5</span> <span class="k">else</span> <span class="mf">400.0</span>         <span class="c1"># steps down after 30 min</span>
 </code></pre></div>
-<p>The simulation also requires turning rates at each node (fractions of flow routed into
-each outgoing link) and boundary conditions at each destination:</p>
+<p>The simulation also requires turning rates at each node (fractions of flow routed into each outgoing link) and boundary conditions at each destination:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="n">origin_demands</span> <span class="o">=</span> <span class="p">{</span>
-<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>    <span class="s2">&quot;o_main&quot;</span><span class="p">:</span> <span class="n">main_demand</span><span class="p">,</span>
-<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>    <span class="s2">&quot;o_ramp&quot;</span><span class="p">:</span> <span class="n">ramp_demand</span><span class="p">,</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>    <span class="s2">"o_main"</span><span class="p">:</span> <span class="n">main_demand</span><span class="p">,</span>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>    <span class="s2">"o_ramp"</span><span class="p">:</span> <span class="n">ramp_demand</span><span class="p">,</span>
 <a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="p">}</span>
 <a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a>
 <a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a><span class="n">turning_rates</span> <span class="o">=</span> <span class="p">{</span>
-<a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a>    <span class="s2">&quot;n0&quot;</span><span class="p">:</span> <span class="k">lambda</span> <span class="n">t</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;m1&quot;</span><span class="p">:</span> <span class="mf">1.0</span><span class="p">},</span>
-<a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a>    <span class="s2">&quot;n1&quot;</span><span class="p">:</span> <span class="k">lambda</span> <span class="n">t</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;m2&quot;</span><span class="p">:</span> <span class="mf">1.0</span><span class="p">},</span>
-<a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a>    <span class="s2">&quot;n2&quot;</span><span class="p">:</span> <span class="k">lambda</span> <span class="n">t</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;r1&quot;</span><span class="p">:</span> <span class="mf">1.0</span><span class="p">},</span>
-<a id="__codelineno-2-10" name="__codelineno-2-10" href="#__codelineno-2-10"></a>    <span class="s2">&quot;n3&quot;</span><span class="p">:</span> <span class="k">lambda</span> <span class="n">t</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;m3&quot;</span><span class="p">:</span> <span class="mf">1.0</span><span class="p">},</span>
-<a id="__codelineno-2-11" name="__codelineno-2-11" href="#__codelineno-2-11"></a>    <span class="s2">&quot;n4&quot;</span><span class="p">:</span> <span class="k">lambda</span> <span class="n">t</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;d_main&quot;</span><span class="p">:</span> <span class="mf">1.0</span><span class="p">},</span>
+<a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a>    <span class="s2">"n0"</span><span class="p">:</span> <span class="k">lambda</span> <span class="n">t</span><span class="p">:</span> <span class="p">{</span><span class="s2">"m1"</span><span class="p">:</span> <span class="mf">1.0</span><span class="p">},</span>
+<a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a>    <span class="s2">"n1"</span><span class="p">:</span> <span class="k">lambda</span> <span class="n">t</span><span class="p">:</span> <span class="p">{</span><span class="s2">"m2"</span><span class="p">:</span> <span class="mf">1.0</span><span class="p">},</span>
+<a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a>    <span class="s2">"n2"</span><span class="p">:</span> <span class="k">lambda</span> <span class="n">t</span><span class="p">:</span> <span class="p">{</span><span class="s2">"r1"</span><span class="p">:</span> <span class="mf">1.0</span><span class="p">},</span>
+<a id="__codelineno-2-10" name="__codelineno-2-10" href="#__codelineno-2-10"></a>    <span class="s2">"n3"</span><span class="p">:</span> <span class="k">lambda</span> <span class="n">t</span><span class="p">:</span> <span class="p">{</span><span class="s2">"m3"</span><span class="p">:</span> <span class="mf">1.0</span><span class="p">},</span>
+<a id="__codelineno-2-11" name="__codelineno-2-11" href="#__codelineno-2-11"></a>    <span class="s2">"n4"</span><span class="p">:</span> <span class="k">lambda</span> <span class="n">t</span><span class="p">:</span> <span class="p">{</span><span class="s2">"d_main"</span><span class="p">:</span> <span class="mf">1.0</span><span class="p">},</span>
 <a id="__codelineno-2-12" name="__codelineno-2-12" href="#__codelineno-2-12"></a><span class="p">}</span>
 <a id="__codelineno-2-13" name="__codelineno-2-13" href="#__codelineno-2-13"></a>
-<a id="__codelineno-2-14" name="__codelineno-2-14" href="#__codelineno-2-14"></a><span class="n">destination_flow_bc</span>    <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;d_main&quot;</span><span class="p">:</span> <span class="k">lambda</span> <span class="n">t</span><span class="p">:</span> <span class="mf">6000.0</span><span class="p">}</span>  <span class="c1"># unconstrained exit</span>
-<a id="__codelineno-2-15" name="__codelineno-2-15" href="#__codelineno-2-15"></a><span class="n">destination_density_bc</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;d_main&quot;</span><span class="p">:</span> <span class="k">lambda</span> <span class="n">t</span><span class="p">:</span> <span class="mf">0.0</span><span class="p">}</span>
+<a id="__codelineno-2-14" name="__codelineno-2-14" href="#__codelineno-2-14"></a><span class="n">destination_flow_bc</span>    <span class="o">=</span> <span class="p">{</span><span class="s2">"d_main"</span><span class="p">:</span> <span class="k">lambda</span> <span class="n">t</span><span class="p">:</span> <span class="mf">6000.0</span><span class="p">}</span>  <span class="c1"># unconstrained exit</span>
+<a id="__codelineno-2-15" name="__codelineno-2-15" href="#__codelineno-2-15"></a><span class="n">destination_density_bc</span> <span class="o">=</span> <span class="p">{</span><span class="s2">"d_main"</span><span class="p">:</span> <span class="k">lambda</span> <span class="n">t</span><span class="p">:</span> <span class="mf">0.0</span><span class="p">}</span>
 </code></pre></div>
 <h2 id="3-choose-a-model-and-run">3. Choose a model and run</h2>
 <div class="tabbed-set tabbed-alternate" data-tabs="1:2"><input checked="checked" id="__tabbed_1_1" name="__tabbed_1" type="radio" /><input id="__tabbed_1_2" name="__tabbed_1" type="radio" /><div class="tabbed-labels"><label for="__tabbed_1_1">CTM</label><label for="__tabbed_1_2">METANET</label></div>
@@ -1851,12 +1789,12 @@ each outgoing link) and boundary conditions at each destination:</p>
 <a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="c1"># METANETParams holds the second-order coefficients only;</span>
 <a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="c1"># fundamental-diagram parameters (vf, Qc_lane, rho_jam) stay on the links.</span>
 <a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="n">model_params</span><span class="p">:</span> <span class="n">METANETParams</span> <span class="o">=</span> <span class="p">{</span>
-<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a>    <span class="s2">&quot;tau&quot;</span><span class="p">:</span>   <span class="mi">22</span> <span class="o">/</span> <span class="mi">3600</span><span class="p">,</span>  <span class="c1"># relaxation time [h]</span>
-<a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a>    <span class="s2">&quot;nu&quot;</span><span class="p">:</span>    <span class="mf">15.0</span><span class="p">,</span>       <span class="c1"># anticipation coefficient [km²/h]</span>
-<a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a>    <span class="s2">&quot;kappa&quot;</span><span class="p">:</span> <span class="mf">40.0</span><span class="p">,</span>       <span class="c1"># density smoothing [veh/km/lane]</span>
-<a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a>    <span class="s2">&quot;delta&quot;</span><span class="p">:</span> <span class="mf">0.012</span><span class="p">,</span>      <span class="c1"># on-ramp speed-drop coefficient</span>
-<a id="__codelineno-4-10" name="__codelineno-4-10" href="#__codelineno-4-10"></a>    <span class="s2">&quot;phi&quot;</span><span class="p">:</span>   <span class="mf">1.0</span><span class="p">,</span>        <span class="c1"># lane-drop anticipation coefficient</span>
-<a id="__codelineno-4-11" name="__codelineno-4-11" href="#__codelineno-4-11"></a>    <span class="s2">&quot;alpha&quot;</span><span class="p">:</span> <span class="mf">1.8</span><span class="p">,</span>        <span class="c1"># FD shape exponent</span>
+<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a>    <span class="s2">"tau"</span><span class="p">:</span>   <span class="mi">22</span> <span class="o">/</span> <span class="mi">3600</span><span class="p">,</span>  <span class="c1"># relaxation time [h]</span>
+<a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a>    <span class="s2">"nu"</span><span class="p">:</span>    <span class="mf">15.0</span><span class="p">,</span>       <span class="c1"># anticipation coefficient [km²/h]</span>
+<a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a>    <span class="s2">"kappa"</span><span class="p">:</span> <span class="mf">10.0</span><span class="p">,</span>       <span class="c1"># density smoothing [veh/km/lane]</span>
+<a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a>    <span class="s2">"delta"</span><span class="p">:</span> <span class="mf">1.4</span><span class="p">,</span>        <span class="c1"># on-ramp speed-drop coefficient</span>
+<a id="__codelineno-4-10" name="__codelineno-4-10" href="#__codelineno-4-10"></a>    <span class="s2">"phi"</span><span class="p">:</span>   <span class="mf">10.0</span><span class="p">,</span>       <span class="c1"># lane-drop anticipation coefficient</span>
+<a id="__codelineno-4-11" name="__codelineno-4-11" href="#__codelineno-4-11"></a>    <span class="s2">"alpha"</span><span class="p">:</span> <span class="mf">2.0</span><span class="p">,</span>        <span class="c1"># FD shape exponent</span>
 <a id="__codelineno-4-12" name="__codelineno-4-12" href="#__codelineno-4-12"></a><span class="p">}</span>
 <a id="__codelineno-4-13" name="__codelineno-4-13" href="#__codelineno-4-13"></a>
 <a id="__codelineno-4-14" name="__codelineno-4-14" href="#__codelineno-4-14"></a><span class="n">sim</span> <span class="o">=</span> <span class="n">Simulation</span><span class="p">(</span><span class="n">network</span><span class="o">=</span><span class="n">net</span><span class="p">,</span> <span class="n">model</span><span class="o">=</span><span class="n">METANET</span><span class="p">(),</span> <span class="n">model_params</span><span class="o">=</span><span class="n">model_params</span><span class="p">)</span>
@@ -1877,13 +1815,12 @@ each outgoing link) and boundary conditions at each destination:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="n">VKT</span><span class="p">,</span> <span class="n">VHT</span><span class="p">,</span> <span class="n">avg_speed</span> <span class="o">=</span> <span class="n">sim</span><span class="o">.</span><span class="n">compute_metrics</span><span class="p">(</span>
 <a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>    <span class="n">states</span><span class="o">=</span><span class="n">states</span><span class="p">,</span> <span class="n">dt</span><span class="o">=</span><span class="mi">10</span> <span class="o">/</span> <span class="mi">3600</span><span class="p">,</span> <span class="n">timesteps</span><span class="o">=</span><span class="nb">len</span><span class="p">(</span><span class="n">time_arr</span><span class="p">)</span>
 <a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="p">)</span>
-<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Total VKT : </span><span class="si">{</span><span class="n">VKT</span><span class="si">:</span><span class="s2">.0f</span><span class="si">}</span><span class="s2"> veh·km&quot;</span><span class="p">)</span>
-<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a><span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Total VHT : </span><span class="si">{</span><span class="n">VHT</span><span class="si">:</span><span class="s2">.1f</span><span class="si">}</span><span class="s2"> veh·h&quot;</span><span class="p">)</span>
-<a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a><span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Mean speed: </span><span class="si">{</span><span class="n">avg_speed</span><span class="si">:</span><span class="s2">.1f</span><span class="si">}</span><span class="s2"> km/h&quot;</span><span class="p">)</span>
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Total VKT : </span><span class="si">{</span><span class="n">VKT</span><span class="si">:</span><span class="s2">.0f</span><span class="si">}</span><span class="s2"> veh·km"</span><span class="p">)</span>
+<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a><span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Total VHT : </span><span class="si">{</span><span class="n">VHT</span><span class="si">:</span><span class="s2">.1f</span><span class="si">}</span><span class="s2"> veh·h"</span><span class="p">)</span>
+<a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a><span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Mean speed: </span><span class="si">{</span><span class="n">avg_speed</span><span class="si">:</span><span class="s2">.1f</span><span class="si">}</span><span class="s2"> km/h"</span><span class="p">)</span>
 </code></pre></div>
 <h2 id="5-save-results-and-generate-plots">5. Save results and generate plots</h2>
-<p>Pass <code>plot_results=True</code> (and optionally <code>results_dir</code>) to <code>run()</code> to automatically
-save plots and a JSON results file:</p>
+<p>Pass <code>plot_results=True</code> (and optionally <code>results_dir</code>) to <code>run()</code> to automatically save plots and a JSON results file:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="n">time_arr</span><span class="p">,</span> <span class="n">states</span><span class="p">,</span> <span class="n">disturbances</span> <span class="o">=</span> <span class="n">sim</span><span class="o">.</span><span class="n">run</span><span class="p">(</span>
 <a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>    <span class="n">duration</span><span class="o">=</span><span class="mf">1.0</span><span class="p">,</span>
 <a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>    <span class="n">dt</span><span class="o">=</span><span class="mi">10</span> <span class="o">/</span> <span class="mi">3600</span><span class="p">,</span>
@@ -1892,13 +1829,13 @@ save plots and a JSON results file:</p>
 <a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a>    <span class="n">destination_flow_bc</span><span class="o">=</span><span class="n">destination_flow_bc</span><span class="p">,</span>
 <a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a>    <span class="n">destination_density_bc</span><span class="o">=</span><span class="n">destination_density_bc</span><span class="p">,</span>
 <a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a>    <span class="n">plot_results</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
-<a id="__codelineno-6-9" name="__codelineno-6-9" href="#__codelineno-6-9"></a>    <span class="n">results_dir</span><span class="o">=</span><span class="s2">&quot;results/quickstart&quot;</span><span class="p">,</span>
+<a id="__codelineno-6-9" name="__codelineno-6-9" href="#__codelineno-6-9"></a>    <span class="n">results_dir</span><span class="o">=</span><span class="s2">"results/quickstart"</span><span class="p">,</span>
 <a id="__codelineno-6-10" name="__codelineno-6-10" href="#__codelineno-6-10"></a><span class="p">)</span>
 </code></pre></div>
-<p>To generate a basic video from saved results:</p>
+<p>To generate a basic video from saved results (every node needs a <code>position</code>, see <a href="../../simulation/visualization/">Visualization</a>):</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="n">sim</span><span class="o">.</span><span class="n">visualize</span><span class="p">(</span>
-<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>    <span class="n">results_filepath</span><span class="o">=</span><span class="s2">&quot;results/quickstart/results.json&quot;</span><span class="p">,</span>
-<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>    <span class="n">output_filepath</span><span class="o">=</span><span class="s2">&quot;results/quickstart/simulation.avi&quot;</span><span class="p">,</span>
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>    <span class="n">results_filepath</span><span class="o">=</span><span class="s2">"results/quickstart/simulation_results.json"</span><span class="p">,</span>
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>    <span class="n">output_filepath</span><span class="o">=</span><span class="s2">"results/quickstart/simulation.avi"</span><span class="p">,</span>
 <a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a>    <span class="n">fps</span><span class="o">=</span><span class="mi">10</span><span class="p">,</span>
 <a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a><span class="p">)</span>
 </code></pre></div>
@@ -1963,10 +1900,10 @@ save plots and a JSON results file:</p>
     
       
       
-      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.tabs", "navigation.tabs.sticky", "navigation.sections", "navigation.expand", "navigation.top", "search.suggest", "search.highlight", "content.code.copy", "content.code.annotate", "toc.follow"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.tabs", "navigation.tabs.sticky", "navigation.sections", "navigation.expand", "navigation.top", "search.suggest", "search.highlight", "content.code.copy", "content.code.annotate", "toc.follow"], "search": "../../assets/javascripts/workers/search.a7633da7.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
     
     
-      <script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>
+      <script src="../../assets/javascripts/bundle.a5f9d56c.min.js"></script>
       
         <script src="../../javascripts/mathjax.js"></script>
       

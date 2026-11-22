@@ -25,7 +25,7 @@
       
       
       <link rel="icon" href="../../assets/images/favicon.png">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.2">
     
     
       
@@ -33,10 +33,10 @@
       
     
     
-      <link rel="stylesheet" href="../../assets/stylesheets/main.484c7ddc.min.css">
+      <link rel="stylesheet" href="../../assets/stylesheets/main.57a0d79d.min.css">
       
         
-        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.fb2fffe2.min.css">
       
       
 
@@ -1496,62 +1496,6 @@
 
               
             
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../../experimental/sumo-pipeline/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    SUMO Integration
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../../api/experimental/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    API (Experimental)
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
           </ul>
         </nav>
       
@@ -1795,17 +1739,11 @@
 
 
 <h1 id="metanet">METANET</h1>
-<p>METANET is a <strong>second-order</strong> macroscopic traffic flow model. It supplements the
-first-order density conservation equation with an explicit dynamic equation for
-<strong>mean speed</strong>, capturing effects that CTM cannot reproduce: driver anticipation of
-downstream conditions, speed relaxation towards equilibrium, on-ramp merging speed
-drops, and lane-drop anticipation.</p>
-<p>For full mathematical derivations, see
-<a href="../../#citation">Schlapbach et al., STRC 2026</a>.</p>
+<p>METANET is a <strong>second-order</strong> macroscopic traffic flow model. It supplements the first-order density conservation equation with an explicit dynamic equation for <strong>mean speed</strong>, capturing effects that CTM cannot reproduce: driver anticipation of downstream conditions, speed relaxation towards equilibrium, on-ramp merging speed drops, and lane-drop anticipation.</p>
+<p>For full mathematical derivations, see <a href="../../#citation">Schlapbach et al., STRC 2026</a>.</p>
 <hr />
 <h2 id="fundamental-diagram">Fundamental diagram</h2>
-<p>Unlike the triangular FD in CTM, METANET uses an <strong>exponential equilibrium speed
-function</strong>:</p>
+<p>Unlike the triangular FD in CTM, METANET uses an <strong>exponential equilibrium speed function</strong>:</p>
 <div class="arithmatex">\[
 V_S^m[\rho_i^m(k)] = v_f^m \exp\!\left[
   -\frac{1}{\alpha_m} \left(\frac{\rho_i^m(k)}{\rho_{cr}^m}\right)^{\!\alpha_m}
@@ -1816,8 +1754,7 @@ V_S^m[\rho_i^m(k)] = v_f^m \exp\!\left[
 <div class="arithmatex">\[\rho_{cr}^m = \frac{Q_c^m}{\lambda_m v_f^m \exp\!\left(-\tfrac{1}{\alpha_m}\right)}\]</div>
 <hr />
 <h2 id="speed-update-equation">Speed update equation</h2>
-<p>The core of METANET is a second update equation for mean speed. It has four additive
-components:</p>
+<p>The core of METANET is a second update equation for mean speed. It has four additive components:</p>
 <div class="arithmatex">\[
 v_i^m(k+1) = v_i^m(k)
   + \underbrace{\frac{\Delta t}{\tau}
@@ -1870,15 +1807,12 @@ v_i^m(k+1) = v_i^m(k)
 </tr>
 </tbody>
 </table>
-<p>The on-ramp and lane-drop terms are non-zero only in the relevant cells; all other
-cells use <span class="arithmatex">\(q\_{on}(k)=0\)</span> and <span class="arithmatex">\(\Delta\lambda_m = 0\)</span>.</p>
+<p>The on-ramp and lane-drop terms are non-zero only in the relevant cells; all other cells use <span class="arithmatex">\(q\_{on}(k)=0\)</span> and <span class="arithmatex">\(\Delta\lambda_m = 0\)</span>.</p>
 <p>Cell flow is then recovered from the fundamental relation:</p>
 <div class="arithmatex">\[q_i^m(k) = \lambda_m \cdot \rho_i^m(k) \cdot v_i^m(k)\]</div>
 <div class="admonition note">
 <p class="admonition-title">Flows may temporarily exceed capacity</p>
-<p>Unlike CTM, METANET does not enforce a hard upper bound on cell flow. Transient
-flows above <span class="arithmatex">\(Q_c^m\)</span> are physically plausible and mimic real-world congestion onset
-dynamics such as capacity drop and hysteresis.</p>
+<p>Unlike CTM, METANET does not enforce a hard upper bound on cell flow. Transient flows above <span class="arithmatex">\(Q_c^m\)</span> are physically plausible and mimic real-world congestion onset dynamics such as capacity drop and hysteresis.</p>
 </div>
 <hr />
 <h2 id="node-mechanics">Node mechanics</h2>
@@ -1888,14 +1822,13 @@ dynamics such as capacity drop and hysteresis.</p>
 v_0^m(k) = \frac{\sum_{\mu \in I_n} v_{N_\mu}^\mu(k) \cdot q_{N_\mu}^\mu(k)}
                    {\sum_{\mu \in I_n} q_{N_\mu}^\mu(k)}
 \]</div>
-<p>A flow-weighted average of the last-cell speeds of all incoming links.</p>
+<p>A flow-weighted average of the last-cell speeds of all incoming motorway links. Without upstream flow (empty or stopped links) the library uses their plain mean instead, which keeps <span class="arithmatex">\(v_0^m\)</span> continuous as the flow vanishes: a stopped last cell gives 0, an empty one its free-flow speed.</p>
 <p><strong>Virtual downstream density</strong> (at the last cell of an incoming link, diverge node):</p>
 <div class="arithmatex">\[
 \rho_{N_m+1}^m(k) = \frac{\sum_{\mu \in O_n} [\rho_1^\mu(k)]^2}
                             {\sum_{\mu \in O_n} \rho_1^\mu(k)}
 \]</div>
-<p>A contraharmonic mean of the first-cell densities of all outgoing links. Both
-quantities are computed automatically by the library.</p>
+<p>A contraharmonic mean of the first-cell densities of all outgoing motorway links (an outgoing <code>Destination</code> contributes its density boundary condition, off-ramps are left out). Both quantities are computed automatically by the library.</p>
 <hr />
 <h2 id="parameters">Parameters</h2>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">traffic_flow_models</span><span class="w"> </span><span class="kn">import</span> <span class="n">METANET</span><span class="p">,</span> <span class="n">METANETParams</span>
@@ -1905,12 +1838,12 @@ quantities are computed automatically by the library.</p>
 <a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="c1"># free_flow_speed, jam_density). METANETParams holds only the second-order</span>
 <a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="c1"># coefficients that are passed to Simulation.</span>
 <a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="n">model_params</span><span class="p">:</span> <span class="n">METANETParams</span> <span class="o">=</span> <span class="p">{</span>
-<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>    <span class="s2">&quot;tau&quot;</span><span class="p">:</span>   <span class="mi">22</span> <span class="o">/</span> <span class="mi">3600</span><span class="p">,</span>  <span class="c1"># relaxation time [h]  (~18–30 s)</span>
-<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>    <span class="s2">&quot;nu&quot;</span><span class="p">:</span>    <span class="mf">15.0</span><span class="p">,</span>       <span class="c1"># anticipation coefficient [km²/h]</span>
-<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>    <span class="s2">&quot;kappa&quot;</span><span class="p">:</span> <span class="mf">40.0</span><span class="p">,</span>       <span class="c1"># density smoothing [veh/km/lane]</span>
-<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>    <span class="s2">&quot;delta&quot;</span><span class="p">:</span> <span class="mf">0.012</span><span class="p">,</span>      <span class="c1"># on-ramp speed-drop coefficient [-]</span>
-<a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a>    <span class="s2">&quot;phi&quot;</span><span class="p">:</span>   <span class="mf">1.0</span><span class="p">,</span>        <span class="c1"># lane-drop anticipation coefficient [-]</span>
-<a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a>    <span class="s2">&quot;alpha&quot;</span><span class="p">:</span> <span class="mf">1.8</span><span class="p">,</span>        <span class="c1"># FD shape exponent [-]</span>
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>    <span class="s2">"tau"</span><span class="p">:</span>   <span class="mi">22</span> <span class="o">/</span> <span class="mi">3600</span><span class="p">,</span>  <span class="c1"># relaxation time [h]  (~18–30 s)</span>
+<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>    <span class="s2">"nu"</span><span class="p">:</span>    <span class="mf">15.0</span><span class="p">,</span>       <span class="c1"># anticipation coefficient [km²/h]</span>
+<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>    <span class="s2">"kappa"</span><span class="p">:</span> <span class="mf">10.0</span><span class="p">,</span>       <span class="c1"># density smoothing [veh/km/lane]</span>
+<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>    <span class="s2">"delta"</span><span class="p">:</span> <span class="mf">1.4</span><span class="p">,</span>        <span class="c1"># on-ramp speed-drop coefficient [-]</span>
+<a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a>    <span class="s2">"phi"</span><span class="p">:</span>   <span class="mf">10.0</span><span class="p">,</span>       <span class="c1"># lane-drop anticipation coefficient [-]</span>
+<a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a>    <span class="s2">"alpha"</span><span class="p">:</span> <span class="mf">2.0</span><span class="p">,</span>        <span class="c1"># FD shape exponent [-]</span>
 <a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a><span class="p">}</span>
 <a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a><span class="n">metanet</span> <span class="o">=</span> <span class="n">METANET</span><span class="p">()</span>
 </code></pre></div>
@@ -1921,7 +1854,8 @@ quantities are computed automatically by the library.</p>
 <th>Parameter</th>
 <th>Symbol</th>
 <th>Unit</th>
-<th>Typical range</th>
+<th>Standard value</th>
+<th>Calibration range</th>
 <th>Effect</th>
 </tr>
 </thead>
@@ -1930,71 +1864,76 @@ quantities are computed automatically by the library.</p>
 <td><code>tau</code></td>
 <td><span class="arithmatex">\(\tau\)</span></td>
 <td>h</td>
-<td>5–30 s (÷3600)</td>
+<td>18 s (÷3600)</td>
+<td>5–80 s (÷3600)</td>
 <td>Speed relaxation rate; larger → slower</td>
 </tr>
 <tr>
 <td><code>nu</code></td>
 <td><span class="arithmatex">\(\nu\)</span></td>
 <td>km²/h</td>
-<td>10–60</td>
+<td>60</td>
+<td>10–90</td>
 <td>Anticipation strength; larger → stronger</td>
 </tr>
 <tr>
 <td><code>kappa</code></td>
 <td><span class="arithmatex">\(\kappa\)</span></td>
 <td>veh/km/lane</td>
-<td>10–60</td>
+<td>40</td>
+<td>5–50</td>
 <td>Prevents division by zero in anticipation term</td>
 </tr>
 <tr>
 <td><code>delta</code></td>
 <td><span class="arithmatex">\(\delta\)</span></td>
 <td>—</td>
-<td>0.005–0.02</td>
+<td>0.0122</td>
+<td>0.0001–4</td>
 <td>On-ramp merging speed reduction</td>
 </tr>
 <tr>
 <td><code>phi</code></td>
 <td><span class="arithmatex">\(\phi\)</span></td>
 <td>—</td>
-<td>0–2</td>
+<td>2.98</td>
+<td>0.01–15</td>
 <td>Lane-drop anticipation magnitude</td>
 </tr>
 <tr>
 <td><code>alpha</code></td>
 <td><span class="arithmatex">\(\alpha\)</span></td>
 <td>—</td>
-<td>1.5–2.5</td>
-<td>FD shape; 1.8 is a common default</td>
+<td>1.636</td>
+<td>0.5–2.5</td>
+<td>FD shape</td>
 </tr>
 </tbody>
 </table>
+<p>Standard values: Kotsialos, Papageorgiou, Mangeas and Haj-Salem (2002, Transportation Research Part C 10(1), 65–84, Table 1); they are the calibration start values (<code>METANET().get_default_calibration_params()</code>). Calibration ranges: Zhao, Roncoli and Yildirimoglu (2025, Bounded-METANET, Table 1), except <span class="arithmatex">\(\varphi\)</span>, which has no published range; they are the default calibration bounds. The examples and demo scenarios use <span class="arithmatex">\(\tau = 22\)</span> s, <span class="arithmatex">\(\nu = 15\)</span>, <span class="arithmatex">\(\kappa = 10\)</span>, <span class="arithmatex">\(\delta = 1.4\)</span>, <span class="arithmatex">\(\varphi = 10\)</span>, <span class="arithmatex">\(\alpha = 2\)</span>, which keep the flow through the demo lane drops at capacity.</p>
 <div class="admonition tip">
 <p class="admonition-title">Calibration sensitivity</p>
-<p>Depending on the chosen calibration approach, different parameters may
-be more or less sensitive and coupled through correlation. See the
-<a href="../../experimental/calibration/">Calibration guide</a> for details.</p>
+<p>Depending on the chosen calibration approach, different parameters may be more or less sensitive and coupled through correlation. See the <a href="../../experimental/calibration/">Calibration guide</a> for details.</p>
 </div>
 <hr />
 <h2 id="running-a-metanet-simulation">Running a METANET simulation</h2>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">traffic_flow_models</span><span class="w"> </span><span class="kn">import</span> <span class="n">METANET</span><span class="p">,</span> <span class="n">METANETParams</span><span class="p">,</span> <span class="n">Simulation</span>
 <a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>
 <a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="n">model_params</span><span class="p">:</span> <span class="n">METANETParams</span> <span class="o">=</span> <span class="p">{</span>
-<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>    <span class="s2">&quot;tau&quot;</span><span class="p">:</span> <span class="mi">22</span><span class="o">/</span><span class="mi">3600</span><span class="p">,</span> <span class="s2">&quot;nu&quot;</span><span class="p">:</span> <span class="mf">15.0</span><span class="p">,</span> <span class="s2">&quot;kappa&quot;</span><span class="p">:</span> <span class="mf">40.0</span><span class="p">,</span>
-<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>    <span class="s2">&quot;delta&quot;</span><span class="p">:</span> <span class="mf">0.012</span><span class="p">,</span> <span class="s2">&quot;phi&quot;</span><span class="p">:</span> <span class="mf">1.0</span><span class="p">,</span> <span class="s2">&quot;alpha&quot;</span><span class="p">:</span> <span class="mf">1.8</span><span class="p">,</span>
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>    <span class="s2">"tau"</span><span class="p">:</span> <span class="mi">22</span><span class="o">/</span><span class="mi">3600</span><span class="p">,</span> <span class="s2">"nu"</span><span class="p">:</span> <span class="mf">15.0</span><span class="p">,</span> <span class="s2">"kappa"</span><span class="p">:</span> <span class="mf">10.0</span><span class="p">,</span>
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>    <span class="s2">"delta"</span><span class="p">:</span> <span class="mf">1.4</span><span class="p">,</span> <span class="s2">"phi"</span><span class="p">:</span> <span class="mf">10.0</span><span class="p">,</span> <span class="s2">"alpha"</span><span class="p">:</span> <span class="mf">2.0</span><span class="p">,</span>
 <a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="p">}</span>
 <a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="n">sim</span> <span class="o">=</span> <span class="n">Simulation</span><span class="p">(</span><span class="n">network</span><span class="o">=</span><span class="n">net</span><span class="p">,</span> <span class="n">model</span><span class="o">=</span><span class="n">METANET</span><span class="p">(),</span> <span class="n">model_params</span><span class="o">=</span><span class="n">model_params</span><span class="p">)</span>
 <a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a><span class="n">time_arr</span><span class="p">,</span> <span class="n">states</span><span class="p">,</span> <span class="n">disturbances</span> <span class="o">=</span> <span class="n">sim</span><span class="o">.</span><span class="n">run</span><span class="p">(</span>
 <a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a>    <span class="n">duration</span><span class="o">=</span><span class="mf">1.0</span><span class="p">,</span>
 <a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a>    <span class="n">dt</span><span class="o">=</span><span class="mi">10</span> <span class="o">/</span> <span class="mi">3600</span><span class="p">,</span>
-<a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a>    <span class="n">origin_demands</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;o_main&quot;</span><span class="p">:</span> <span class="k">lambda</span> <span class="n">t</span><span class="p">:</span> <span class="mf">1500.0</span><span class="p">},</span>
+<a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a>    <span class="n">origin_demands</span><span class="o">=</span><span class="p">{</span><span class="s2">"o_main"</span><span class="p">:</span> <span class="k">lambda</span> <span class="n">t</span><span class="p">:</span> <span class="mf">1500.0</span><span class="p">},</span>
 <a id="__codelineno-1-12" name="__codelineno-1-12" href="#__codelineno-1-12"></a>    <span class="n">turning_rates</span><span class="o">=</span><span class="p">{</span>
-<a id="__codelineno-1-13" name="__codelineno-1-13" href="#__codelineno-1-13"></a>        <span class="s2">&quot;n_in&quot;</span><span class="p">:</span>  <span class="k">lambda</span> <span class="n">t</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;m1&quot;</span><span class="p">:</span>     <span class="mf">1.0</span><span class="p">},</span>
-<a id="__codelineno-1-14" name="__codelineno-1-14" href="#__codelineno-1-14"></a>        <span class="s2">&quot;n_out&quot;</span><span class="p">:</span> <span class="k">lambda</span> <span class="n">t</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;d_main&quot;</span><span class="p">:</span> <span class="mf">1.0</span><span class="p">},</span>
+<a id="__codelineno-1-13" name="__codelineno-1-13" href="#__codelineno-1-13"></a>        <span class="s2">"n_in"</span><span class="p">:</span>  <span class="k">lambda</span> <span class="n">t</span><span class="p">:</span> <span class="p">{</span><span class="s2">"m1"</span><span class="p">:</span>     <span class="mf">1.0</span><span class="p">},</span>
+<a id="__codelineno-1-14" name="__codelineno-1-14" href="#__codelineno-1-14"></a>        <span class="s2">"n_out"</span><span class="p">:</span> <span class="k">lambda</span> <span class="n">t</span><span class="p">:</span> <span class="p">{</span><span class="s2">"d_main"</span><span class="p">:</span> <span class="mf">1.0</span><span class="p">},</span>
 <a id="__codelineno-1-15" name="__codelineno-1-15" href="#__codelineno-1-15"></a>    <span class="p">},</span>
-<a id="__codelineno-1-16" name="__codelineno-1-16" href="#__codelineno-1-16"></a>    <span class="n">destination_flow_bc</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;d_main&quot;</span><span class="p">:</span> <span class="k">lambda</span> <span class="n">t</span><span class="p">:</span> <span class="mf">2000.0</span><span class="p">},</span>
-<a id="__codelineno-1-17" name="__codelineno-1-17" href="#__codelineno-1-17"></a>    <span class="n">destination_density_bc</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;d_main&quot;</span><span class="p">:</span> <span class="k">lambda</span> <span class="n">t</span><span class="p">:</span> <span class="mf">0.0</span><span class="p">},</span>
+<a id="__codelineno-1-16" name="__codelineno-1-16" href="#__codelineno-1-16"></a>    <span class="n">destination_flow_bc</span><span class="o">=</span><span class="p">{</span><span class="s2">"d_main"</span><span class="p">:</span> <span class="k">lambda</span> <span class="n">t</span><span class="p">:</span> <span class="mf">2000.0</span><span class="p">},</span>
+<a id="__codelineno-1-17" name="__codelineno-1-17" href="#__codelineno-1-17"></a>    <span class="n">destination_density_bc</span><span class="o">=</span><span class="p">{</span><span class="s2">"d_main"</span><span class="p">:</span> <span class="k">lambda</span> <span class="n">t</span><span class="p">:</span> <span class="mf">0.0</span><span class="p">},</span>
 <a id="__codelineno-1-18" name="__codelineno-1-18" href="#__codelineno-1-18"></a>    <span class="n">plot_results</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
 <a id="__codelineno-1-19" name="__codelineno-1-19" href="#__codelineno-1-19"></a><span class="p">)</span>
 </code></pre></div>
@@ -2052,10 +1991,10 @@ be more or less sensitive and coupled through correlation. See the
     
       
       
-      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.tabs", "navigation.tabs.sticky", "navigation.sections", "navigation.expand", "navigation.top", "search.suggest", "search.highlight", "content.code.copy", "content.code.annotate", "toc.follow"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.tabs", "navigation.tabs.sticky", "navigation.sections", "navigation.expand", "navigation.top", "search.suggest", "search.highlight", "content.code.copy", "content.code.annotate", "toc.follow"], "search": "../../assets/javascripts/workers/search.a7633da7.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
     
     
-      <script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>
+      <script src="../../assets/javascripts/bundle.a5f9d56c.min.js"></script>
       
         <script src="../../javascripts/mathjax.js"></script>
       
