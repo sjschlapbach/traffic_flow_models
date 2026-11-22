@@ -1,4 +1,4 @@
-"""Table 2: ramp metering on scenario E (three on-ramps) under METANET.
+"""Table 1: ramp metering on scenario E (three on-ramps) under METANET.
 
 Per variant: total time spent (VHT including queues) and its change against no
 control, VHT on the motorway, time spent in queues, mean speed on the motorway (all
@@ -51,7 +51,7 @@ TEX_HEADER = [
 
 
 def main() -> None:
-    """Build Table 2 from the stored runs."""
+    """Build Table 1 from the stored runs."""
     ensure_runs([*VARIANTS.values(), *CONTROL_INTERVAL_RUNS], rerun=RERUN_SIMULATION)
     rows_by_label = {
         **VARIANTS,

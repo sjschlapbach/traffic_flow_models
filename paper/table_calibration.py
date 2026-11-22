@@ -1,4 +1,4 @@
-"""Table 3: METANET calibration results on scenarios C and C2 (C with ALINEA).
+"""Table 2: METANET calibration results on scenarios C and C2 (C with ALINEA).
 
 Per scenario and condition: estimate and relative error of each parameter against the
 true value (tau in s), final cost, number of function evaluations and termination
@@ -41,7 +41,7 @@ DECIMALS = {"tau": 2, "nu": 2, "kappa": 2, "delta": 4, "phi": 2, "alpha": 3}
 
 
 def main() -> None:
-    """Build Table 3 from the stored runs."""
+    """Build Table 2 from the stored runs."""
     ensure_runs(list(CALIBRATION_RUNS.values()), rerun=RERUN_SIMULATION)
     first = load_json(CALIBRATION_RUNS[("1", "exact")], "calibration.json")
     names: list[str] = first["param_names"]
