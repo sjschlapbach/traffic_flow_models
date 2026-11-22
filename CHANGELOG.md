@@ -1,3 +1,40 @@
+## [1.2.0] - 2026-11-22
+
+### Enhancements
+
+- Offer possibility to specify lower frequency for ramp metering controllers (#105)
+- Implement ramp metering rate to respect maximum queue lengths for ALINEA and METALINE (#106)
+- Update regularization mechanism and default calibration parameters (#107)
+- Ensure that separate controller time steps are supported in calibration (#108)
+
+### Features
+
+- Introduce new evaluation for scientific paper (#109)
+
+### Bug Fixes
+
+- *(SumoPipeline)* Update microsimulation step length
+- Add spatial resampling to microscopic simulation results if necessary (#100)
+- Resolve potential backwards compatibility issues due to input argument reordering
+
+### Documentation
+
+- Update docstrings and user documentation to ensure consistency with updated library (#110)
+
+### Miscellaneous Tasks
+
+- *(release)* Update changelog for version 1.1.0
+- Update README
+- Update docstrings to follow consistent structure across codebase (#99)
+- Improve setup compatibility for coding agent assistance
+- Improve unit test coverage and edge case consideration
+- Remove experimental SUMO integration components (#102)
+- Setup serena for memory management and semantic codebase access (#103)
+- Ensure consistent typing and export of types throughout library (#104)
+- Update formatting of markdown files
+- Reformat latex tables to have centered columns
+- Update figure caption and labels for consistency with paper text (#111)
+- *(release)* V1.2.0
 ## [1.1.0] - 2026-05-23
 
 ### Enhancements
