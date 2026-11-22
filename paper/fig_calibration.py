@@ -1,7 +1,7 @@
 """Fig. 5: METANET calibration with noisy measurements.
 
 (a) speed and (b) density in the last cell upstream of the lane drop: noisy
-measurements, noise-free reference, simulation with the start values and with the
+measurements, ground truth, simulation with the start values and with the
 calibrated parameters; (c) parameter correlation matrix from the Jacobian at the
 solution. One figure for scenario C (Fig. 5) and one of the same form for scenario C2
 (C with ALINEA), which can replace it. Run with ``python -m paper.fig_calibration``.
@@ -126,7 +126,7 @@ def _figure(name: str, runs: dict[str, str]) -> None:
 def _draw_time_series(
     ax: Axes, runs: dict[str, str], quantity: str, link_id: str, cell: int
 ) -> None:
-    """Draw measurements, reference, start-value and calibrated simulation of a cell.
+    """Draw measurements, ground truth, start-value and calibrated simulation of a cell.
 
     Args:
         ax: Axes to draw in.
@@ -150,7 +150,7 @@ def _draw_time_series(
         series(runs["truth"], quantity, link_id, cell),
         color="black",
         linewidth=REFERENCE_LINEWIDTH,
-        label="noise-free reference",
+        label="ground truth",
         # on top of the calibrated simulation, which it would hide otherwise
         zorder=3,
     )
