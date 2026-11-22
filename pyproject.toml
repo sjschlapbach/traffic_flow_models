@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "traffic_flow_models"
-version = "1.1.0"
+version = "1.2.0"
 license = "MIT"
 description = "Macroscopic traffic flow models (CTM, METANET), ramp metering and calibration"
 readme = "README.md"
